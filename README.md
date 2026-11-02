@@ -45,7 +45,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 
 - **Copying, not arithmetic**: the model copies figures and sentences. Code turns percentages into cents and relative dates into calendar days, and works out every balance and total. If a contract states a balance that doesn't match, it's flagged.
 - **Checked against the contract**: code confirms each sentence really is in the contract and each figure or date really is in its sentence.
-- **The agent explains, code decides**: `review_payments` hands the agent the next payment and the cash warnings as finished sentences, so it has no sums to do. Limits live in the tool, not the prompt.
+- **The agent explains, code decides**: `review_payments` hands the agent the next payment and the cash warnings as finished sentences, so it has no sums to do. The same tool shows the couple each warning directly, so a warning can't be left out by the model. Limits live in the tool, not the prompt.
 - **Structured output**: zod schemas through the Messages API's structured outputs (`output_config.format`).
 - **Cost control**: a hard daily spend cap (worst case reserved before every call), per-IP rate limits, and Haiku by default.
 - **Mock mode**: without an API key the app uses clearly labelled simulated reads of the sample contracts and a scripted agent, so the demo works anywhere.

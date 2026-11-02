@@ -1,12 +1,14 @@
 /**
  * APP-OWNED: the payment agent. It names what is due, explains the clashes the code found, and
  * asks to pay. It stops there: the only money tool waits for a person in the Guard. Code does every
- * sum, and code decides what may be paid, so nothing in a prompt or a reply can change a limit.
+ * sum, shows every warning and decides what may be paid, so nothing in a prompt or a reply can
+ * change a limit or hide a clash.
  */
 import { z } from "zod";
 import { appConfig } from "@/app.config";
 import { defineAgent, type AgentInput, type ScriptStep } from "@/lib/agent/define";
 import { defineTool } from "@/lib/agent/tool";
+import { timeline } from "@/lib/events/bus";
 import { monthlyBudget } from "@/lib/wedding/budget";
 import { centsToDollars, dollarFigures, formatCents } from "@/lib/wedding/cents";
 import { listContracts } from "@/lib/wedding/contracts";
@@ -24,7 +26,9 @@ Call review_payments first. It returns every figure you may use, already worked 
 Then tell the couple, in plain words:
 - the next payment due: vendor, what it is, amount and date
 - anything overdue
-- each warning in the warnings list, and what it means for them. Don't suggest moving a payment date unless they ask, because the vendor would have to agree.
+- what the warnings mean for them, in one short sentence. The app has already shown them each warning word for word, so don't repeat the list. Don't suggest moving a payment date unless they ask, because the vendor would have to agree.
+
+Write all of that before you call any other tool.
 
 If they asked to pay something, or to set up the next payment, call create_vendor_payout with the contract_id and kind from review_payments. If they named an amount, pass that amount. Otherwise pass the amount from review_payments. The app refuses anything that doesn't match the confirmed contract, and a person must approve what it accepts. You can't approve a payment, and there is no other way to pay. If a call is refused, tell them why in one sentence and stop.`;
 
@@ -55,7 +59,6 @@ function mockSteps(planId: string, today: string, input: AgentInput): ScriptStep
     { say: "Checking every confirmed payment first.", tool: "review_payments", as: "review" },
     { say: say(next), pauseMs: 300 },
     ...(overdue ? [{ say: `Overdue: ${overdue}.`, pauseMs: 300 }] : []),
-    ...view.cash.warnings.map((w) => ({ say: `Heads up: ${w.message}`, pauseMs: 300 })),
   ];
   if (!next) return steps;
   const asked = dollarFigures(input.goal)[0];
@@ -77,7 +80,12 @@ export function paymentAgent(planId: string, today: string) {
     source: "app",
     schema: z.object({}),
     title: () => "Review every payment",
-    execute: async () => reviewFacts(await viewTimeline(planId, today)),
+    execute: async () => {
+      const view = await viewTimeline(planId, today);
+      // Written by code, so the warnings reach the couple whatever the model chooses to say.
+      for (const warning of view.cash.warnings) timeline.emit({ kind: "agent.message", status: "info", title: "Cash check", detail: `Heads up: ${warning.message}` });
+      return reviewFacts(view);
+    },
   });
   return defineAgent({
     id: PAYMENT_AGENT_ID,

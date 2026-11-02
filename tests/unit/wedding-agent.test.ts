@@ -6,6 +6,7 @@ import { getAuditLog } from "@/lib/agent/audit";
 import { Guard } from "@/lib/agent/guard";
 import { startAgentRun } from "@/lib/agent/runs";
 import { runScriptedAgent } from "@/lib/agent/scripted";
+import { timeline } from "@/lib/events/bus";
 import { getMockPayPal, MockPayPal } from "@/lib/paypal";
 import { addContract, listContracts, requireContract } from "@/lib/wedding/contracts";
 import { loadSampleWedding } from "@/lib/wedding/demo";
@@ -86,7 +87,19 @@ describe("the review", () => {
     const { plan } = wedding();
     const said = paymentAgent(plan, TODAY).mockScript!({ goal: GOAL }).map((s) => s.say).filter((s) => typeof s === "string").join(" ");
     expect(said).toContain(`Next up is ${PHOTOGRAPHER.vendorName}: the deposit of $1,200.00, due Fri, Dec 18, 2026.`);
-    expect(said).toContain("$12,200.00 in one week");
+  });
+
+  it("shows the couple every warning itself, whatever the model says", async () => {
+    const { plan } = wedding();
+    const shown: string[] = [];
+    const stop = timeline.subscribe((e) => {
+      if (e.kind === "agent.message" && e.title === "Cash check") shown.push(e.detail!);
+    });
+    await runScript(plan, [{ tool: "review_payments" }]);
+    stop();
+    expect(shown[0]).toContain("Heads up:");
+    expect(shown[0]).toContain("$12,200.00 in one week");
+    expect(shown).toHaveLength(3);
   });
 });
 
