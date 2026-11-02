@@ -1,6 +1,6 @@
 # Wedding Vendor Timeline
 
-> One sentence: who it helps and what the AI agent does with PayPal. <!-- TODO -->
+> For couples juggling wedding vendors: Claude reads each vendor contract, you confirm every deposit and balance on one timeline, and PayPal pays the vendor once you approve it.
 
 **Live demo:** https://vendor-timeline.onrender.com <!-- TODO: update after deploy --> · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
 
@@ -8,13 +8,16 @@
 
 ## The problem
 
-<!-- TODO: 3–5 sentences. Who has the problem, how often, what it costs them today (time, money, errors). Use a concrete example. -->
+A wedding means five or more vendors, each with its own contract, its own wording and its own deadlines. One says "25% to hold the date", another "the rest two weeks before your wedding", another buries the balance in a schedule. Couples track these in their heads or a spreadsheet, and a missed deposit can cost them the vendor. Worse, the sums in contracts aren't always right.
 
 ## What it does
 
-<!-- TODO: The user journey in 4–6 bullets, from the user's point of view. Name the moment the agent acts and the moment a human approves. -->
-
-- …
+- **Add contracts.** Paste the text, upload a `.txt` file, or try one of the five fictional samples.
+- **AI reads the payment terms.** Vendor, total, deposit and date, balance and date, each with the exact contract sentence it came from.
+- **You check them.** Terms sit beside their source sentences. You confirm or edit. Anything missing or unclear is flagged and left blank, and nothing reaches the timeline unconfirmed.
+- **One timeline.** Every deposit and balance by date, what's due next, what's overdue and the total due.
+- **Pay photographer.** The app proposes the payment and stops. A person approves it, then PayPal sends it.
+- **Proof.** The item is marked paid only from the status re-read from PayPal, shown with the PayPal ids.
 
 ## How PayPal is used
 
@@ -22,51 +25,43 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 
 | PayPal API | Endpoint(s) | Where and why |
 |---|---|---|
-| JS SDK v6 (buyer approval) | `web-sdk/v6/core`, `PayPalOneTimePaymentButton` | <!-- TODO --> |
-| Orders v2 | `POST /v2/checkout/orders`, `/authorize`, `/capture` | <!-- TODO --> |
-| Payments v2 | `/v2/payments/authorizations/{id}/capture`, `/void`, `/v2/payments/captures/{id}/refund` | <!-- TODO --> |
-| Payouts | `POST /v1/payments/payouts` | <!-- TODO or delete row --> |
-| Invoicing v2 | `/v2/invoicing/invoices`, `/send`, `/remind` | <!-- TODO or delete row --> |
-| Disputes | `/v1/customer/disputes`, `/accept-claim`, `/provide-evidence` | <!-- TODO or delete row --> |
-| Transaction Search | `GET /v1/reporting/transactions` | <!-- TODO or delete row --> |
-| Webhooks | `POST /v1/notifications/verify-webhook-signature` | Verified webhooks update the app's ledger and trigger <!-- TODO --> |
-| Vault v3 | `/v3/vault/setup-tokens`, `/payment-tokens` | <!-- TODO or delete row --> |
-| **PayPal Agent Toolkit** | `@paypal/agent-toolkit` 1.11 tools: <!-- TODO list the ones your agent uses --> | The agent's PayPal tools come from PayPal's Agent Toolkit (definitions, validation and sandbox execution), extended with guarded tools the toolkit lacks (<!-- TODO e.g. capture_authorization, void_authorization -->). |
+| Payouts | `POST /v1/payments/payouts`, `GET /v1/payments/payouts/{id}` | "Pay photographer" sends the vendor its deposit or balance. A batch finishes after a short wait, so the app re-reads it until the item's real status comes back. |
+| Webhooks | `POST /v1/notifications/verify-webhook-signature` | Verified payout webhooks trigger the same re-read. Events for batches this app didn't create are dropped, because PayPal doesn't filter payouts per app. |
 
-**Safety around money:** every money-moving agent call passes a guard. It enforces a per-action cap, a daily cap, a payee allowlist and idempotency (`PayPal-Request-Id`), and makes calls above <!-- TODO $50 --> wait for a human. Every decision goes to a hash-chained, append-only audit log.
+**Sandbox stand-in:** the sample vendors are fictional, and a payout to an address with no PayPal account stays UNCLAIMED. So in sandbox each payout goes to a PayPal test account standing in for the vendor, and the app says so on screen. In this slice the money comes from the app's sandbox business account. A way for the couple to fund payments is a later step.
+
+**Safety around money:** every payment goes through a guard. It enforces a per-action cap, a daily cap, a payee allowlist and idempotency, and `create_payout` always waits for a person. The amount comes from the confirmed terms on the server, never from the browser. Every decision goes to a hash-chained, append-only audit log.
 
 ## How AI is used
 
 | Where | Model | What it does |
 |---|---|---|
-| <!-- TODO e.g. Settlement agent --> | Claude Haiku 5.5 (`claude-haiku-5-5`) | Plans the task and calls the PayPal tools in a loop; explains each step on the timeline |
-| <!-- TODO e.g. Receipt reading --> | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | Vision: extracts structured data from photos |
-| <!-- TODO --> | | |
+| Reading a contract | Claude Haiku 5.5 (`claude-haiku-5-5`) | Copies each payment term and its source sentence out of the contract text |
 
-- **Agent loop**: Claude's tool use via the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), with adaptive thinking and summarized reasoning shown on the timeline.
+- **Copying, not arithmetic**: the model copies figures and sentences. Code turns percentages into cents and relative dates into calendar days, and works out every balance and total. If a contract states a balance that doesn't match, it's flagged.
+- **Checked against the contract**: code confirms each sentence really is in the contract and each figure or date really is in its sentence.
 - **Structured output**: zod schemas through the Messages API's structured outputs (`output_config.format`).
 - **Cost control**: a hard daily spend cap (worst case reserved before every call), per-IP rate limits, and Haiku by default.
-- **Mock mode**: without an API key the app runs a clearly labelled scripted agent, so the demo works anywhere.
+- **Mock mode**: without an API key the app uses clearly labelled simulated reads of the sample contracts, so the demo works anywhere.
 
 **Built with AI.** This project was built with **Claude Code** (Anthropic's coding agent), which wrote the code under human direction. It started from a shared starter kit that Claude Code also wrote. The product idea, scope and review were human decisions.
 
 ## Architecture
 
 ```
-Browser (Next.js 16 / React 19, Tailwind, AG Grid)
-  │  PayPal JS SDK v6 button ─────────────► PayPal sandbox checkout (buyer approval)
-  │  SSE /api/events (live timeline)
+Browser (Next.js 16 / React 19, Tailwind)
+  │  SSE /api/events (live activity panel)
   ▼
 Next.js route handlers (Node)
+  ├─ lib/wedding  cents and calendar-day rules, contract read and checks, timeline, payments
+  ├─ lib/agent    Guard (caps, allowlist, approvals, idempotency, audit) around create_payout
   ├─ lib/paypal   typed PayPal client: sandbox REST (OAuth cache, PayPal-Request-Id, debug_id) or in-memory mock
-  ├─ lib/agent    Claude tool-use loop → Guard (caps, allowlist, approvals, idempotency, audit) → tools
-  │                 tools = PayPal Agent Toolkit 1.11 + guarded extensions
-  ├─ lib/ai       Claude Haiku 5.5 / Sonnet 5.5: structured output, vision, streaming; daily spend cap
+  ├─ lib/ai       Claude Haiku 5.5 structured output, with a daily spend cap
   ├─ webhooks     verify → ledger → handlers
-  └─ .data/       local JSON: ledger, audit log, AI spend (mock PayPal state in mock mode)
+  └─ .data/       local JSON: contracts, ledger, audit log, AI spend (mock PayPal state in mock mode)
 ```
 
-<!-- TODO: add anything app-specific (other services, data sources). -->
+Each browser gets its own plan through a cookie, so people trying the hosted copy don't see each other's contracts.
 
 ## Run locally
 
@@ -81,16 +76,15 @@ npm run seed                      # optional demo data
 
 Open http://localhost:3000. For the real sandbox set `PAYPAL_MODE=sandbox`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`. For real AI set `ANTHROPIC_API_KEY`.
 
-Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e`, `npm run test:sandbox`.
+Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e` (the whole flow on mock PayPal), `npm run test:e2e:sandbox` (the whole flow on the real sandbox, then re-reads the payout from PayPal). Run one Playwright suite at a time.
 
 ## Sandbox test accounts
 
-1. In the PayPal Developer Dashboard → **Testing Tools → Sandbox Accounts**, use the default Personal (buyer) and Business (seller) accounts or create new ones.
-2. Create a sandbox REST app under **Apps & Credentials → Sandbox** and copy its client ID and secret.
-3. At checkout, log in with the **Personal** sandbox account (password on the account's details page).
-4. Optional: add a webhook for `https://<your-deploy>/api/paypal/webhooks` and set `PAYPAL_WEBHOOK_ID`.
+1. In the PayPal Developer Dashboard → **Testing Tools → Sandbox Accounts**, use the default Personal and Business accounts or create new ones. Set `PAYPAL_SANDBOX_BUYER_EMAIL` to the Personal account: it stands in for the vendors.
+2. Create a sandbox REST app under **Apps & Credentials → Sandbox** and copy its client ID and secret. Payouts must be enabled on it.
+3. Optional: add a webhook for `https://<your-deploy>/api/paypal/webhooks` and set `PAYPAL_WEBHOOK_ID`. Without one the app still finishes payments by re-reading PayPal.
 
-<!-- TODO: if judges should use a specific buyer account, give its email here (never a real account). -->
+Nobody needs to log in to PayPal to try this app: payouts have no buyer step.
 
 ## Deploy
 
@@ -99,11 +93,11 @@ Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter th
 ## Limitations
 
 - Sandbox only; no live payments are possible.
-- Buyer approval in sandbox needs a sandbox buyer login, so automated tests cover that step in mock mode.
 - Local JSON storage: data resets on redeploy (fine for a demo, not for production).
-- Sandbox Transaction Search needs the reporting feature enabled on the PayPal app, and data can lag up to 3 hours; the app keeps its own ledger.
+- Contracts are plain text in this slice. PDFs and photos aren't read yet.
+- All the sample contracts and vendors are fictional.
+- Payments come from the sandbox business account, and in sandbox they reach a test account standing in for the vendor.
 - The optional PayPal remote MCP connector is read-only and untested.
-- <!-- TODO: app-specific limitations -->
 
 ## License
 

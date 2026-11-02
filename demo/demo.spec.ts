@@ -1,69 +1,83 @@
 /**
- * DEMO VIDEO TEMPLATE (npm run demo:record). Drives a scripted flow, captions each step, and
- * saves a .webm to videos/. Replace the scenes with your app's story; keep it under ~2:50.
+ * DEMO VIDEO (npm run demo:record). Tells the app's story in a real browser and saves a .webm to
+ * videos/. Keep it under about 2:50. Dates are pinned so the florist's deposit reads as overdue.
  */
 import { expect, test } from "@playwright/test";
 import { caption, DemoClock, highlight, titleCard } from "./captions";
+import { formatCents, sumCents } from "../src/lib/wedding/cents";
+import { BAND, CATERER, FLORIST, PHOTOGRAPHER, SAMPLES, VENUE, type SampleFacts } from "../src/lib/wedding/samples";
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const TODAY = "2026-11-20";
+const BAND_BALANCE_DUE = "2027-06-05";
 
-test("demo", async ({ page, request }) => {
+test("demo", async ({ page }) => {
   const clock = new DemoClock(170);
-  await request.post("/api/dev/reset");
+  await page.clock.setFixedTime(new Date(`${TODAY}T12:00:00`));
 
   // Scene 1: the pitch
   await page.goto("/");
-  await titleCard(page, "PayPal Agent Kit", "AI agents that move money safely, with a human in the loop");
-  await caption(page, "Merchants lose hours settling partial shipments by hand.");
-  await page.mouse.wheel(0, 700);
-  await caption(page, "This agent does it with PayPal: every step is visible, capped and auditable.");
+  await titleCard(page, "Wedding Vendor Timeline", "Every vendor payment on one timeline");
+  await caption(page, "Every wedding vendor hides its deadlines in a different contract. Miss one and you can lose the vendor.");
   clock.check("pitch");
 
-  // Scene 2: buyer approves a hold
-  await page.goto("/example");
-  await caption(page, "A customer orders three items for $120 and pays with PayPal.", { wait: false });
-  // Sandbox (PAYPAL_MODE=sandbox) pays with PayPal's test card; the real button needs a buyer login.
-  const sandbox = (await (await request.get("/api/kit/status")).json()).paypal.mode === "sandbox";
-  const pay = page.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval");
-  await pay.waitFor();
-  await highlight(page, pay);
-  await pay.click();
-  if (!sandbox) {
-    await sleep(900);
-    await page.getByTestId("mock-approve").click();
+  async function addSample(sample: SampleFacts) {
+    await page.goto("/contracts");
+    await page.getByTestId(`sample-${sample.vendorRole}`).click();
+    await expect(page.getByTestId("contract-text")).toHaveValue(/\S/);
+    await page.getByTestId("read-contract").click();
+    await page.waitForURL(/\/contracts\/ctr_/, { timeout: 90_000 });
   }
-  await expect(page.getByTestId("authorization-panel")).toContainText("Created");
-  await caption(page, "PayPal authorizes a $120 hold. Nothing is charged yet.");
-  clock.check("authorized");
 
-  // Scene 3: the agent settles it
-  await caption(page, "Only two items ship. We ask the settlement agent to handle it.", { wait: false });
-  await highlight(page, page.getByTestId("run-agent"));
-  await page.getByTestId("run-agent").click();
-  const prompt = page.getByTestId("approval-prompt");
-  await expect(prompt).toBeVisible({ timeout: 90_000 });
-  await caption(page, "It wants to capture $80. That is above our $50 limit, so it waits for a human.");
+  // Scene 2: one contract in, terms beside their sentences
+  await addSample(PHOTOGRAPHER);
+  await expect(page.getByTestId("confirm-terms")).toBeEnabled();
+  await caption(page, "AI reads the payment terms. Each amount and date sits beside the sentence it came from.");
+  await highlight(page, page.getByTestId("balance-value"));
+  await caption(page, "The balance is worked out in code from the numbers you confirm. The AI never does the maths.");
+  await page.getByTestId("confirm-terms").click();
+  await page.waitForURL(/\/timeline/);
+  clock.check("first contract");
+
+  // Scene 3: the rest of the vendors, including a contract with a wrong sum
+  for (const sample of [CATERER, VENUE, FLORIST]) {
+    await addSample(sample);
+    if (sample === CATERER) {
+      await highlight(page, page.getByTestId("flag-balance"));
+      await caption(page, "This contract's balance doesn't add up, so it gets flagged instead of copied.");
+    }
+    await page.getByTestId("confirm-terms").click();
+    await page.waitForURL(/\/timeline/);
+  }
+  await addSample(BAND);
+  await caption(page, "The band's contract gives no email and no clear date. Nothing is guessed, so you fill them in.");
+  await page.getByLabel("PayPal email to pay").fill("bookings@velvet-almanacs.example.com");
+  await page.getByLabel("Balance due").fill(BAND_BALANCE_DUE);
+  await page.getByTestId("confirm-terms").click();
+  await page.waitForURL(/\/timeline/);
+  clock.check("all contracts");
+
+  // Scene 4: the timeline
+  const total = sumCents(SAMPLES.flatMap((s) => [s.depositCents, s.balanceCents]));
+  await expect(page.getByTestId("stat-total")).toContainText(formatCents(total));
+  await caption(page, `Five contracts, one timeline, ${formatCents(total)} in total. One deposit is already overdue, and the next is the photographer's.`);
+  clock.check("timeline");
+
+  // Scene 5: pay the photographer, after a person approves
+  const deposit = page.locator(`[data-testid="timeline-item"][data-role="photographer"][data-kind="deposit"]`);
+  await highlight(page, deposit.getByTestId("pay-item"));
+  await deposit.getByTestId("pay-item").click();
+  const prompt = deposit.getByTestId("approval-prompt");
+  await expect(prompt).toBeVisible({ timeout: 30_000 });
+  await caption(page, "Nothing moves until a person approves.");
   await highlight(page, prompt.getByTestId("approve-button"));
   await prompt.getByTestId("approve-button").click();
-  await expect(page.getByTestId("authorization-panel")).toContainText("Voided", { timeout: 90_000 });
-  await caption(page, "Approved: $80 captured, and the remaining $40 hold released to the buyer.");
-  clock.check("settled");
+  await expect(deposit.getByTestId("item-status")).toHaveText("Paid", { timeout: 150_000 });
+  await caption(page, "Paid, using the status re-read from PayPal, with the PayPal ids right there.");
+  clock.check("paid");
 
-  // Scene 4: proof
-  await page.getByText("PayPal ledger").scrollIntoViewIfNeeded();
-  await caption(page, "Every PayPal call, webhook and decision is recorded.");
+  // Scene 6: proof
   await page.goto("/activity");
-  await caption(page, "The audit log is hash-chained, so any edit is detectable.");
-  await titleCard(page, "PayPal Agent Kit", "Built with PayPal Orders, Payments and Agent Toolkit + Claude", 2800);
+  await caption(page, "Every decision and PayPal call is in a tamper-evident audit log.");
+  await titleCard(page, "Wedding Vendor Timeline", "Built with PayPal Payouts, webhooks and Claude", 2800);
   clock.check("end");
-});
-
-test.afterEach(async ({ page }, info) => {
-  const video = page.video();
-  await page.close();
-  if (video) {
-    const name = `videos/demo-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.webm`;
-    await video.saveAs(name);
-    console.log(`[demo] saved ${name} (${info.duration / 1000 | 0}s)`);
-  }
 });

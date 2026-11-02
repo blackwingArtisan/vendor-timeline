@@ -147,7 +147,7 @@ function StepCard({ step, onApprovalDecided }: { step: TimelineStep; onApprovalD
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className={cn("font-semibold text-zinc-900", isMessage ? "text-sm text-brand-800" : "text-[15px]")}>{step.title}</p>
+              <p className={cn("min-w-0 font-semibold text-zinc-900 [overflow-wrap:anywhere]", isMessage ? "text-sm text-brand-800" : "text-[15px]")}>{step.title}</p>
               {status.label ? (
                 <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", status.className)}>
                   {status.icon}

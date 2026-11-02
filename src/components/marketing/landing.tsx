@@ -1,6 +1,8 @@
-import { ArrowRight, Bot, Check, Landmark, Lock, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Check, ShieldCheck, Sparkles } from "lucide-react";
 import { appConfig } from "@/app.config";
-import { MoneyBadge } from "../money-badge";
+import { formatCents } from "@/lib/wedding/cents";
+import { formatDay } from "@/lib/wedding/dates";
+import { CATERER, FLORIST, PHOTOGRAPHER, VENUE } from "@/lib/wedding/samples";
 import { ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
 
@@ -29,31 +31,32 @@ export function SiteHeader() {
 
 function TimelinePreview() {
   const rows = [
-    { icon: Bot, title: "Settlement agent started", sub: "Claude Haiku 5.5", tone: "bg-brand-50 text-brand-600 ring-brand-200" },
-    { icon: Landmark, title: "Check authorization", sub: "GET /v2/payments/authorizations/8AA8…", tone: "bg-emerald-50 text-emerald-600 ring-emerald-200", done: true },
-    { icon: ShieldCheck, title: "Capture $80.00 of $120.00", sub: "Approved by you · guard threshold $50", tone: "bg-amber-50 text-amber-600 ring-amber-300", money: { v: "80.00", d: "in" as const } },
-    { icon: Lock, title: "Void the remaining hold", sub: "POST /v2/payments/authorizations/…/void", tone: "bg-emerald-50 text-emerald-600 ring-emerald-200", money: { v: "40.00", d: "neutral" as const } },
+    { sample: FLORIST, when: FLORIST.depositDue, label: "Deposit", cents: FLORIST.depositCents, tone: "bg-red-500", note: "Overdue" },
+    { sample: PHOTOGRAPHER, when: PHOTOGRAPHER.depositDue, label: "Deposit", cents: PHOTOGRAPHER.depositCents, tone: "bg-brand", note: "Pay after you approve" },
+    { sample: CATERER, when: CATERER.depositDue, label: "Deposit", cents: CATERER.depositCents, tone: "bg-zinc-300", note: "Upcoming" },
+    { sample: VENUE, when: VENUE.depositDue, label: "Deposit", cents: VENUE.depositCents, tone: "bg-zinc-300", note: "Upcoming" },
   ];
   return (
-    <div className="relative rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-2xl shadow-brand-900/10 ring-1 ring-black/5 backdrop-blur">
+    <div className="relative rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-2xl shadow-brand-900/10 ring-1 ring-black/5 backdrop-blur" data-testid="landing-preview">
       <div className="mb-4 flex items-center justify-between">
-        <span className="text-sm font-semibold text-zinc-900">Agent timeline</span>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-          <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" /> Live
-        </span>
+        <span className="text-sm font-semibold text-zinc-900">One timeline, every vendor</span>
+        <span className="text-xs text-zinc-500">Fictional sample</span>
       </div>
-      <ol className="relative space-y-3 before:absolute before:bottom-3 before:left-[15px] before:top-3 before:w-px before:bg-zinc-200">
+      <ol className="relative space-y-3 before:absolute before:bottom-3 before:left-[6px] before:top-3 before:w-px before:bg-zinc-200">
         {rows.map((r) => (
-          <li key={r.title} className="relative flex items-start gap-3">
-            <span className={`z-10 flex size-8 shrink-0 items-center justify-center rounded-full ring-1 ${r.tone}`}>
-              <r.icon className="size-4" />
-            </span>
+          <li key={r.sample.file} className="relative flex items-start gap-3">
+            <span className={`z-10 mt-4 size-3.5 shrink-0 rounded-full ring-4 ring-white ${r.tone}`} />
             <div className="min-w-0 flex-1 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 py-2">
               <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-semibold text-zinc-900">{r.title}</p>
-                {r.money ? <MoneyBadge amount={{ currency_code: "USD", value: r.money.v }} direction={r.money.d} size="sm" /> : r.done ? <Check className="size-4 text-emerald-600" /> : null}
+                <p className="truncate text-sm font-semibold text-zinc-900">{formatDay(r.when)}</p>
+                <p className="font-mono text-sm font-semibold tabular-nums text-zinc-900">{formatCents(r.cents)}</p>
               </div>
-              <p className="truncate font-mono text-[11px] text-zinc-500">{r.sub}</p>
+              <div className="flex items-center justify-between gap-2 text-xs text-zinc-500">
+                <p className="truncate">
+                  {r.sample.vendorName} · {r.label}
+                </p>
+                <p className="shrink-0">{r.note}</p>
+              </div>
             </div>
           </li>
         ))}
@@ -84,7 +87,7 @@ export function Hero() {
             </ButtonLink>
           </div>
           <p className="mt-6 flex items-center gap-2 text-sm text-zinc-500">
-            <ShieldCheck className="size-4 text-emerald-600" /> Caps, approvals and an audit log on every money-moving step.
+            <ShieldCheck className="size-4 text-emerald-600" /> No money moves until you approve it.
           </p>
         </div>
         <TimelinePreview />
@@ -98,7 +101,7 @@ export function HowItWorks() {
     <section id="how" className="border-y border-zinc-200/70 bg-white py-20">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <p className="text-sm font-semibold uppercase tracking-wider text-brand">How it works</p>
-        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">Three steps, fully visible</h2>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">Contracts in, one timeline out</h2>
         <div className="mt-10 grid gap-6 md:grid-cols-3">
           {appConfig.landing.steps.map((s, i) => (
             <div key={s.title} className="relative rounded-2xl border border-zinc-200 bg-zinc-50/50 p-6">
@@ -135,7 +138,7 @@ export function CtaBand() {
       <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 rounded-3xl bg-gradient-to-br from-brand-700 to-brand-900 px-8 py-12 text-white shadow-xl md:flex-row md:items-center">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{appConfig.tagline}</h2>
-          <p className="mt-2 text-white/75">Runs end to end in mock mode. Switch to PayPal sandbox with two environment variables.</p>
+          <p className="mt-2 text-white/75">Try it with five fictional contracts. Payments run on the PayPal sandbox, so no real money moves.</p>
         </div>
         <ButtonLink href={appConfig.landing.primaryCta.href} size="lg" variant="secondary" className="border-transparent">
           {appConfig.landing.primaryCta.label} <ArrowRight className="size-4" />
