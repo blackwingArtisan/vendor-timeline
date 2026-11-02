@@ -14,6 +14,8 @@ import { BAND, CATERER, CATERER_STATED_BALANCE_CENTS, FLORIST, PHOTOGRAPHER, SAM
 /** Pinned so the florist's deposit is overdue and the photographer's comes next, whatever the real date. */
 const TODAY = "2026-11-20";
 const REMOVED_KIT_PAGES = ["/example", "/dashboard"];
+/** The kit's routes that moved money with no Guard. Payments here only go through the approval gate. */
+const OPEN_PAYPAL_ROUTES = ["/api/paypal/orders", "/api/paypal/captures/X/refund", "/api/paypal/authorizations/X/capture", "/api/paypal/authorizations/X/void"];
 /** The band's contract gives no usable date, so the couple types this one in. */
 const BAND_BALANCE_DUE = "2027-06-05";
 
@@ -68,6 +70,7 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   await expect(page.locator("body")).not.toContainText("$80.00");
   await page.screenshot({ path: "screenshots/landing.png" });
   for (const path of REMOVED_KIT_PAGES) expect((await api.get(path)).status()).toBe(404);
+  for (const path of OPEN_PAYPAL_ROUTES) expect((await api.post(path, { data: {} })).status()).toBe(404);
   await expect(page.locator(`a[href="/example"], a[href="/dashboard"]`)).toHaveCount(0);
 
   // Before any contract is confirmed the timeline is empty.
