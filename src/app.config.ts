@@ -11,7 +11,7 @@ export const appConfig = {
   brandForeground: "#FFFFFF", // kit:brand-foreground
   tagline: "Every vendor payment on one timeline.",
   description: "Paste your wedding vendor contracts. AI pulls out every deposit and balance, you confirm them, and you pay each vendor through PayPal when you approve it.",
-  repoUrl: "",
+  repoUrl: "https://github.com/blackwingArtisan/vendor-timeline",
   videoUrl: "",
 
   nav: [

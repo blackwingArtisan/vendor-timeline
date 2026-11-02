@@ -26,7 +26,7 @@ export default defineConfig({
         ...app.env,
         AI_RATE_LIMIT_PER_MINUTE: credit ? "100" : "6",
         AI_RATE_LIMIT_PER_DAY: "60",
-        ...(credit ? { AI_MODE: "live", ANTHROPIC_API_KEY: "sk-ant-not-a-real-key", ANTHROPIC_BASE_URL: `http://127.0.0.1:${FAKE_AI_PORT}` } : {}),
+        ...(credit ? { AI_MODE: "live", ANTHROPIC_API_KEY: "not-a-real-key", ANTHROPIC_BASE_URL: `http://127.0.0.1:${FAKE_AI_PORT}` } : {}),
       },
     },
   ],

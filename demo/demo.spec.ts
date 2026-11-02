@@ -5,7 +5,7 @@
 import { expect, test } from "@playwright/test";
 import { caption, DemoClock, highlight, titleCard } from "./captions";
 import { formatCents, sumCents } from "../src/lib/wedding/cents";
-import { BAND, CATERER, FLORIST, PHOTOGRAPHER, SAMPLES, VENUE, type SampleFacts } from "../src/lib/wedding/samples";
+import { BAND, CATERER, FLORIST, SAMPLES, VENUE, type SampleFacts } from "../src/lib/wedding/samples";
 
 const TODAY = "2026-11-20";
 const BAND_BALANCE_DUE = "2027-06-05";
@@ -20,16 +20,29 @@ test("demo", async ({ page }) => {
   await caption(page, "Every wedding vendor hides its deadlines in a different contract. Miss one and you can lose the vendor.");
   clock.check("pitch");
 
-  async function addSample(sample: SampleFacts) {
+  async function openContracts() {
     await page.goto("/contracts");
-    await page.getByTestId(`sample-${sample.vendorRole}`).click();
-    await expect(page.getByTestId("contract-text")).toHaveValue(/\S/);
+    await expect(page.getByTestId("contracts-loaded")).toBeAttached();
+  }
+
+  async function readContract() {
+    await expect(page.getByTestId("contract-text")).toHaveValue(/\S/, { timeout: 30_000 });
     await page.getByTestId("read-contract").click();
     await page.waitForURL(/\/contracts\/ctr_/, { timeout: 90_000 });
   }
 
-  // Scene 2: one contract in, terms beside their sentences
-  await addSample(PHOTOGRAPHER);
+  async function addSample(sample: SampleFacts) {
+    await openContracts();
+    await page.getByTestId(`sample-${sample.vendorRole}`).click();
+    await readContract();
+  }
+
+  // Scene 2: one contract in, as a PDF, with terms beside their sentences
+  await openContracts();
+  await highlight(page, page.getByTestId("sample-pdf"));
+  await page.getByTestId("sample-pdf").click();
+  await caption(page, "Add a contract as a PDF, a text file, or pasted words.");
+  await readContract();
   await expect(page.getByTestId("confirm-terms")).toBeEnabled();
   await caption(page, "AI reads the payment terms. Each amount and date sits beside the sentence it came from.");
   await highlight(page, page.getByTestId("balance-value"));
@@ -62,20 +75,37 @@ test("demo", async ({ page }) => {
   await caption(page, `Five contracts, one timeline, ${formatCents(total)} in total. One deposit is already overdue, and the next is the photographer's.`);
   clock.check("timeline");
 
-  // Scene 5: pay the photographer, after a person approves
-  const deposit = page.locator(`[data-testid="timeline-item"][data-role="photographer"][data-kind="deposit"]`);
-  await highlight(page, deposit.getByTestId("pay-item"));
-  await deposit.getByTestId("pay-item").click();
-  const prompt = deposit.getByTestId("approval-prompt");
-  await expect(prompt).toBeVisible({ timeout: 30_000 });
-  await caption(page, "Nothing moves until a person approves.");
+  // Scene 5: the cash check, with the sums on show
+  const clash = page.locator('[data-testid="cash-warning"][data-kind="same_week"]');
+  await highlight(page, clash);
+  await clash.getByText("Show the sums").click();
+  await caption(page, "Each payment counts on the day it leaves. Code does the sums, and you can follow them.");
+  clock.check("cash");
+
+  // Scene 6: the agent stops, and a person decides
+  await page.getByTestId("agent-panel").scrollIntoViewIfNeeded();
+  await page.getByTestId("ask-agent").click();
+  const panel = page.getByTestId("agent-panel");
+  const prompt = panel.getByTestId("approval-prompt");
+  await expect(prompt).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId("agent-phase")).toHaveText("Stopped for your approval");
+  await page.screenshot({ path: "docs/screenshot.png" });
+  await caption(page, "The agent names what's due, warns about the clash, sets up the payment and stops.");
+  // Up to the top of the screen, clear of the captions.
+  await prompt.evaluate((card) => window.scrollBy({ top: card.getBoundingClientRect().top - 24, behavior: "smooth" }));
+  await page.waitForTimeout(900);
+  await highlight(page, prompt.getByTestId("approval-from"));
+  await caption(page, "It's your money, so nothing leaves your PayPal balance until you approve. The card shows what it does to your month.");
   await highlight(page, prompt.getByTestId("approve-button"));
   await prompt.getByTestId("approve-button").click();
+  const deposit = page.locator(`[data-testid="timeline-item"][data-role="photographer"][data-kind="deposit"]`);
   await expect(deposit.getByTestId("item-status")).toHaveText("Paid", { timeout: 150_000 });
-  await caption(page, "Paid, using the status re-read from PayPal, with the PayPal ids right there.");
+  await deposit.scrollIntoViewIfNeeded();
+  const confirmedBy = await deposit.getByTestId("paid-by").innerText();
+  await caption(page, `Paid. ${confirmedBy.includes("webhook") ? "A PayPal webhook confirmed it" : "PayPal's own status confirmed it"}, with the PayPal ids right there.`);
   clock.check("paid");
 
-  // Scene 6: proof
+  // Scene 7: proof
   await page.goto("/activity");
   await caption(page, "Every decision and PayPal call is in a tamper-evident audit log.");
   await titleCard(page, "Wedding Vendor Timeline", "Built with PayPal Payouts, webhooks and Claude", 2800);

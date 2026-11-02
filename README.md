@@ -2,9 +2,9 @@
 
 > For couples juggling wedding vendors: Claude reads each vendor contract, you confirm every deposit and balance on one timeline, and PayPal pays the vendor once you approve it.
 
-**Live demo:** https://vendor-timeline.onrender.com <!-- TODO: update after deploy --> · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
+**Live demo:** https://vendor-timeline.onrender.com · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
 
-![Screenshot](docs/screenshot.png) <!-- TODO: add a 1440×900 screenshot of the main flow -->
+![The agent stopped for approval, beside the cash check](docs/screenshot.png)
 
 ## The problem
 
@@ -40,14 +40,15 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 
 | Where | Model | What it does |
 |---|---|---|
-| Reading a contract | Claude Haiku 5.5 (`claude-haiku-5-5`) | Copies each payment term and its source sentence out of the contract text |
+| Reading a contract | Claude Haiku 5.5 (`claude-haiku-5-5`) | Copies each payment term and its source sentence out of the contract text. A PDF's text is pulled out with `unpdf` first |
 | Payment agent | Claude Haiku 5.5 (`claude-haiku-5-5`) | Explains what code worked out, then asks for the next payment through the guarded tool |
 
 - **Copying, not arithmetic**: the model copies figures and sentences. Code turns percentages into cents and relative dates into calendar days, and works out every balance and total. If a contract states a balance that doesn't match, it's flagged.
 - **Checked against the contract**: code confirms each sentence really is in the contract and each figure or date really is in its sentence.
 - **The agent explains, code decides**: `review_payments` hands the agent the next payment and the cash warnings as finished sentences, so it has no sums to do. The same tool shows the couple each warning directly, so a warning can't be left out by the model. Limits live in the tool, not the prompt.
 - **Structured output**: zod schemas through the Messages API's structured outputs (`output_config.format`).
-- **Cost control**: a hard daily spend cap (worst case reserved before every call), per-IP rate limits, and Haiku by default.
+- **Cost control**: a hard daily spend cap (worst case reserved before every call), per-IP rate limits, and Haiku by default. When a read or the agent hits the per-minute limit, the page counts down and sends it again by itself.
+- **When AI is unavailable**: if the credit or the day's allowance runs out, the page says so and no money moves. A contract can still go in by typing its terms, and any payment can still be approved from the timeline.
 - **Mock mode**: without an API key the app uses clearly labelled simulated reads of the sample contracts and a scripted agent, so the demo works anywhere.
 
 **Built with AI.** This project was built with **Claude Code** (Anthropic's coding agent), which wrote the code under human direction. It started from a shared starter kit that Claude Code also wrote. The product idea, scope and review were human decisions.

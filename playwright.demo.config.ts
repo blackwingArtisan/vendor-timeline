@@ -8,8 +8,9 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = Number(process.env.DEMO_PORT ?? 3400);
 const SIZE = { width: 1440, height: 900 };
 const PAYPAL_MODE = process.env.DEMO_PAYPAL_MODE ?? process.env.PAYPAL_MODE ?? "mock";
-// Sandbox has no reset route, so start clean here and fill the ledger with the shared seed data.
-const SANDBOX_SETUP = PAYPAL_MODE === "sandbox" ? "rm -rf .data-demo && npx tsx scripts/seed.ts --sandbox && " : "";
+// Start clean, so the audit log on screen is only this story. Sandbox has no reset route, so fill
+// its ledger with the shared seed data.
+const SETUP = `rm -rf .data-demo && ${PAYPAL_MODE === "sandbox" ? "npx tsx scripts/seed.ts --sandbox && " : ""}`;
 
 export default defineConfig({
   testDir: "demo",
@@ -28,7 +29,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: SIZE, deviceScaleFactor: 1 } }],
   webServer: {
     // Production build: no dev reloads or overlays in the recording.
-    command: `${SANDBOX_SETUP}npx next build && npx next start --port ${PORT}`,
+    command: `${SETUP}npx next build && npx next start --port ${PORT}`,
     url: `http://localhost:${PORT}/api/kit/status`,
     reuseExistingServer: true,
     timeout: 300_000,
