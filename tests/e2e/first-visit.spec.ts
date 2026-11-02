@@ -37,3 +37,22 @@ test("a first visit gets one plan, even with requests racing", async ({ page, co
   expect((await context.cookies()).find((cookie) => cookie.name === "vt_plan")?.value).toBe(plan);
   expect(setCookies).toHaveLength(1);
 });
+
+test("the app's own links lead straight to the next contract, with an empty box", async ({ page }) => {
+  await page.goto("/contracts");
+  await expect(page.getByTestId("contracts-loaded")).toBeAttached();
+  await page.getByTestId("sample-photographer").click();
+  await expect(page.getByTestId("contract-text")).not.toHaveValue("");
+  await page.getByTestId("read-contract").click();
+  await page.waitForURL(/\/contracts\/ctr_/);
+
+  // Back by a link, not a reload, the way a person goes.
+  await page.getByRole("link", { name: "Contracts", exact: true }).first().click();
+  await page.waitForURL(/\/contracts$/);
+  await expect(page.getByTestId("contract-text")).toHaveValue("");
+  await page.getByTestId("sample-caterer").click();
+  await expect(page.getByTestId("read-contract")).toBeEnabled();
+  await page.getByTestId("read-contract").click();
+  await page.waitForURL(/\/contracts\/ctr_/);
+  await expect(page.getByLabel("Vendor name")).toHaveValue("Saltmeadow Table Catering");
+});

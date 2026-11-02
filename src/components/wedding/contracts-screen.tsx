@@ -93,6 +93,9 @@ export function ContractsScreen() {
     try {
       const contract = await kitFetch<Contract>("/api/contracts/manual", { json: { text, fileName } });
       router.push(`/contracts/${contract.id}`);
+      fill("");
+      setBlocked(null);
+      setTyping(false);
     } catch (e) {
       toast({ title: "Could not start that contract", description: (e as Error).message, variant: "error" });
       setTyping(false);
@@ -105,6 +108,9 @@ export function ContractsScreen() {
     try {
       const contract = await paced(() => kitFetch<Contract>("/api/contracts", { json: { text, fileName } }));
       router.push(`/contracts/${contract.id}`);
+      // This page stays alive in the background, so the next contract must find it ready.
+      fill("");
+      setReading(false);
     } catch (e) {
       if (e instanceof ApiError && (e.status === 402 || e.status === 429)) setBlocked(e.message);
       else if (!(e instanceof WaitStopped)) toast({ title: "Could not read that contract", description: (e as Error).message, variant: "error" });

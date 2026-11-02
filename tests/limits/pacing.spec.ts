@@ -15,7 +15,9 @@ async function spendReads(api: APIRequestContext, count: number) {
 }
 
 async function addContract(page: Page, s: SampleFacts, seen: { waited: number }) {
-  await page.goto("/contracts");
+  // By the app's own link, the way a person goes from one contract to the next.
+  await page.getByRole("link", { name: "Contracts", exact: true }).first().click();
+  await page.waitForURL(/\/contracts$/);
   await expect(async () => {
     await page.getByTestId(`sample-${s.vendorRole}`).click();
     await expect(page.getByTestId("contract-text")).toHaveValue(sampleText(s), { timeout: 2_000 });
@@ -33,18 +35,21 @@ async function addContract(page: Page, s: SampleFacts, seen: { waited: number })
   }
   await landed;
 
+  // Earlier review pages stay in the document, hidden, so aim at the one on screen.
   if (s === BAND) {
-    await page.getByLabel("PayPal email to pay").fill(BAND_ANSWERS.payeeEmail);
-    await page.getByLabel("Balance due").fill(BAND_ANSWERS.balanceDue);
+    await page.getByLabel("PayPal email to pay").locator("visible=true").fill(BAND_ANSWERS.payeeEmail);
+    await page.getByLabel("Balance due").locator("visible=true").fill(BAND_ANSWERS.balanceDue);
   }
-  await expect(page.getByTestId("confirm-terms")).toBeEnabled();
-  await page.getByTestId("confirm-terms").click();
+  const confirm = page.getByTestId("confirm-terms").locator("visible=true");
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
   await page.waitForURL(/\/timeline/);
 }
 
 test("five contracts in a row at the real 6 a minute limit finish without a dead end", async ({ page, request }) => {
   await spendReads(request, 6);
   const seen = { waited: 0 };
+  await page.goto("/timeline");
   for (const sample of [PHOTOGRAPHER, CATERER, VENUE, FLORIST, BAND]) await addContract(page, sample, seen);
 
   expect(seen.waited).toBeGreaterThan(0);

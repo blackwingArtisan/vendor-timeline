@@ -33,7 +33,11 @@ export function usePaced() {
         for (let left = retryAfter; left > 0; left -= 1) {
           setWaitSeconds(left);
           await new Promise((resolve) => setTimeout(resolve, 1000));
-          if (latest.current !== mine) throw new WaitStopped();
+          if (latest.current !== mine) {
+            // A hidden route keeps its state, so a leftover count would still be here on return.
+            setWaitSeconds(null);
+            throw new WaitStopped();
+          }
         }
         setWaitSeconds(null);
       }
