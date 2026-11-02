@@ -54,5 +54,6 @@ test("the app's own links lead straight to the next contract, with an empty box"
   await expect(page.getByTestId("read-contract")).toBeEnabled();
   await page.getByTestId("read-contract").click();
   await page.waitForURL(/\/contracts\/ctr_/);
-  await expect(page.getByLabel("Vendor name")).toHaveValue("Saltmeadow Table Catering");
+  // The first review page can stay in the document, hidden, so aim at the one on screen.
+  await expect(page.getByLabel("Vendor name").locator("visible=true")).toHaveValue("Saltmeadow Table Catering");
 });
