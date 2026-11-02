@@ -56,6 +56,19 @@ export interface Payment {
   transactionId?: string;
   error?: string;
   checkedAt?: string;
+  /** When a re-read first showed the item as paid. */
+  successSeenAt?: string;
+  /** The verified webhook that named this exact payment. */
+  webhook?: PaymentWebhook;
+  /** What made this paid. "re-read" means PayPal's status arrived but no webhook ever did. */
+  paidBy?: "webhook" | "re-read";
+}
+
+export interface PaymentWebhook {
+  eventId: string;
+  eventType: string;
+  payoutItemId: string;
+  receivedAt: string;
 }
 
 export interface ContractRead {
@@ -75,6 +88,8 @@ export interface Contract {
   confirmed?: ConfirmedTerms;
   confirmedAt?: string;
   payments: Partial<Record<ItemKind, Payment>>;
+  /** The contract's date for any payment the couple moved. */
+  movedFrom?: Partial<Record<ItemKind, string>>;
 }
 
 export interface PendingApproval {
@@ -99,6 +114,33 @@ export interface TimelineItem {
   status: ItemStatus;
   payment?: Payment;
   approval?: PendingApproval | null;
+  /** The date in the contract, when the couple moved this one. */
+  movedFrom?: string;
+}
+
+/** One unpaid payment as the cash check sees it. */
+export interface CashPayment {
+  id: string;
+  label: string;
+  cents: number;
+  due: string;
+}
+
+/** A clash found by code. `message` is the only wording of it, shown as is by the page and the agent. */
+export interface CashWarning {
+  kind: "same_week" | "over_month";
+  /** First and last day of the clash. */
+  from: string;
+  to: string;
+  payments: CashPayment[];
+  totalCents: number;
+  overByCents: number;
+  message: string;
+}
+
+export interface CashPlan {
+  monthlyBudgetCents: number;
+  warnings: CashWarning[];
 }
 
 export interface TimelineView {
@@ -109,6 +151,7 @@ export interface TimelineView {
   totalDueCents: number;
   paidCents: number;
   contractedCents: number;
+  cash: CashPlan;
   /** PayPal pays a test account in sandbox, because the vendors are fictional. */
   sandboxStandIn: boolean;
 }

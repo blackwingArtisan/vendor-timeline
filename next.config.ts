@@ -9,6 +9,10 @@ if (process.env.NEXT_PHASE !== "phase-production-build" || process.env.KIT_LOG_E
   console.log(`[kit] PayPal: ${env.paypalMode} · AI: ${env.aiMode} · daily AI cap $${env.aiDailyCapUsd}`);
 }
 
+// A plain `if` leaves sponsor code in the bundle, so with the switch off the import itself goes to a
+// stub. `npm run check` greps the build to prove it. `sponsor-chart` has no other meaning.
+const sponsorChart = process.env.NEXT_PUBLIC_SPONSOR_UI === "1" ? "./src/components/wedding/sponsor-gantt.tsx" : "./src/components/wedding/sponsor-off.tsx";
+
 const nextConfig: NextConfig = {
   // Lets e2e/demo runs use their own build dir next to a running `npm run dev`.
   distDir: process.env.NEXT_DIST_DIR || ".next",
@@ -22,6 +26,7 @@ const nextConfig: NextConfig = {
   // No floating dev badge: it would show up in demo recordings.
   devIndicators: false,
   turbopack: {
+    resolveAlias: { "sponsor-chart": sponsorChart },
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],

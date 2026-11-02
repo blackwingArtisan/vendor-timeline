@@ -11,8 +11,8 @@ const HOSTED = process.env.E2E_BASE_URL;
 
 export default defineConfig({
   testDir: "tests/e2e",
-  testMatch: "vendor-flow.spec.ts",
-  timeout: 240_000,
+  testMatch: ["vendor-flow.spec.ts", "agent-flow.spec.ts"],
+  timeout: 300_000,
   expect: { timeout: 15_000 },
   workers: 1,
   reporter: [["list"]],
@@ -33,6 +33,7 @@ export default defineConfig({
       AI_MODE: process.env.E2E_AI_MODE ?? "mock",
       DEMO_TEST_CARD: "1",
       KIT_DATA_DIR: ".data-sandbox",
+      AI_RATE_LIMIT_PER_MINUTE: "100",
       NEXT_DIST_DIR: ".next-e2e",
     },
   },

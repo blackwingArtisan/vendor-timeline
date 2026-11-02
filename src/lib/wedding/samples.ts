@@ -89,6 +89,9 @@ export const BAND: SampleFacts = {
   balanceDue: null,
 };
 
+/** What the sample couple type in for the two terms the band's contract leaves blank. */
+export const BAND_ANSWERS = { payeeEmail: "bookings@velvet-almanacs.example.com", balanceDue: "2027-06-05" };
+
 export const SAMPLES = [PHOTOGRAPHER, CATERER, VENUE, FLORIST, BAND];
 
 export const sampleUrl = (sample: SampleFacts) => `/sample-contracts/${sample.file}`;

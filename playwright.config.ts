@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * End-to-end tests (npm run test:e2e). Starts the dev server in PayPal MOCK mode with its own
  * data dir. AI is mocked unless E2E_AI_MODE=live (then real Claude, tiny spend).
+ * Set NEXT_PUBLIC_SPONSOR_UI=1 to run the same suite with the sponsor Gantt switched on.
  */
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 
@@ -22,14 +23,17 @@ export default defineConfig({
   webServer: {
     command: `npx next dev --port ${PORT}`,
     url: `http://localhost:${PORT}/api/kit/status`,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       PAYPAL_MODE: process.env.E2E_PAYPAL_MODE ?? "mock",
       AI_MODE: process.env.E2E_AI_MODE ?? "mock",
       KIT_DATA_DIR: ".data-e2e",
       MOCK_PAYPAL_LATENCY_MS: "60-160",
-      NEXT_DIST_DIR: ".next-e2e",
+      // A whole suite in a row is faster than any visitor, and the limit has its own unit test.
+      AI_RATE_LIMIT_PER_MINUTE: "100",
+      // The switch is compiled in, so each setting keeps its own build.
+      NEXT_DIST_DIR: process.env.NEXT_PUBLIC_SPONSOR_UI === "1" ? ".next-e2e-sponsor" : ".next-e2e",
     },
   },
 });

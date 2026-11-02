@@ -75,6 +75,7 @@ export async function runTool(tool: AgentTool, rawInput: unknown, ctx: { runId: 
         approval: { id: a.id, state: a.state, reason: a.reason, decidedBy: a.decidedBy },
       }),
   });
+  tool.after?.(input as never, outcome, { runId: ctx.runId, actor: ctx.actor });
 
   if (outcome.status === "executed") {
     step.succeed({

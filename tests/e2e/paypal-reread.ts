@@ -14,7 +14,7 @@ export interface PayoutRead {
     payout_item_id: string;
     transaction_id?: string;
     transaction_status: string;
-    payout_item: { amount: { currency: string; value: string }; receiver: string };
+    payout_item: { amount: { currency: string; value: string }; receiver: string; sender_item_id?: string };
   }[];
 }
 
@@ -40,4 +40,22 @@ export async function readFinishedPayout(batchId: string, tries = 20): Promise<P
     read = await readPayout(batchId);
   }
   return read;
+}
+
+export interface PayoutEvent {
+  id: string;
+  event_type: string;
+  resource: { payout_batch_id: string; payout_item: { sender_item_id?: string } };
+}
+
+/** PayPal's own record of the item webhook it sent for this batch. */
+export async function readPayoutEvent(batchId: string, tries = 20): Promise<PayoutEvent | undefined> {
+  for (let i = 0; i < tries; i++) {
+    const res = await fetch(`${API}/v1/notifications/webhooks-events?page_size=50&event_type=PAYMENT.PAYOUTS-ITEM.SUCCEEDED`, { headers: { Authorization: `Bearer ${await token()}` } });
+    if (!res.ok) throw new Error(`GET webhook events failed: ${res.status}`);
+    const found = ((await res.json()) as { events: PayoutEvent[] }).events.find((e) => e.resource.payout_batch_id === batchId);
+    if (found) return found;
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  return undefined;
 }

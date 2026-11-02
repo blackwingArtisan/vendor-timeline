@@ -1,8 +1,8 @@
 /**
  * The guard every agent tool call passes through:
  *
- *   blocked? -> idempotent replay? -> resolve impact (amount, payees) -> per-action cap ->
- *   payee allowlist -> daily cap -> human approval (above threshold) -> execute -> audit
+ *   blocked? -> idempotent replay? -> the tool's own check() -> resolve impact (amount, payees) ->
+ *   per-action cap -> payee allowlist -> daily cap -> human approval (above threshold) -> execute -> audit
  *
  * Every decision is appended to the audit log. Denials come back as structured results the
  * model can read ("DENIED_BY_GUARD"), never as silent failures.
@@ -19,6 +19,7 @@ export type DenyCode =
   | "BLOCKED_TOOL"
   | "OVER_ACTION_CAP"
   | "OVER_DAILY_CAP"
+  | "REFUSED_BY_TOOL_CHECK"
   | "COUNTERPARTY_NOT_ALLOWED"
   | "APPROVAL_DENIED"
   | "APPROVAL_EXPIRED"
@@ -98,6 +99,9 @@ export class Guard {
       return { status: "executed", result: existing.result, idempotencyKey: key, replayed: true };
     }
     if (existing?.state === "in_flight") return deny("DUPLICATE_IN_FLIGHT", "An identical call is already running.", { key });
+
+    const refused = tool.check?.(input, { runId: ctx.runId, actor: ctx.actor });
+    if (refused) return deny("REFUSED_BY_TOOL_CHECK", refused, { key });
 
     let impact: ToolImpact | undefined;
     if (tool.impact) {

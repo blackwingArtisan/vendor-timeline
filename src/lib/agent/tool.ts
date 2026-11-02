@@ -15,6 +15,7 @@ import { z } from "zod";
 import type { PayPalApi } from "../paypal/api";
 import type { Money } from "../money";
 import type { ToolSource } from "../events/types";
+import type { GuardOutcome } from "./guard";
 
 export type ToolRisk = "read" | "write" | "money";
 
@@ -50,6 +51,13 @@ export interface AgentTool<I = unknown, O = unknown> {
   execute(input: I, ctx: ToolContext): Promise<O>;
   /** Short title for the timeline card before impact is known. */
   title?(input: I): string;
+  /**
+   * APP EXTENSION: a limit in code, checked before impact, caps and approval. Return the reason to
+   * refuse, or null to go on. The Guard turns a reason into a denial no model output can change.
+   */
+  check?(input: I, ctx: Pick<ToolContext, "runId" | "actor">): string | null;
+  /** APP EXTENSION: runs once the Guard has finished with the call, whatever it decided. */
+  after?(input: I, outcome: GuardOutcome, ctx: Pick<ToolContext, "runId" | "actor">): void;
 }
 
 export function defineTool<S extends z.ZodType, O>(def: {
@@ -61,6 +69,8 @@ export function defineTool<S extends z.ZodType, O>(def: {
   impact?: AgentTool<z.infer<S>, O>["impact"];
   execute: AgentTool<z.infer<S>, O>["execute"];
   title?: AgentTool<z.infer<S>, O>["title"];
+  check?: AgentTool<z.infer<S>, O>["check"];
+  after?: AgentTool<z.infer<S>, O>["after"];
 }): AgentTool<z.infer<S>, O> {
   if (def.risk === "money" && !def.impact) throw new Error(`Tool ${def.name} moves money and must define impact()`);
   const json = z.toJSONSchema(def.schema, { target: "draft-2020-12", io: "input" }) as Record<string, unknown>;
@@ -75,5 +85,7 @@ export function defineTool<S extends z.ZodType, O>(def: {
     impact: def.impact,
     execute: def.execute,
     title: def.title,
+    check: def.check,
+    after: def.after,
   };
 }

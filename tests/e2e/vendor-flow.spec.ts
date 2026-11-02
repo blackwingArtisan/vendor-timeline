@@ -9,7 +9,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFinishedPayout } from "./paypal-reread";
 import { formatCents, sumCents } from "../../src/lib/wedding/cents";
 import { formatDay } from "../../src/lib/wedding/dates";
-import { BAND, CATERER, CATERER_STATED_BALANCE_CENTS, FLORIST, PHOTOGRAPHER, SAMPLES, VENUE, type SampleFacts } from "../../src/lib/wedding/samples";
+import { BAND, BAND_ANSWERS, CATERER, CATERER_STATED_BALANCE_CENTS, FLORIST, PHOTOGRAPHER, SAMPLES, VENUE, type SampleFacts } from "../../src/lib/wedding/samples";
 
 /** Pinned so the florist's deposit is overdue and the photographer's comes next, whatever the real date. */
 const TODAY = "2026-11-20";
@@ -17,7 +17,7 @@ const REMOVED_KIT_PAGES = ["/example", "/dashboard"];
 /** The kit's routes that moved money with no Guard. Payments here only go through the approval gate. */
 const OPEN_PAYPAL_ROUTES = ["/api/paypal/orders", "/api/paypal/captures/X/refund", "/api/paypal/authorizations/X/capture", "/api/paypal/authorizations/X/void"];
 /** The band's contract gives no usable date, so the couple types this one in. */
-const BAND_BALANCE_DUE = "2027-06-05";
+const BAND_BALANCE_DUE = BAND_ANSWERS.balanceDue;
 
 const sampleText = (s: SampleFacts) => readFileSync(`public/sample-contracts/${s.file}`, "utf8");
 const item = (page: Page, s: SampleFacts, kind: "deposit" | "balance") => page.locator(`[data-testid="timeline-item"][data-role="${s.vendorRole}"][data-kind="${kind}"]`);
@@ -130,7 +130,7 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
     await expect(page.getByTestId("confirm-terms")).toBeDisabled();
     await expect(page.getByTestId("still-needed")).toContainText("an email to pay");
     await expect(page.getByTestId("still-needed")).toContainText("the balance date");
-    await page.getByLabel("PayPal email to pay").fill("bookings@velvet-almanacs.example.com");
+    await page.getByLabel("PayPal email to pay").fill(BAND_ANSWERS.payeeEmail);
     await page.getByLabel("Balance due").fill(BAND_BALANCE_DUE);
     await confirm(page);
   }
@@ -168,7 +168,7 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
 
   // Approved: the real payment, then the status PayPal reports.
   await prompt.getByTestId("approve-button").click();
-  await expect(deposit.getByTestId("item-status")).toHaveText("Paid", { timeout: 150_000 });
+  await expect(deposit.getByTestId("item-status")).toHaveText("Paid", { timeout: 200_000 });
   await expect(deposit.getByTestId("paypal-status")).toHaveText("SUCCESS");
   await expect(page.getByTestId("stat-paid")).toContainText(formatCents(PHOTOGRAPHER.depositCents));
   await expect(page.getByTestId("stat-total")).toContainText(formatCents(unpaidCents - PHOTOGRAPHER.depositCents));

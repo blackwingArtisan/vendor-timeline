@@ -15,7 +15,8 @@ export interface AgentInput {
 
 /** One step of a scripted (mock-AI) run. `input` may be computed from earlier results. */
 export interface ScriptStep {
-  say?: string;
+  /** May be worked out from earlier results, so a script can report what really happened. */
+  say?: string | ((results: Record<string, any>) => string); // eslint-disable-line @typescript-eslint/no-explicit-any
   think?: string;
   tool?: string;
   input?: Record<string, unknown> | ((results: Record<string, any>) => Record<string, unknown>); // eslint-disable-line @typescript-eslint/no-explicit-any

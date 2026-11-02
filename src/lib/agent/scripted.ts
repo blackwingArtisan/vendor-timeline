@@ -23,9 +23,10 @@ export async function runScriptedAgent(opts: { runId: string; channel: string; d
     if (step.think) {
       timeline.emit({ kind: "agent.thinking", status: "info", title: "Reasoning (simulated)", detail: step.think, data: { quiet: true } });
     }
-    if (step.say) {
-      lastSay = step.say;
-      timeline.emit({ kind: "agent.message", status: "info", title: `${def.name} (simulated)`, detail: step.say });
+    const say = typeof step.say === "function" ? step.say(results) : step.say;
+    if (say) {
+      lastSay = say;
+      timeline.emit({ kind: "agent.message", status: "info", title: `${def.name} (simulated)`, detail: say });
     }
     await sleep(step.pauseMs ?? basePause);
     if (!step.tool) continue;

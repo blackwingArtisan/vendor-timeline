@@ -45,7 +45,7 @@ export const appConfig = {
     maxPerAction: "20000.00",
     maxPerDay: "100000.00",
     allowedCounterparties: ["*@example.com", "*@*.example.com"],
-    requireApprovalFor: ["create_payout"],
+    requireApprovalFor: ["create_vendor_payout"],
   } satisfies Partial<GuardPolicy>,
 };
 

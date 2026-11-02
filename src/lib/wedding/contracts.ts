@@ -3,8 +3,9 @@ import { randomUUID } from "node:crypto";
 import { HttpError } from "@/lib/http";
 import { collection } from "@/lib/store/collection";
 import { balanceCents, RuleError } from "./cents";
+import { isCalendarDay } from "./dates";
 import { readContract } from "./extract";
-import type { ConfirmedTerms, Contract } from "./types";
+import type { ConfirmedTerms, Contract, ItemKind } from "./types";
 
 const contracts = () => collection<Contract>("contracts");
 
@@ -19,8 +20,10 @@ export const listContracts = (planId: string) =>
     .filter((c) => c.planId === planId)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
+export const findContract = (id: string) => contracts().get(id);
+
 export function requireContract(id: string): Contract {
-  const contract = contracts().get(id);
+  const contract = findContract(id);
   if (!contract) throw new HttpError(404, `Contract ${id} not found`, "not_found");
   return contract;
 }
@@ -50,4 +53,25 @@ export function confirmContract(planId: string, id: string, input: ConfirmInput)
   } catch (e) {
     throw e instanceof RuleError ? new HttpError(422, e.message, "rule") : e;
   }
+}
+
+/**
+ * The couple move a payment, from the chart or the list. The amount never changes with it. A date
+ * that is on its way to PayPal stays put, so a payment can't change under an approval.
+ */
+export function moveDueDate(planId: string, id: string, kind: ItemKind, due: string): Contract {
+  const contract = requirePlanContract(planId, id);
+  const terms = contract.confirmed;
+  if (!terms) throw new HttpError(409, "Confirm this contract before moving its dates.", "conflict");
+  if (!isCalendarDay(due)) throw new HttpError(422, "Enter a real date.", "rule");
+  const current = kind === "deposit" ? terms.depositDue : terms.balanceDue;
+  if (!current) throw new HttpError(409, `This contract has no ${kind} to move.`, "conflict");
+  const payment = contract.payments[kind];
+  if (payment && payment.state !== "failed") throw new HttpError(409, `This ${kind} has already gone to payment, so its date can't move.`, "conflict");
+  if (due === current) return contract;
+  const original = contract.movedFrom?.[kind] ?? current;
+  const movedFrom = { ...contract.movedFrom };
+  if (due === original) delete movedFrom[kind];
+  else movedFrom[kind] = original;
+  return saveContract({ ...contract, movedFrom, confirmed: { ...terms, ...(kind === "deposit" ? { depositDue: due } : { balanceDue: due }) } });
 }

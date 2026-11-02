@@ -7,10 +7,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/unit/**/*.test.ts"],
+    setupFiles: ["tests/unit/setup.ts"],
     env: {
       // Tests never touch the shared credentials file or the real data dir.
       ENV_SHARED_PATH: path.join(os.tmpdir(), "kit-tests-no-shared-env"),
-      KIT_DATA_DIR: path.join(os.tmpdir(), `kit-test-data-${process.pid}`),
       PAYPAL_MODE: "mock",
       MOCK_PAYPAL_LATENCY_MS: "0",
       AI_MODE: "mock",
