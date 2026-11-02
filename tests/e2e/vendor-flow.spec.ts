@@ -66,6 +66,7 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   await expect(page.getByTestId("landing-preview")).toContainText(PHOTOGRAPHER.vendorName);
   await expect(page.getByTestId("landing-preview")).toContainText(formatCents(PHOTOGRAPHER.depositCents));
   await expect(page.locator("body")).not.toContainText("$80.00");
+  await page.screenshot({ path: "screenshots/landing.png" });
   for (const path of REMOVED_KIT_PAGES) expect((await api.get(path)).status()).toBe(404);
   await expect(page.locator(`a[href="/example"], a[href="/dashboard"]`)).toHaveCount(0);
 
@@ -79,6 +80,11 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   await expectCheckedTerms(page, PHOTOGRAPHER);
   await expectSource(page.getByTestId("source-deposit"), "non-refundable");
   await expect(page.getByTestId("read-by")).toContainText(live ? "Read by Claude" : "Simulated read");
+  await page.screenshot({ path: `screenshots/review-${live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
+  if (live) {
+    const read = await (await api.get(`/api/contracts/${new URL(page.url()).pathname.split("/").pop()}`)).json();
+    console.log(`Real AI read: ${JSON.stringify({ read: read.read, proposed: read.proposed })}`);
+  }
 
   // Not on the timeline until confirmed.
   const unconfirmed = page.url();
@@ -165,8 +171,8 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   await expect(page.getByTestId("stat-total")).toContainText(formatCents(unpaidCents - PHOTOGRAPHER.depositCents));
   if (sandbox) await expect(deposit.getByTestId("paypal-proof")).toContainText("standing in for this fictional vendor");
 
-  // The next one due moves on.
-  await expect(page.getByTestId("stat-next")).not.toContainText(PHOTOGRAPHER.vendorName);
+  // The next one due moves on. A real-AI run has only the photographer, so it's their balance.
+  await expect(page.getByTestId("stat-next")).toContainText(formatCents(live ? PHOTOGRAPHER.balanceCents : CATERER.depositCents));
 
   const batchId = (await deposit.getByTestId("paypal-batch-id").textContent())!;
   const transactionId = (await deposit.getByTestId("paypal-transaction-id").textContent())!;
