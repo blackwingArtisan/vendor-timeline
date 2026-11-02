@@ -1,15 +1,13 @@
 /** Each browser gets its own wedding, so visitors to a shared copy never see each other's contracts. */
-import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
-
-const COOKIE = "vt_plan";
-const SIXTY_DAYS = 60 * 60 * 24 * 60;
+import { PLAN_COOKIE, PLAN_COOKIE_OPTIONS, isPlanId, newPlanId } from "./plan-cookie";
 
 export async function currentPlanId(): Promise<string> {
   const store = await cookies();
-  const existing = store.get(COOKIE)?.value;
-  if (existing && /^plan_[0-9a-f-]{12}$/.test(existing)) return existing;
-  const id = `plan_${randomUUID().slice(0, 12)}`;
-  store.set(COOKIE, id, { httpOnly: true, sameSite: "lax", path: "/", maxAge: SIXTY_DAYS });
+  const existing = store.get(PLAN_COOKIE)?.value;
+  if (isPlanId(existing)) return existing;
+  // src/proxy.ts normally got here first. This covers a request it didn't match.
+  const id = newPlanId();
+  store.set(PLAN_COOKIE, id, PLAN_COOKIE_OPTIONS);
   return id;
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ChevronRight, FileText, Upload } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -20,6 +20,22 @@ export function ContractsScreen() {
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string>();
   const [reading, setReading] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
+
+  // The box holds its own text instead of React holding it. While the page was still starting up,
+  // React could miss a paste and then write its empty value over the words. So this reads the box
+  // once on start, then listens to it directly, which leaves no gap.
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    if (el.value) setText(el.value);
+    const typed = () => {
+      setText(el.value);
+      setFileName(undefined);
+    };
+    el.addEventListener("input", typed);
+    return () => el.removeEventListener("input", typed);
+  }, []);
 
   useEffect(() => {
     kitFetch<{ contracts: Contract[] }>("/api/contracts")
@@ -28,6 +44,7 @@ export function ContractsScreen() {
   }, [kitFetch]);
 
   const fill = (body: string, name?: string) => {
+    if (box.current) box.current.value = body;
     setText(body);
     setFileName(name);
   };
@@ -72,7 +89,7 @@ export function ContractsScreen() {
               </div>
             </div>
             <Field label="Contract text" htmlFor="contract-text">
-              <Textarea id="contract-text" value={text} onChange={(e) => fill(e.target.value)} rows={14} placeholder="Paste the contract here" className="font-mono text-[13px] leading-relaxed" data-testid="contract-text" />
+              <Textarea ref={box} id="contract-text" rows={14} placeholder="Paste the contract here" className="font-mono text-[13px] leading-relaxed" data-testid="contract-text" />
             </Field>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50">

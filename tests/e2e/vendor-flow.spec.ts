@@ -24,8 +24,11 @@ const item = (page: Page, s: SampleFacts, kind: "deposit" | "balance") => page.l
 
 async function pickSample(page: Page, s: SampleFacts) {
   await page.goto("/contracts");
-  await page.getByTestId(`sample-${s.vendorRole}`).click();
-  await expect(page.getByTestId("contract-text")).toHaveValue(sampleText(s));
+  // A click in the first moments of a page does nothing, for a person too, so click again.
+  await expect(async () => {
+    await page.getByTestId(`sample-${s.vendorRole}`).click();
+    await expect(page.getByTestId("contract-text")).toHaveValue(sampleText(s), { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
 }
 
 async function read(page: Page) {
@@ -100,8 +103,10 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   if (!live) {
     // Caterer: uploaded as a file. The contract's own balance is wrong, so it's flagged, and the app's sum wins.
     await page.goto("/contracts");
-    await page.getByTestId("upload-contract").setInputFiles(`public/sample-contracts/${CATERER.file}`);
-    await expect(page.getByTestId("contract-text")).toHaveValue(sampleText(CATERER));
+    await expect(async () => {
+      await page.getByTestId("upload-contract").setInputFiles(`public/sample-contracts/${CATERER.file}`);
+      await expect(page.getByTestId("contract-text")).toHaveValue(sampleText(CATERER), { timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
     await read(page);
     await expectCheckedTerms(page, CATERER);
     await expect(page.getByTestId("flag-balance")).toContainText(formatCents(CATERER_STATED_BALANCE_CENTS));

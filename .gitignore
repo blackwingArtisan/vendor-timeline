@@ -48,6 +48,10 @@ next-env.d.ts
 videos/*.webm
 videos/*.mp4
 test-results/
+test-results-webkit/
+test-results-firefox/
+test-results-iphone/
+test-results-android/
 playwright-report/
 screenshots/
 .env.shared

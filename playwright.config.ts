@@ -20,6 +20,8 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     viewport: { width: 1440, height: 1000 },
     trace: "retain-on-failure",
+    // With no limit a stuck click waits out the whole test and the report can't say which one it was.
+    actionTimeout: 45_000,
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
   webServer: {
