@@ -84,9 +84,9 @@ test.describe("switch on", () => {
     expect(moved.x).toBeGreaterThan(before.x + 20);
 
     // Off to another page and back: the widget is rebuilt from the server's dates.
-    await page.getByRole("link", { name: "Contracts" }).first().click();
+    await page.getByRole("link", { name: "Contracts", exact: true }).click();
     await page.waitForURL("**/contracts");
-    await page.getByRole("link", { name: "Timeline" }).first().click();
+    await page.getByRole("link", { name: "Timeline", exact: true }).click();
     await page.waitForURL("**/timeline");
     await expect(row(page).getByTestId("item-due")).toHaveText(formatDay(due));
     await expect(bar).toBeVisible({ timeout: 60_000 });
@@ -99,6 +99,34 @@ test.describe("switch on", () => {
     await expect(bar).toBeVisible();
     const state = await (await page.request.get("/api/timeline")).json();
     expect(state.items.find((i: { id: string }) => i.id === deposit.id).due).toBe(due);
+  });
+
+  test("a vendor's summary bar stays put when dragged", async ({ page }) => {
+    await sampleWedding(page);
+    await expect(page.locator(BARS).first()).toBeVisible({ timeout: 120_000 });
+    await page.getByTestId("sponsor-gantt").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(800);
+    const { items } = await (await page.request.get("/api/timeline")).json();
+    const deposit = items.find((i: { vendorRole: string; kind: string }) => i.vendorRole === "photographer" && i.kind === "deposit");
+    const parent = page.locator(`.b-gantt-task-wrap[data-task-id="${deposit.contractId}"]`).first();
+    const box = (await parent.boundingBox())!;
+    const moves: string[] = [];
+    page.on("request", (r) => r.url().includes("/move") && moves.push(r.url()));
+
+    const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++) {
+      await page.mouse.move(x + i * 8, y);
+      await page.waitForTimeout(25);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(500);
+    expect(moves).toEqual([]);
+    // The widget folds the vendor's row on this gesture, which is harmless. No date may change.
+    await expect(parent).toBeVisible();
+    expect(Math.abs((await parent.boundingBox())!.x - box.x)).toBeLessThan(2);
+    await expect(row(page).getByTestId("item-due")).toHaveText(formatDay(PHOTOGRAPHER.depositDue));
   });
 
   test("a bar for a payment that has gone to approval can't be dragged", async ({ page }) => {

@@ -6,6 +6,8 @@ import { defineConfig, devices } from "@playwright/test";
  * Set NEXT_PUBLIC_SPONSOR_UI=1 to run the same suite with the sponsor Gantt switched on.
  */
 const PORT = Number(process.env.E2E_PORT ?? 3100);
+// The switch is compiled in, so each setting keeps its own build.
+const DIST_DIR = process.env.NEXT_PUBLIC_SPONSOR_UI === "1" ? ".next-e2e-sponsor" : ".next-e2e";
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -21,7 +23,8 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
   webServer: {
-    command: `npx next dev --port ${PORT}`,
+    // A dev cache left by the last run makes the page reload forever, so every run starts clean.
+    command: `rm -rf ${DIST_DIR}/dev && npx next dev --port ${PORT}`,
     url: `http://localhost:${PORT}/api/kit/status`,
     reuseExistingServer: false,
     timeout: 120_000,
@@ -32,8 +35,7 @@ export default defineConfig({
       MOCK_PAYPAL_LATENCY_MS: "60-160",
       // A whole suite in a row is faster than any visitor, and the limit has its own unit test.
       AI_RATE_LIMIT_PER_MINUTE: "100",
-      // The switch is compiled in, so each setting keeps its own build.
-      NEXT_DIST_DIR: process.env.NEXT_PUBLIC_SPONSOR_UI === "1" ? ".next-e2e-sponsor" : ".next-e2e",
+      NEXT_DIST_DIR: DIST_DIR,
     },
   },
 });

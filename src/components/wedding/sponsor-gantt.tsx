@@ -27,13 +27,14 @@ const HEADER_HEIGHT = 92;
 const COLOR: Partial<Record<ItemStatus, string>> = { paid: "green", overdue: "red", sending: "blue", awaiting_approval: "amber" };
 
 const GANTT_CONFIG: BryntumGanttProps = {
-  viewPreset: { base: "weekAndMonth", tickWidth: 26 },
+  // Month columns so the whole wedding fits on one screen; bars still move a day at a time.
+  viewPreset: { base: "monthAndYear", tickWidth: 72, timeResolution: { unit: "day", increment: 1 } },
   rowHeight: ROW_HEIGHT,
   barMargin: 8,
   snap: true,
   columns: [
-    { type: "name", text: "Vendor", width: 250 },
-    { type: "date", text: "Due", field: "startDate", format: "MMM D, YYYY", width: 110 },
+    { type: "name", text: "Vendor", width: 240 },
+    { type: "date", text: "Due", field: "startDate", format: "MMM D, YYYY", width: 130 },
   ],
   // Bars move in time and nothing else: amounts and links stay out of the chart's reach.
   cellEditFeature: false,
@@ -45,6 +46,8 @@ const GANTT_CONFIG: BryntumGanttProps = {
   percentBarFeature: false,
   dependenciesFeature: false,
   dependencyEditFeature: false,
+  projectLinesFeature: false,
+  timeRangesFeature: { showCurrentTimeLine: true },
 };
 
 const canMove = (item: TimelineItem) => item.status === "upcoming" || item.status === "overdue" || item.status === "due_today";
