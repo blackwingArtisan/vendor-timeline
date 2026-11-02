@@ -41,8 +41,11 @@ export class AiOutputError extends Error {
 
 export class RateLimitedError extends Error {
   readonly status = 429;
-  constructor(readonly retryAfterSeconds: number) {
-    super(`Too many requests. Try again in ${retryAfterSeconds}s.`);
+  constructor(
+    readonly retryAfterSeconds: number,
+    readonly window: "minute" | "day" = "minute",
+  ) {
+    super(window === "day" ? "This copy of the app has used today's AI allowance. It resets tomorrow." : `Too many requests. Try again in ${retryAfterSeconds}s.`);
     this.name = "RateLimitedError";
   }
 }

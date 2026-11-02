@@ -32,6 +32,8 @@ const GANTT_CONFIG: BryntumGanttProps = {
   rowHeight: ROW_HEIGHT,
   barMargin: 8,
   snap: true,
+  // A click or drag on a vendor's summary bar must leave its row open.
+  toggleParentTasksOnClick: false,
   columns: [
     { type: "name", text: "Vendor", width: 240 },
     { type: "date", text: "Due", field: "startDate", format: "MMM D, YYYY", width: 130 },

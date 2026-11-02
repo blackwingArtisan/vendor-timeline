@@ -47,7 +47,7 @@ export function buildTimeline(contracts: Contract[], today: string, monthlyBudge
     totalDueCents: sumCents(unpaid.map((i) => i.cents)),
     paidCents: sumCents(items.filter((i) => i.status === "paid").map((i) => i.cents)),
     contractedCents: sumCents(contracts.map((c) => c.confirmed?.totalCents ?? 0)),
-    cash: cashPlan(unpaid, today, monthlyBudgetCents),
+    cash: cashPlan(items, today, monthlyBudgetCents),
     sandboxStandIn: false,
   };
 }

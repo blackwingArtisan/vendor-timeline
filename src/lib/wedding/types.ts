@@ -118,12 +118,27 @@ export interface TimelineItem {
   movedFrom?: string;
 }
 
-/** One unpaid payment as the cash check sees it. */
+/** One payment as the cash check sees it. */
 export interface CashPayment {
   id: string;
   label: string;
   cents: number;
   due: string;
+  /** The day the money leaves, or left. See payDate(). */
+  payDate: string;
+  paid: boolean;
+}
+
+/** One month's sums, shown on screen so a person can check them. */
+export interface CashMonth {
+  /** "2027-04" */
+  month: string;
+  label: string;
+  payments: CashPayment[];
+  totalCents: number;
+  budgetCents: number;
+  /** Below zero means over budget. */
+  leftCents: number;
 }
 
 /** A clash found by code. `message` is the only wording of it, shown as is by the page and the agent. */
@@ -141,6 +156,7 @@ export interface CashWarning {
 export interface CashPlan {
   monthlyBudgetCents: number;
   warnings: CashWarning[];
+  months: CashMonth[];
 }
 
 export interface TimelineView {

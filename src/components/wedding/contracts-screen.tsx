@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ChevronRight, FileText, Upload } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
+import { PacedWait } from "@/components/wedding/paced-wait";
+import { usePaced, WaitStopped } from "@/components/wedding/use-paced";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Textarea } from "@/components/ui";
@@ -21,6 +23,7 @@ export function ContractsScreen() {
   const [fileName, setFileName] = useState<string>();
   const [reading, setReading] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
+  const { paced, waitSeconds, stopWaiting } = usePaced();
 
   // The box holds its own text instead of React holding it. While the page was still starting up,
   // React could miss a paste and then write its empty value over the words. So this reads the box
@@ -63,10 +66,10 @@ export function ContractsScreen() {
   async function read() {
     setReading(true);
     try {
-      const contract = await kitFetch<Contract>("/api/contracts", { json: { text, fileName } });
+      const contract = await paced(() => kitFetch<Contract>("/api/contracts", { json: { text, fileName } }));
       router.push(`/contracts/${contract.id}`);
     } catch (e) {
-      toast({ title: "Could not read that contract", description: (e as Error).message, variant: "error" });
+      if (!(e instanceof WaitStopped)) toast({ title: "Could not read that contract", description: (e as Error).message, variant: "error" });
       setReading(false);
     }
   }
@@ -91,6 +94,7 @@ export function ContractsScreen() {
             <Field label="Contract text" htmlFor="contract-text">
               <Textarea ref={box} id="contract-text" rows={14} placeholder="Paste the contract here" className="font-mono text-[13px] leading-relaxed" data-testid="contract-text" />
             </Field>
+            {waitSeconds !== null ? <PacedWait seconds={waitSeconds} what="contract" onStop={stopWaiting} testId="read-wait" /> : null}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50">
                 <Upload className="size-4" /> Upload a .txt file

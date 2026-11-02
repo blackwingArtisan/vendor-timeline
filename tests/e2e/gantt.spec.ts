@@ -123,8 +123,10 @@ test.describe("switch on", () => {
     await page.mouse.up();
     await page.waitForTimeout(500);
     expect(moves).toEqual([]);
-    // The widget folds the vendor's row on this gesture, which is harmless. No date may change.
+    // Nothing moves and the vendor's row stays open, with both of its bars showing.
     await expect(parent).toBeVisible();
+    await expect(page.locator(`.b-gantt-task-wrap[data-task-id="${deposit.id}"]`).first()).toBeVisible();
+    await expect(page.locator(`.b-gantt-task-wrap[data-task-id="${deposit.contractId}.balance"]`).first()).toBeVisible();
     expect(Math.abs((await parent.boundingBox())!.x - box.x)).toBeLessThan(2);
     await expect(row(page).getByTestId("item-due")).toHaveText(formatDay(PHOTOGRAPHER.depositDue));
   });

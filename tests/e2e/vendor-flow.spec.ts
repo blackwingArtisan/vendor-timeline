@@ -6,13 +6,14 @@
  */
 import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { readFinishedPayout } from "./paypal-reread";
+import { readFinishedPayout, readPayoutEvent } from "./paypal-reread";
 import { formatCents, sumCents } from "../../src/lib/wedding/cents";
 import { formatDay } from "../../src/lib/wedding/dates";
 import { BAND, BAND_ANSWERS, CATERER, CATERER_STATED_BALANCE_CENTS, FLORIST, PHOTOGRAPHER, SAMPLES, VENUE, type SampleFacts } from "../../src/lib/wedding/samples";
 
 /** Pinned so the florist's deposit is overdue and the photographer's comes next, whatever the real date. */
 const TODAY = "2026-11-20";
+const HOSTED = !!process.env.E2E_BASE_URL;
 const REMOVED_KIT_PAGES = ["/example", "/dashboard"];
 /** The kit's routes that moved money with no Guard. Payments here only go through the approval gate. */
 const OPEN_PAYPAL_ROUTES = ["/api/paypal/orders", "/api/paypal/captures/X/refund", "/api/paypal/authorizations/X/capture", "/api/paypal/authorizations/X/void"];
@@ -166,6 +167,9 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   const prompt = deposit.getByTestId("approval-prompt");
   await expect(prompt).toBeVisible({ timeout: 30_000 });
   await expect(prompt).toContainText(`Pay ${PHOTOGRAPHER.vendorName} ${formatCents(PHOTOGRAPHER.depositCents)} for the deposit`);
+  await expect(prompt.getByTestId("approval-from")).toHaveText("Your PayPal balance");
+  await expect(prompt.getByTestId("approval-to")).toHaveText(PHOTOGRAPHER.vendorName);
+  await expect(prompt.getByTestId("approval-note")).toContainText(sandbox ? "standing in for this fictional vendor" : "no real money");
   await expect(deposit.getByTestId("item-status")).toHaveText("Waiting for your approval");
   await expect(deposit.getByTestId("paypal-proof")).toHaveCount(0);
   await expect(page.getByTestId("stat-paid")).toContainText("$0.00");
@@ -178,6 +182,11 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   await expect(page.getByTestId("stat-paid")).toContainText(formatCents(PHOTOGRAPHER.depositCents));
   await expect(page.getByTestId("stat-total")).toContainText(formatCents(unpaidCents - PHOTOGRAPHER.depositCents));
   if (sandbox) await expect(deposit.getByTestId("paypal-proof")).toContainText("standing in for this fictional vendor");
+
+  // On mock and on the hosted copy a PayPal webhook is what marks it paid. A local sandbox run has
+  // no public address for PayPal to call, so there the re-read may stand in.
+  await expect(deposit.getByTestId("paid-by")).toContainText(!sandbox || HOSTED ? "Confirmed by PayPal webhook" : "Confirmed by");
+  const webhookEventId = HOSTED ? await deposit.getByTestId("paid-by-event").textContent() : null;
 
   // The next one due moves on. A real-AI run has only the photographer, so it's their balance.
   await expect(page.getByTestId("stat-next")).toContainText(formatCents(live ? PHOTOGRAPHER.balanceCents : CATERER.depositCents));
@@ -211,6 +220,12 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
     expect(payoutItem.transaction_id).toBe(transactionId);
     expect(payoutItem.payout_item.amount).toEqual({ currency: "USD", value: (PHOTOGRAPHER.depositCents / 100).toFixed(2) });
     expect(payoutItem.payout_item.receiver).toMatch(/@personal\.example\.com$/);
+    if (HOSTED) {
+      const event = await readPayoutEvent(batchId);
+      console.log(`PayPal webhook event: ${event?.id} ${event?.event_type} for ${event?.resource.payout_batch_id}`);
+      expect(event?.id).toBe(webhookEventId);
+      expect(event?.resource.payout_item.sender_item_id).toBe(payoutItem.payout_item.sender_item_id);
+    }
   }
 });
 

@@ -30,12 +30,12 @@ export const appConfig = {
     steps: [
       { title: "Add your contracts", body: "Paste the text or upload a file. Photographer, caterer, venue, florist, band: any wording." },
       { title: "Check the terms", body: "AI shows each amount and date beside the sentence it came from. You confirm or fix them, and it flags anything missing or unclear." },
-      { title: "Pay on time", body: "One timeline shows every deposit and balance by date. You approve a payment, and PayPal sends it." },
+      { title: "Pay on time", body: "One timeline shows every deposit and balance by date. You approve a payment, and PayPal sends it from your balance." },
     ],
     features: [
       { title: "Sentences, not guesses", body: "Every amount and date sits beside the contract sentence it came from. If a term is missing, it is flagged, not filled in." },
       { title: "Sums you can trust", body: "Balances and totals are worked out in code from the amounts you confirmed, never stated by the AI." },
-      { title: "Nothing moves without you", body: "Each payment waits for your approval, then the timeline shows the status PayPal reports." },
+      { title: "Nothing moves without you", body: "Your money stays in your PayPal balance until you approve each payment. Then the timeline shows the status PayPal reports." },
     ],
   },
 

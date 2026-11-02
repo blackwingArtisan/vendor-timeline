@@ -16,7 +16,7 @@ A wedding means five or more vendors, each with its own contract, its own wordin
 - **AI reads the payment terms.** Vendor, total, deposit and date, balance and date, each with the exact contract sentence it came from.
 - **You check them.** Terms sit beside their source sentences. You confirm or edit. Anything missing or unclear is flagged and left blank, and nothing reaches the timeline unconfirmed.
 - **One timeline.** Every deposit and balance by date and as bars per vendor, what's due next, what's overdue and the total due. Dates can be moved, and the original stays on the row.
-- **Cash warnings.** Code checks the unpaid payments against your monthly budget ($5,000 unless you change it): payments landing in the same week, and months that go over.
+- **Cash warnings.** Code puts each payment on the day its money leaves and checks it against your monthly budget ($5,000 unless you change it): payments landing in the same week, and months that go over. Each warning opens to show the sums.
 - **Ask the agent.** The payment agent names the next payment, explains the warnings, sets the payment up and stops. It can't pay on its own.
 - **Pay photographer.** A person approves it, then PayPal sends it. The Pay button goes through the same tool as the agent.
 - **Proof.** The item is marked paid only when PayPal says so about that exact payment, shown with the PayPal ids and the webhook event.
@@ -30,7 +30,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 | Payouts | `POST /v1/payments/payouts`, `GET /v1/payments/payouts/{id}` | Sends the vendor its deposit or balance, after a person approves. A batch finishes after a short wait, so the app re-reads it until the item's real status comes back. |
 | Webhooks | `POST /v1/notifications/verify-webhook-signature` | A verified `PAYMENT.PAYOUTS-ITEM.*` event is tied to one payment by batch id and `sender_item_id`, then checked against that payment's amount, currency and receiver. Anything that doesn't match changes nothing. Events for batches this app didn't create are dropped, because PayPal doesn't filter payouts per app. |
 
-**Sandbox stand-in:** the sample vendors are fictional, and a payout to an address with no PayPal account stays UNCLAIMED. So in sandbox each payout goes to a PayPal test account standing in for the vendor, and the app says so on screen. In this slice the money comes from the app's sandbox business account. A way for the couple to fund payments is a later step.
+**Sandbox stand-in:** the sample vendors are fictional, and a payout to an address with no PayPal account stays UNCLAIMED. So in sandbox each payout goes to a PayPal test account standing in for the vendor, and the app says so on screen. The money is meant to be the couple's own: the approval card says "From: Your PayPal balance", and in sandbox the app's business account stands in for that balance and says so too. A real launch would have each couple connect their own PayPal, which isn't built.
 
 **Paid status:** an item turns Paid when a verified webhook for that payment and PayPal's own re-read both say SUCCESS. If no webhook arrives within 60 seconds of the re-read's SUCCESS, the re-read stands and the item says "Confirmed by PayPal re-read" instead. That's what a local copy shows, since PayPal can only reach the hosted one.
 
@@ -113,9 +113,9 @@ Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter th
 - Local JSON storage: data resets on redeploy (fine for a demo, not for production).
 - Contracts are plain text in this slice. PDFs and photos aren't read yet.
 - All the sample contracts and vendors are fictional.
-- Payments come from the sandbox business account, and in sandbox they reach a test account standing in for the vendor.
+- In sandbox, test accounts stand in for the couple's PayPal balance and for the vendor. Connecting a couple's own PayPal isn't built.
 - The optional PayPal remote MCP connector is read-only and untested.
-- A payment date can move, but the budget is one number per couple, and payments can't yet be split or matched to pay dates.
+- A payment date can move, but the budget is one number per couple, and a payment can't yet be split in two. Cash warnings go by the day each payment leaves, not by the couple's paydays.
 - The Bryntum Gantt isn't public yet, so the hosted copy shows the free bars.
 
 ## License

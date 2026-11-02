@@ -14,6 +14,7 @@
     "test:e2e": "playwright test -c playwright.config.ts",
     "test:e2e:sandbox": "playwright test -c playwright.sandbox.config.ts",
     "test:e2e:engines": "playwright test -c playwright.engines.config.ts",
+    "test:e2e:limits": "playwright test -c playwright.limits.config.ts",
     "demo:record": "playwright test -c playwright.demo.config.ts",
     "demo:mp4": "bash scripts/webm-to-mp4.sh",
     "seed": "tsx scripts/seed.ts",

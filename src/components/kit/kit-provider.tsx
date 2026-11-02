@@ -16,13 +16,17 @@ export interface KitStatus {
 export class ApiError extends Error {
   constructor(
     readonly status: number,
-    readonly body: { error?: { type?: string; name?: string; message?: string; issue?: string; debug_id?: string } },
+    readonly body: { error?: { type?: string; name?: string; message?: string; issue?: string; debug_id?: string; retryAfterSeconds?: number } },
   ) {
     super(body.error?.issue ? `${body.error.message}` : (body.error?.message ?? `Request failed (${status})`));
     this.name = "ApiError";
   }
   get debugId() {
     return this.body.error?.debug_id;
+  }
+  /** Set when the app is pacing AI calls: how long until this one can go. */
+  get retryAfterSeconds() {
+    return this.body.error?.retryAfterSeconds;
   }
 }
 

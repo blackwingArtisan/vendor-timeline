@@ -52,6 +52,7 @@ test-results-webkit/
 test-results-firefox/
 test-results-iphone/
 test-results-android/
+test-results-limits/
 playwright-report/
 screenshots/
 .env.shared

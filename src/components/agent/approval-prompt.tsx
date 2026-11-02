@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Check, ShieldAlert, X } from "lucide-react";
 import type { Money } from "@/lib/money";
 import { MoneyBadge } from "../money-badge";
@@ -18,6 +18,7 @@ export function ApprovalPrompt({
   summary,
   reason,
   amount,
+  details,
   onDecided,
   className,
 }: {
@@ -25,6 +26,7 @@ export function ApprovalPrompt({
   summary: string;
   reason?: string;
   amount?: Money;
+  details?: ReactNode;
   onDecided?: (decision: "approved" | "denied") => void;
   className?: string;
 }) {
@@ -57,6 +59,7 @@ export function ApprovalPrompt({
         </div>
         {amount ? <MoneyBadge amount={amount} direction="neutral" size="lg" /> : null}
       </div>
+      {details}
       <div className="mt-3 flex justify-end gap-2">
         <Button variant="secondary" size="sm" icon={<X className="size-4" />} loading={busy === "denied"} disabled={!!busy} onClick={() => decide("denied")}>
           Decline

@@ -2,20 +2,19 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarClock, CalendarDays, CircleCheck, FileText, Send, Wallet } from "lucide-react";
-import { ApprovalPrompt } from "@/components/agent/approval-prompt";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, ButtonLink, Card, CardBody, CardHeader, EmptyState, Input, SkeletonCard, Stat, type Tone } from "@/components/ui";
-import type { Money } from "@/lib/money";
 import { formatCents, sumCents } from "@/lib/wedding/cents";
 import { formatDay, formatMonth, localToday } from "@/lib/wedding/dates";
 import { payLabel } from "@/lib/wedding/timeline";
 import type { ItemStatus, TimelineItem, TimelineView } from "@/lib/wedding/types";
 import { AgentPanel } from "./agent-panel";
 import { CashCard } from "./cash-card";
+import { PayApproval } from "./pay-approval";
 import { PaymentChart } from "./payment-chart";
 
 const STATUS: Record<ItemStatus, { label: string; tone: Tone; dot: string }> = {
@@ -127,14 +126,7 @@ function Row({ item, view, onPay, onMove, busy, onDecided, agentRunId }: { item:
           </div>
         </div>
         {item.status === "awaiting_approval" && approval ? (
-          <ApprovalPrompt
-            className="mt-3"
-            approvalId={approval.id}
-            summary={approval.summary}
-            reason={view.sandboxStandIn ? "No money moves until you approve. Sandbox: this goes to a PayPal test account standing in for this fictional vendor." : "No money moves until you approve."}
-            amount={approval.amountValue ? ({ currency_code: "USD", value: approval.amountValue } satisfies Money) : undefined}
-            onDecided={onDecided}
-          />
+          <PayApproval className="mt-3" item={item} approval={approval} cash={view.cash} sandbox={view.sandboxStandIn} onDecided={onDecided} />
         ) : null}
         {item.status === "awaiting_approval" && !approval ? <p className="mt-2 text-sm text-zinc-500">{item.approval ? "Waiting for your approval in the agent panel." : "Working with PayPal."}</p> : null}
         {item.payment?.state === "failed" ? (
@@ -272,7 +264,7 @@ export function TimelineScreen() {
             </div>
           </div>
           <div className="mb-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
-            <AgentPanel steps={steps} items={items} onRun={setAgentRunId} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
+            <AgentPanel steps={steps} items={items} cash={view.cash} sandbox={view.sandboxStandIn} onRun={setAgentRunId} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
             <CashCard key={view.cash.monthlyBudgetCents} cash={view.cash} onChanged={() => void refresh().catch(() => undefined)} />
           </div>
           <PaymentChart view={view} onMove={move} />

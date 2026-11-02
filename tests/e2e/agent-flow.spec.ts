@@ -57,6 +57,16 @@ test("five contracts, one timeline, and the agent stops before paying the photog
   await expect(clash).toContainText(FLORIST.vendorName);
   await expect(clash).toContainText("$7,200.00 over your $5,000.00 monthly budget");
 
+  // Each warning opens to the payments, their pay dates and the sum.
+  await clash.getByText("Show the sums").click();
+  const sums = clash.getByTestId("cash-sums");
+  await expect(sums).toContainText("Pays Sat, May 29, 2027");
+  await expect(sums).toContainText("Total in one week");
+  await expect(sums).toContainText("Monthly budget");
+  await expect(sums).toContainText("Over by");
+  await expect(sums).toContainText("$7,200.00");
+  await page.screenshot({ path: "screenshots/cash-sums.png", fullPage: true });
+
   // The agent names the next payment, warns about the clash, and stops.
   await askAgent(page);
   const panel = page.getByTestId("agent-panel");
@@ -64,6 +74,10 @@ test("five contracts, one timeline, and the agent stops before paying the photog
   await expect(prompt).toBeVisible({ timeout: 90_000 });
   await expect(prompt).toContainText(`Pay ${PHOTOGRAPHER.vendorName} ${formatCents(PHOTOGRAPHER.depositCents)} for the deposit`);
   await expect(page.getByTestId("agent-phase")).toHaveText("Stopped for your approval");
+  await expect(prompt).toContainText("This is your money");
+  await expect(prompt.getByTestId("approval-from")).toHaveText("Your PayPal balance");
+  await expect(prompt.getByTestId("approval-to")).toHaveText(PHOTOGRAPHER.vendorName);
+  await expect(prompt.getByTestId("approval-budget")).toContainText("monthly budget");
   const said = await panel.getByTestId("agent-messages").innerText();
   console.log(`Agent said: ${said}`);
   expect(said).toContain(PHOTOGRAPHER.vendorName);
@@ -186,6 +200,9 @@ test("a new budget changes the warnings and is saved", async ({ page }) => {
   await page.getByTestId("save-budget").click();
   await expect(page.getByTestId("cash-clear")).toBeVisible();
   await expect(page.getByTestId("cash-warning")).toHaveCount(0);
+  // A clear month still shows its working.
+  await page.getByTestId("cash-months").getByText("Month by month").click();
+  await expect(page.getByTestId("cash-month").filter({ hasText: "June 2027" })).toContainText("Left");
   await page.reload();
   await expect(page.getByTestId("cash-clear")).toBeVisible();
 });

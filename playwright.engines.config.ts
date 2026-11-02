@@ -11,9 +11,11 @@ const engines = {
 
 const name = (process.env.ENGINE ?? "webkit") as keyof typeof engines;
 
-export default {
+const config = {
   ...base,
   outputDir: `test-results-${name}`,
   reporter: "line",
   projects: [{ name, testIgnore: "mic-flow.spec.ts", use: engines[name] }],
 };
+
+export default config;

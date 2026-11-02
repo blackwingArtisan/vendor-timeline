@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Bot, Send } from "lucide-react";
-import { ApprovalPrompt } from "@/components/agent/approval-prompt";
+import { PacedWait } from "@/components/wedding/paced-wait";
+import { PayApproval } from "@/components/wedding/pay-approval";
+import { usePaced, WaitStopped } from "@/components/wedding/use-paced";
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, Input, type Tone } from "@/components/ui";
 import type { TimelineStep } from "@/lib/events/types";
 import { localToday } from "@/lib/wedding/dates";
-import type { TimelineItem } from "@/lib/wedding/types";
+import type { CashPlan, TimelineItem } from "@/lib/wedding/types";
 
 const DEFAULT_GOAL = "Tell me what's due next, warn me about any cash clashes, and set up the next payment for my approval.";
 
@@ -22,12 +24,13 @@ const PHASE: Record<Exclude<Phase, "idle">, { label: string; tone: Tone }> = {
 };
 
 /** The agent names what's due and asks to pay. A person answers here, and only then can money move. */
-export function AgentPanel({ steps, items, onRun, onRunning, onDecided }: { steps: TimelineStep[]; items: TimelineItem[]; onRun: (runId: string | null) => void; onRunning: (running: boolean) => void; onDecided: () => void }) {
+export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDecided }: { steps: TimelineStep[]; items: TimelineItem[]; cash: CashPlan; sandbox: boolean; onRun: (runId: string | null) => void; onRunning: (running: boolean) => void; onDecided: () => void }) {
   const { kitFetch } = useKit();
   const { toast } = useToast();
   const [goal, setGoal] = useState(DEFAULT_GOAL);
   const [runId, setRunId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const { paced, waitSeconds, stopWaiting } = usePaced();
 
   const runSteps = useMemo(() => steps.filter((s) => s.runId === runId), [steps, runId]);
   const messages = runSteps.filter((s) => s.kind === "agent.message");
@@ -41,11 +44,11 @@ export function AgentPanel({ steps, items, onRun, onRunning, onDecided }: { step
   async function ask() {
     setStarting(true);
     try {
-      const { run: started } = await kitFetch<{ run: { id: string } }>("/api/agent/runs", { json: { agentId: "payments", goal, today: localToday() } });
+      const { run: started } = await paced(() => kitFetch<{ run: { id: string } }>("/api/agent/runs", { json: { agentId: "payments", goal, today: localToday() } }));
       setRunId(started.id);
       onRun(started.id);
     } catch (e) {
-      toast({ title: "The agent couldn't start", description: (e as Error).message, variant: "error" });
+      if (!(e instanceof WaitStopped)) toast({ title: "The agent couldn't start", description: (e as Error).message, variant: "error" });
     } finally {
       setStarting(false);
     }
@@ -71,6 +74,7 @@ export function AgentPanel({ steps, items, onRun, onRunning, onDecided }: { step
             Ask the agent
           </Button>
         </form>
+        {waitSeconds !== null ? <PacedWait className="mt-3" seconds={waitSeconds} what="agent" onStop={stopWaiting} testId="agent-wait" /> : null}
         {messages.length ? (
           <ul className="mt-3 space-y-1.5 text-sm text-zinc-700" data-testid="agent-messages">
             {messages.map((m) => (
@@ -80,15 +84,7 @@ export function AgentPanel({ steps, items, onRun, onRunning, onDecided }: { step
         ) : null}
         {run?.status === "failed" ? <p className="mt-3 text-sm text-red-700" data-testid="agent-error">{run.detail}</p> : null}
         {pending?.approval ? (
-          <ApprovalPrompt
-            key={pending.approval.id}
-            className="mt-3"
-            approvalId={pending.approval.id}
-            summary={pending.approval.summary}
-            reason="The agent has stopped. No money moves until you approve."
-            amount={pending.approval.amountValue ? { currency_code: "USD", value: pending.approval.amountValue } : undefined}
-            onDecided={onDecided}
-          />
+          <PayApproval key={pending.approval.id} className="mt-3" item={pending} approval={pending.approval} cash={cash} sandbox={sandbox} onDecided={onDecided} />
         ) : null}
       </CardBody>
     </Card>

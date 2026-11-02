@@ -50,6 +50,6 @@ export function enforceRateLimit(req: Request, kind: "ai" | "api" = "api") {
       : [[`api:min:${ip}`, num("API_RATE_LIMIT_PER_MINUTE", 120), 60_000]];
   for (const [key, limit, windowMs] of checks) {
     const retry = hit(key, limit, windowMs);
-    if (retry) throw new RateLimitedError(retry);
+    if (retry) throw new RateLimitedError(retry, windowMs === 60_000 ? "minute" : "day");
   }
 }

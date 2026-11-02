@@ -56,7 +56,9 @@ describe("the sample wedding", () => {
     const plan = "plan_sample_five";
     loadSampleWedding(plan);
     setMonthlyBudget(plan, 2_000_000);
-    expect((await viewTimeline(plan, TODAY)).cash).toEqual({ monthlyBudgetCents: 2_000_000, warnings: [] });
+    const { cash } = await viewTimeline(plan, TODAY);
+    expect(cash.monthlyBudgetCents).toBe(2_000_000);
+    expect(cash.warnings).toEqual([]);
   });
 });
 
@@ -82,6 +84,41 @@ describe("cashPlan", () => {
   it("counts an overdue payment from today, when the money has to go", () => {
     const { warnings } = cashPlan([item("old", 400_000, "2026-10-01", "overdue"), item("new", 300_000, "2026-11-22")], TODAY, 500_000);
     expect(warnings[0]).toMatchObject({ kind: "same_week", from: TODAY, to: "2026-11-22", totalCents: 700_000 });
+  });
+
+  it("counts money on the day it leaves: moved, being sent, paid, or still to come", () => {
+    const paid = { ...item("paid", 100_000, "2027-01-15", "paid"), payment: { successSeenAt: "2026-11-02T10:00:00.000Z" } as TimelineItem["payment"] };
+    const sending = item("sending", 200_000, "2027-01-15", "sending");
+    const waiting = item("waiting", 300_000, "2027-01-15", "awaiting_approval");
+    const moved = { ...item("moved", 400_000, "2027-02-10"), movedFrom: "2027-01-15" };
+    const { months } = cashPlan([paid, sending, waiting, moved], TODAY, 500_000);
+    expect(months.flatMap((m) => m.payments.map((p) => [p.id, p.payDate]))).toEqual([
+      ["paid", "2026-11-02"],
+      ["waiting", TODAY],
+      ["sending", TODAY],
+      ["moved", "2027-02-10"],
+    ]);
+  });
+
+  it("sets out each month's sums, and they add up", () => {
+    const { months } = cashPlan([item("a", 400_000, "2027-03-01"), item("b", 300_000, "2027-03-20"), item("c", 100_000, "2027-04-01")], TODAY, 500_000);
+    expect(months.map((m) => [m.month, m.label, m.totalCents, m.budgetCents, m.leftCents])).toEqual([
+      ["2027-03", "March 2027", 700_000, 500_000, -200_000],
+      ["2027-04", "April 2027", 100_000, 500_000, 400_000],
+    ]);
+  });
+
+  it("counts money already paid against the month it left in", () => {
+    const paid = { ...item("paid", 400_000, "2026-11-10", "paid"), payment: { successSeenAt: "2026-11-10T10:00:00.000Z" } as TimelineItem["payment"] };
+    const { warnings } = cashPlan([paid, item("next", 300_000, "2026-11-28")], TODAY, 500_000);
+    expect(warnings.map((w) => w.kind)).toEqual(["over_month"]);
+    expect(warnings[0].message).toContain("(1 already paid)");
+    expect(warnings[0].overByCents).toBe(200_000);
+  });
+
+  it("stays quiet about a month that's all paid", () => {
+    const paid = { ...item("paid", 900_000, "2026-11-10", "paid"), payment: { successSeenAt: "2026-11-10T10:00:00.000Z" } as TimelineItem["payment"] };
+    expect(cashPlan([paid], TODAY, 500_000).warnings).toEqual([]);
   });
 
   it("reports one clash once when several start days share it", () => {
