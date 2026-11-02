@@ -1,14 +1,35 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { RefreshCw, ShieldCheck, ShieldX, Webhook } from "lucide-react";
-import { col, DataGrid } from "@/components/data-grid";
 import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, EmptyState } from "@/components/ui";
 import type { AuditEntry } from "@/lib/agent/audit";
+import { formatMoney } from "@/lib/money";
 import type { WebhookEventEnvelope } from "@/lib/paypal/types";
+
+const when = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+
+function Table({ head, children }: { head: string[]; children: ReactNode }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <thead className="text-xs text-zinc-500">
+          <tr>
+            {head.map((h) => (
+              <th key={h} className="whitespace-nowrap border-b border-zinc-200 px-2 py-2 font-medium">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100 align-top text-zinc-700">{children}</tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function ActivityPage() {
   const { kitFetch, status } = useKit();
@@ -54,11 +75,11 @@ export default function ActivityPage() {
 
   return (
     <>
-      <PageHeader title="Activity" description="The guard's append-only audit log and PayPal webhooks." actions={<Button variant="secondary" icon={<RefreshCw className="size-4" />} onClick={load}>Refresh</Button>} />
+      <PageHeader title="Activity" description="Every payment request, approval and result, plus PayPal's webhooks." actions={<Button variant="secondary" icon={<RefreshCw className="size-4" />} onClick={load}>Refresh</Button>} />
       <Card>
         <CardHeader
           title="Audit log"
-          description="Every agent tool request, guard decision, approval and result. Hash-chained: editing any line breaks verification."
+          description="Hash-chained: editing any line breaks verification."
           action={
             audit ? (
               audit.integrity.ok ? (
@@ -70,44 +91,48 @@ export default function ActivityPage() {
           }
         />
         <CardBody>
-          <DataGrid<AuditEntry>
-            rows={audit?.entries}
-            getRowId={(r) => String(r.seq)}
-            height={420}
-            emptyMessage="No agent activity yet. Run the example flow."
-            columns={[
-              col.text<AuditEntry>("seq", "#", { maxWidth: 80 }),
-              col.date<AuditEntry>("ts", "Time"),
-              col.text<AuditEntry>("action", "Action", { minWidth: 160 }),
-              col.text<AuditEntry>("tool", "Tool", { minWidth: 170 }),
-              col.money<AuditEntry>("amount"),
-              col.text<AuditEntry>("actor", "Actor"),
-              col.text<AuditEntry>("reason", "Reason", { minWidth: 240 }),
-              col.id<AuditEntry>("hash", "Hash", { valueFormatter: (p) => String(p.value ?? "").slice(0, 12) }),
-            ]}
-          />
+          {audit?.entries.length ? (
+            <Table head={["#", "Time", "Action", "Tool", "Amount", "Actor", "Reason"]}>
+              {[...audit.entries].reverse().map((e) => (
+                <tr key={e.seq} data-testid="audit-row">
+                  <td className="px-2 py-2 tabular-nums">{e.seq}</td>
+                  <td className="whitespace-nowrap px-2 py-2">{when(e.ts)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 font-medium text-zinc-900">{e.action}</td>
+                  <td className="whitespace-nowrap px-2 py-2 font-mono text-xs">{e.tool}</td>
+                  <td className="whitespace-nowrap px-2 py-2 tabular-nums">{e.amount ? formatMoney(e.amount) : ""}</td>
+                  <td className="px-2 py-2">{e.actor}</td>
+                  <td className="px-2 py-2">{e.reason}</td>
+                </tr>
+              ))}
+            </Table>
+          ) : (
+            <EmptyState title="Nothing yet" description="Payment requests and approvals appear here." />
+          )}
         </CardBody>
       </Card>
 
       <Card className="mt-6">
-        <CardHeader title="Webhooks" description={isMock ? "Events the mock PayPal emitted. Replay one to re-run your handlers (signature checked)." : "Register /api/paypal/webhooks in your sandbox app and set PAYPAL_WEBHOOK_ID. Received events appear on the timeline."} />
+        <CardHeader title="Webhooks" description={isMock ? "Events the mock PayPal emitted. Replay one to re-run the handlers." : "Events from PayPal's webhook appear on the timeline page."} />
         <CardBody>
-          {isMock ? (
-            <DataGrid<WebhookEventEnvelope>
-              rows={events}
-              getRowId={(r) => r.id}
-              height={360}
-              emptyMessage="No webhook events yet"
-              columns={[
-                col.date<WebhookEventEnvelope>("create_time", "Time"),
-                col.text<WebhookEventEnvelope>("event_type", "Event", { minWidth: 240 }),
-                col.text<WebhookEventEnvelope>("summary", "Summary", { minWidth: 240 }),
-                col.id<WebhookEventEnvelope>("id", "Event ID"),
-                { headerName: "", maxWidth: 110, sortable: false, filter: false, cellRenderer: (p: { data?: WebhookEventEnvelope }) => (p.data ? <Button size="sm" variant="ghost" onClick={() => replay(p.data!.id)}>Replay</Button> : null) },
-              ]}
-            />
+          {isMock && events?.length ? (
+            <Table head={["Time", "Event", "Summary", ""]}>
+              {events.map((e) => (
+                <tr key={e.id}>
+                  <td className="whitespace-nowrap px-2 py-2">{when(e.create_time)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 font-mono text-xs">{e.event_type}</td>
+                  <td className="px-2 py-2">{e.summary}</td>
+                  <td className="px-2 py-2 text-right">
+                    <Button size="sm" variant="ghost" onClick={() => replay(e.id)}>Replay</Button>
+                  </td>
+                </tr>
+              ))}
+            </Table>
           ) : (
-            <EmptyState icon={<Webhook className="size-5" />} title="Sandbox webhooks" description={status?.paypal.webhookConfigured ? "PAYPAL_WEBHOOK_ID is set; verified events show on the dashboard timeline." : "PAYPAL_WEBHOOK_ID is not set yet, so incoming webhooks are rejected (503)."} />
+            <EmptyState
+              icon={<Webhook className="size-5" />}
+              title={isMock ? "No webhook events yet" : "Sandbox webhooks"}
+              description={isMock ? "Pay a vendor to see PayPal's events." : status?.paypal.webhookConfigured ? "PayPal's webhook is connected." : "PayPal's webhook isn't connected on this copy, so the app reads each payment's status from PayPal directly."}
+            />
           )}
         </CardBody>
       </Card>

@@ -9,41 +9,43 @@ export const appConfig = {
   slug: "vendor-timeline", // kit:slug
   brandColor: "#8a3553", // kit:brand
   brandForeground: "#FFFFFF", // kit:brand-foreground
-  tagline: "AI agents that move money safely with PayPal.",
-  description: "A starter for PayPal AI Hackathon apps: guarded agent tools, live timeline, mock + sandbox PayPal.",
+  tagline: "Every vendor payment on one timeline.",
+  description: "Paste your wedding vendor contracts. AI pulls out every deposit and balance, you confirm them, and you pay each vendor through PayPal when you approve it.",
   repoUrl: "",
   videoUrl: "",
 
   nav: [
-    { label: "Dashboard", href: "/dashboard" },
-    { label: "Example flow", href: "/example" },
+    { label: "Timeline", href: "/timeline" },
+    { label: "Contracts", href: "/contracts" },
     { label: "Activity", href: "/activity" },
   ],
 
   landing: {
-    eyebrow: "Built on PayPal + Claude",
-    headline: "Let an AI agent run the payments busywork, with a human in the loop.",
+    eyebrow: "For couples juggling wedding vendors",
+    headline: "Never lose a vendor to a missed deposit.",
     subheadline:
-      "Authorize, capture, refund, invoice and pay out through PayPal. Every step the agent takes is visible, capped and auditable, and anything above your threshold waits for your approval.",
-    primaryCta: { label: "Open the app", href: "/dashboard" },
-    secondaryCta: { label: "See the example flow", href: "/example" },
+      "Every vendor buries its payment deadlines in a different contract. Paste them in. AI pulls out each deposit and balance, you check them against the exact sentences, and one timeline shows what is due next. When you approve, PayPal pays the vendor.",
+    primaryCta: { label: "Open your timeline", href: "/timeline" },
+    secondaryCta: { label: "Add a contract", href: "/contracts" },
     steps: [
-      { title: "Connect PayPal", body: "Sandbox credentials or zero-setup mock mode. Orders, payments, payouts, invoicing and disputes are ready." },
-      { title: "Give the agent a goal", body: "Claude plans the work and calls PayPal Agent Toolkit tools, plus guarded extensions for authorizations and payouts." },
-      { title: "Approve what matters", body: "Caps, allowlists and approval thresholds are enforced on every money-moving call, and each decision is logged." },
+      { title: "Add your contracts", body: "Paste the text or upload a file. Photographer, caterer, venue, florist, band: any wording." },
+      { title: "Check the terms", body: "AI shows each amount and date beside the sentence it came from. You confirm or fix them, and it flags anything missing or unclear." },
+      { title: "Pay on time", body: "One timeline shows every deposit and balance by date. You approve a payment, and PayPal sends it." },
     ],
     features: [
-      { title: "Live agent timeline", body: "Every model step and PayPal call appears as a card with status, amount and debug id." },
-      { title: "Human approval", body: "Money above your threshold pauses for a one-click approval. No silent transfers." },
-      { title: "Audit trail", body: "An append-only, hash-chained log of every request, approval and result." },
+      { title: "Sentences, not guesses", body: "Every amount and date sits beside the contract sentence it came from. If a term is missing, it is flagged, not filled in." },
+      { title: "Sums you can trust", body: "Balances and totals are worked out in code from the amounts you confirmed, never stated by the AI." },
+      { title: "Nothing moves without you", body: "Each payment waits for your approval, then the timeline shows the status PayPal reports." },
     ],
   },
 
-  /** Guard policy for this app's agents (merged over DEFAULT_POLICY). */
+  /** Guard policy (merged over DEFAULT_POLICY). A payment to a vendor always waits for a person. */
   agentPolicy: {
-    approvalThreshold: "50.00",
-    maxPerAction: "500.00",
-    maxPerDay: "2000.00",
+    approvalThreshold: "0.00",
+    maxPerAction: "20000.00",
+    maxPerDay: "100000.00",
+    allowedCounterparties: ["*@example.com", "*@*.example.com"],
+    requireApprovalFor: ["create_payout"],
   } satisfies Partial<GuardPolicy>,
 };
 

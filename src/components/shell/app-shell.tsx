@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useState, type ReactNode } from "react";
-import { Activity, FlaskConical, LayoutDashboard, Menu, X, type LucideIcon } from "lucide-react";
+import { Activity, CalendarClock, FileText, Menu, X, type LucideIcon } from "lucide-react";
 import { appConfig } from "@/app.config";
 import { cn } from "../ui/cn";
 import { AppLogo } from "./app-logo";
 import { ModeBadges } from "./mode-badges";
 
-const ICONS: Record<string, LucideIcon> = { "/dashboard": LayoutDashboard, "/example": FlaskConical, "/activity": Activity };
+const ICONS: Record<string, LucideIcon> = { "/timeline": CalendarClock, "/contracts": FileText, "/activity": Activity };
 
 /** usePathname() suspends on dynamic routes, so callers wrap this in <Suspense>. */
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
@@ -17,7 +17,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav className="flex flex-col gap-0.5">
       {appConfig.nav.map((item) => {
-        const Icon = ICONS[item.href] ?? LayoutDashboard;
+        const Icon = ICONS[item.href] ?? Activity;
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
           <Link
