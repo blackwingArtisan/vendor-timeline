@@ -87,7 +87,7 @@ function ReviewForm({ contract }: { contract: Contract }) {
         action={flagged ? <Badge tone="warning" dot>{flagged === 1 ? "1 term needs a look" : `${flagged} terms need a look`}</Badge> : <Badge tone="success">Nothing flagged</Badge>}
       />
       <Term name="vendor" label="Vendor" term={p.vendorName}>
-        <div className="grid gap-2 sm:grid-cols-[1fr_9rem]">
+        <div className="grid gap-2 sm:grid-cols-[1fr_11rem]">
           <Input aria-label="Vendor name" value={vendorName} onChange={(e) => setVendorName(e.target.value)} />
           <Select aria-label="Vendor type" value={vendorRole} onChange={(e) => setVendorRole(e.target.value as Contract["proposed"]["vendorRole"])}>
             {VENDOR_ROLES.map((role) => (
