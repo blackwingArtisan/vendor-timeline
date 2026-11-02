@@ -45,6 +45,21 @@ describe("isOtherAppsEvent", () => {
 
   it("keeps events that name nothing to check", () => {
     expect(isOtherAppsEvent(event("CUSTOMER.DISPUTE.CREATED", { dispute_id: "PP-D-1" }))).toBe(false);
-    expect(isOtherAppsEvent(event("PAYMENT.PAYOUTSBATCH.SUCCESS", { batch_header: { payout_batch_id: "B1" } }))).toBe(false);
+  });
+});
+
+describe("payouts on a shared PayPal app", () => {
+  const batch = (id: string) => ({ batch_header: { payout_batch_id: id, batch_status: "SUCCESS", sender_batch_header: {} }, items: [], links: [] });
+
+  it("keeps this app's batch and drops another app's", () => {
+    ingestPayPalResource(batch("BATCH-MINE"));
+    expect(isOtherAppsEvent(event("PAYMENT.PAYOUTSBATCH.SUCCESS", batch("BATCH-MINE")))).toBe(false);
+    expect(isOtherAppsEvent(event("PAYMENT.PAYOUTSBATCH.SUCCESS", batch("BATCH-THEIRS")))).toBe(true);
+  });
+
+  it("judges a payout item by its batch", () => {
+    ingestPayPalResource(batch("BATCH-MINE"));
+    expect(isOtherAppsEvent(event("PAYMENT.PAYOUTS-ITEM.SUCCEEDED", { payout_batch_id: "BATCH-MINE" }))).toBe(false);
+    expect(isOtherAppsEvent(event("PAYMENT.PAYOUTS-ITEM.SUCCEEDED", { payout_batch_id: "BATCH-THEIRS" }))).toBe(true);
   });
 });

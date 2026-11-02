@@ -1,13 +1,17 @@
 /**
- * APP-OWNED: register your webhook handlers here. Loaded once by the webhook pipeline.
- * Every verified event is already recorded in the ledger and shown on the timeline; add
- * handlers for side effects (fulfil an order, email a receipt, update your own records).
- *
- *   onWebhook("PAYMENT.CAPTURE.COMPLETED", async (event) => {
- *     const capture = event.resource;            // typed as Capture
- *     await markOrderPaid(capture.supplementary_data?.related_ids.order_id);
- *   });
+ * APP-OWNED: webhook handlers. A payout webhook only prompts a re-read from PayPal, and one for a
+ * batch this app didn't create is ignored. See refreshFromWebhook().
  */
+import { refreshFromWebhook } from "@/lib/wedding/pay";
 import { onWebhook } from "./webhooks";
 
-void onWebhook;
+for (const type of ["PAYMENT.PAYOUTS-ITEM.SUCCEEDED", "PAYMENT.PAYOUTS-ITEM.FAILED", "PAYMENT.PAYOUTS-ITEM.UNCLAIMED", "PAYMENT.PAYOUTS-ITEM.RETURNED", "PAYMENT.PAYOUTS-ITEM.BLOCKED", "PAYMENT.PAYOUTS-ITEM.HELD", "PAYMENT.PAYOUTS-ITEM.REFUNDED"] as const) {
+  onWebhook(type, async (event) => {
+    await refreshFromWebhook(event.resource.payout_batch_id);
+  });
+}
+for (const type of ["PAYMENT.PAYOUTSBATCH.SUCCESS", "PAYMENT.PAYOUTSBATCH.DENIED"] as const) {
+  onWebhook(type, async (event) => {
+    await refreshFromWebhook(event.resource.batch_header.payout_batch_id);
+  });
+}

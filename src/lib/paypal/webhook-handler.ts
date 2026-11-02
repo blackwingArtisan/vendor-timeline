@@ -22,15 +22,19 @@ function amountOf(event: AnyWebhookEvent) {
 
 /**
  * Sandbox entries share one PayPal app, and PayPal sends every webhook all of that app's events.
- * True only for an event that names an order, invoice or capture this app has never touched, so
- * one entry's payments stay out of another's ledger. Payouts, disputes and the rest pass through.
+ * True only for an event that names an order, invoice, capture or payout batch this app has never
+ * touched, so one entry's payments stay out of another's ledger. Disputes and the rest pass through.
  */
 export function isOtherAppsEvent(event: AnyWebhookEvent) {
   const r = event.resource as {
     id?: string;
     links?: { rel: string; href: string }[];
     supplementary_data?: { related_ids?: { order_id?: string } };
+    payout_batch_id?: string;
+    batch_header?: { payout_batch_id?: string };
   };
+  const batchId = r.payout_batch_id ?? r.batch_header?.payout_batch_id;
+  if (batchId) return !ledger.get("payout", batchId);
   const orderId = r.supplementary_data?.related_ids?.order_id ?? (event.event_type.startsWith("CHECKOUT.ORDER.") ? r.id : undefined);
   if (orderId) return !ledger.get("order", orderId);
   if (event.event_type.startsWith("INVOICING.INVOICE.")) {
