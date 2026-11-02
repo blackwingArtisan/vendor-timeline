@@ -12,7 +12,7 @@ A wedding means five or more vendors, each with its own contract, its own wordin
 
 ## What it does
 
-- **Add contracts.** Paste the text, upload a `.txt` file, try one of the five fictional samples, or load all five at once from the timeline.
+- **Add contracts.** Paste the text, upload a `.txt` or `.pdf` file, try one of the five fictional samples or the sample PDF, or load all five at once from the timeline.
 - **AI reads the payment terms.** Vendor, total, deposit and date, balance and date, each with the exact contract sentence it came from.
 - **You check them.** Terms sit beside their source sentences. You confirm or edit. Anything missing or unclear is flagged and left blank, and nothing reaches the timeline unconfirmed.
 - **One timeline.** Every deposit and balance by date and as bars per vendor, what's due next, what's overdue and the total due. Dates can be moved, and the original stays on the row.
@@ -93,7 +93,7 @@ npm run seed                      # optional demo data
 
 Open http://localhost:3000. For the real sandbox set `PAYPAL_MODE=sandbox`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`. For real AI set `ANTHROPIC_API_KEY`.
 
-Checks: `npm run check` (lint, typecheck, unit tests, build, no sponsor code in the bundle), `npm run test:e2e` (every flow on mock PayPal; `NEXT_PUBLIC_SPONSOR_UI=1 npm run test:e2e` runs it with the Gantt), `npm run test:e2e:sandbox` (the vendor and agent flows on the real sandbox, then re-reads the payouts from PayPal; add `E2E_BASE_URL` to run them against a deployed copy, which also requires the webhook). Run one Playwright suite at a time.
+Checks: `npm run check` (lint, typecheck, unit tests, build, no sponsor code in the bundle), `npm run test:e2e:limits` (five contracts at the real 6-a-minute limit, and AI credit running out), `npm run test:e2e:engines` with `ENGINE=webkit`, `firefox`, `iphone` or `android`, `npm run test:e2e` (every flow on mock PayPal; `NEXT_PUBLIC_SPONSOR_UI=1 npm run test:e2e` runs it with the Gantt), `npm run test:e2e:sandbox` (the vendor and agent flows on the real sandbox, then re-reads the payouts from PayPal; add `E2E_BASE_URL` to run them against a deployed copy, which also requires the webhook). Run one Playwright suite at a time.
 
 ## Sandbox test accounts
 
@@ -111,7 +111,7 @@ Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter th
 
 - Sandbox only; no live payments are possible.
 - Local JSON storage: data resets on redeploy (fine for a demo, not for production).
-- Contracts are plain text in this slice. PDFs and photos aren't read yet.
+- Contracts come in as pasted text, .txt or a PDF with real text in it. A scanned PDF or a photo isn't read: the app says so, and the terms can be typed in by hand.
 - All the sample contracts and vendors are fictional.
 - In sandbox, test accounts stand in for the couple's PayPal balance and for the vendor. Connecting a couple's own PayPal isn't built.
 - The optional PayPal remote MCP connector is read-only and untested.

@@ -73,6 +73,8 @@ export interface PaymentWebhook {
 
 export interface ContractRead {
   mocked: boolean;
+  /** No AI saw this one. The couple typed its terms in. */
+  skipped?: boolean;
   model?: string;
   costUsd: number;
 }

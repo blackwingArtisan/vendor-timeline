@@ -14,7 +14,7 @@
     "test:e2e": "playwright test -c playwright.config.ts",
     "test:e2e:sandbox": "playwright test -c playwright.sandbox.config.ts",
     "test:e2e:engines": "playwright test -c playwright.engines.config.ts",
-    "test:e2e:limits": "playwright test -c playwright.limits.config.ts",
+    "test:e2e:limits": "playwright test -c playwright.limits.config.ts && LIMIT_CASE=credit playwright test -c playwright.limits.config.ts",
     "demo:record": "playwright test -c playwright.demo.config.ts",
     "demo:mp4": "bash scripts/webm-to-mp4.sh",
     "seed": "tsx scripts/seed.ts",
@@ -34,6 +34,7 @@
     "next": "16.4.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "unpdf": "1.8.1",
     "zod": "4.6.7"
   },
   "devDependencies": {

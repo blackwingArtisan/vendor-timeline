@@ -4,7 +4,7 @@ import { HttpError } from "@/lib/http";
 import { collection } from "@/lib/store/collection";
 import { balanceCents, RuleError } from "./cents";
 import { isCalendarDay } from "./dates";
-import { readContract } from "./extract";
+import { blankContract, readContract } from "./extract";
 import type { ConfirmedTerms, Contract, ItemKind } from "./types";
 
 const contracts = () => collection<Contract>("contracts");
@@ -12,6 +12,12 @@ const contracts = () => collection<Contract>("contracts");
 export async function addContract(planId: string, input: { text: string; fileName?: string }): Promise<Contract> {
   const { proposed, read } = await readContract(input.text);
   return contracts().upsert({ id: `ctr_${randomUUID().slice(0, 8)}`, planId, createdAt: new Date().toISOString(), payments: {}, proposed, read, ...input });
+}
+
+/** The way forward when AI can't read a contract. Keeps whatever text there is, read by no one. */
+export function addUnreadContract(planId: string, input: { text?: string; fileName?: string }): Contract {
+  const text = input.text?.trim() || "No contract text was added. The terms below were typed in by hand.";
+  return contracts().upsert({ id: `ctr_${randomUUID().slice(0, 8)}`, planId, createdAt: new Date().toISOString(), payments: {}, ...blankContract(text), text, fileName: input.fileName });
 }
 
 export const listContracts = (planId: string) =>

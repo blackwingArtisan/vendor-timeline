@@ -119,7 +119,7 @@ function Row({ item, view, onPay, onMove, busy, onDecided, agentRunId }: { item:
             </div>
             {canPay ? (
               <Button size="sm" icon={<Send className="size-3.5" />} onClick={() => onPay(item)} loading={busy} disabled={busy} data-testid="pay-item">
-                {payLabel(item.vendorRole, item.vendorName)}
+                {payLabel(item.vendorRole)}
               </Button>
             ) : null}
             {canPay ? <MoveDate key={item.due} item={item} onMove={onMove} /> : null}

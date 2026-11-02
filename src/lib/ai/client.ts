@@ -12,7 +12,7 @@ import { singleton } from "../singleton";
 import { getBudget } from "./budget";
 import { modelLabel, SERVER_FALLBACK } from "./config";
 import { actualCostUsd, estimateInputTokens, worstCaseCostUsd } from "./cost";
-import { AiRefusalError, AiUnavailableError } from "./errors";
+import { AiCreditError, AiRefusalError, AiUnavailableError, isOutOfCredit } from "./errors";
 
 export type BetaCreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 export type BetaMessage = Anthropic.Beta.BetaMessage;
@@ -88,8 +88,9 @@ export async function guardedClaudeCall<M extends BetaMessage>(
     return { message, costUsd: cost };
   } catch (error) {
     if (!settled) budget.release(reservation);
-    step.fail(error);
-    throw error;
+    const failure = isOutOfCredit(error) ? new AiCreditError() : error;
+    step.fail(failure);
+    throw failure;
   }
 }
 

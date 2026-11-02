@@ -12,19 +12,21 @@ import { balanceCents, centsToDollars, formatCents, parseDollars } from "@/lib/w
 import { formatDay, isCalendarDay } from "@/lib/wedding/dates";
 import { VENDOR_ROLES, type Contract, type ProposedTerm } from "@/lib/wedding/types";
 
-function Term({ name, label, term, children }: { name: string; label: string; term: Pick<ProposedTerm<unknown>, "sentence" | "basis" | "flags">; children: ReactNode }) {
+function Term({ name, label, term, byHand, children }: { name: string; label: string; term: Pick<ProposedTerm<unknown>, "sentence" | "basis" | "flags">; byHand?: boolean; children: ReactNode }) {
   return (
-    <div data-testid={`term-${name}`} className="grid gap-x-6 gap-y-2 border-b border-zinc-100 px-5 py-4 last:border-b-0 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+    <div data-testid={`term-${name}`} className={`grid gap-x-6 gap-y-2 border-b border-zinc-100 px-5 py-4 last:border-b-0 ${byHand ? "" : "md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]"}`}>
       <div>
         <p className="mb-1.5 text-sm font-medium text-zinc-700">{label}</p>
         {children}
         {term.basis ? <p className="mt-1.5 text-xs text-zinc-500" data-testid={`basis-${name}`}>{term.basis}</p> : null}
       </div>
-      <blockquote className="flex gap-2 text-sm leading-relaxed text-zinc-600 md:pt-6" data-testid={`source-${name}`}>
-        <Quote className="mt-1 size-3.5 shrink-0 text-brand-300" />
-        {term.sentence ? <span>{term.sentence}</span> : <span className="italic text-zinc-400">No sentence in the contract for this.</span>}
-      </blockquote>
-      {term.flags.length ? (
+      {byHand ? null : (
+        <blockquote className="flex gap-2 text-sm leading-relaxed text-zinc-600 md:pt-6" data-testid={`source-${name}`}>
+          <Quote className="mt-1 size-3.5 shrink-0 text-brand-300" />
+          {term.sentence ? <span>{term.sentence}</span> : <span className="italic text-zinc-400">No sentence in the contract for this.</span>}
+        </blockquote>
+      )}
+      {term.flags.length && !byHand ? (
         <ul className="space-y-1 md:col-span-2" data-testid={`flag-${name}`}>
           {term.flags.map((flag) => (
             <li key={flag} className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -78,15 +80,17 @@ function ReviewForm({ contract }: { contract: Contract }) {
   }
 
   const flagged = [p.vendorName, p.payeeEmail, p.totalCents, p.depositCents, p.depositDue, p.balanceCents, p.balanceDue].filter((t) => t.flags.length).length;
+  // No AI read this one, so there's nothing to check it against. Only the empty boxes remain.
+  const byHand = !!contract.read.skipped;
 
   return (
     <Card>
       <CardHeader
-        title="Check each term against the contract"
+        title={byHand ? "Enter each term from your contract" : "Check each term against the contract"}
         description="Your confirmed numbers are the only ones that reach the timeline."
-        action={flagged ? <Badge tone="warning" dot>{flagged === 1 ? "1 term needs a look" : `${flagged} terms need a look`}</Badge> : <Badge tone="success">Nothing flagged</Badge>}
+        action={byHand ? null : flagged ? <Badge tone="warning" dot>{flagged === 1 ? "1 term needs a look" : `${flagged} terms need a look`}</Badge> : <Badge tone="success">Nothing flagged</Badge>}
       />
-      <Term name="vendor" label="Vendor" term={p.vendorName}>
+      <Term byHand={byHand} name="vendor" label="Vendor" term={p.vendorName}>
         <div className="grid gap-2 sm:grid-cols-[1fr_11rem]">
           <Input aria-label="Vendor name" value={vendorName} onChange={(e) => setVendorName(e.target.value)} />
           <Select aria-label="Vendor type" value={vendorRole} onChange={(e) => setVendorRole(e.target.value as Contract["proposed"]["vendorRole"])}>
@@ -96,25 +100,25 @@ function ReviewForm({ contract }: { contract: Contract }) {
           </Select>
         </div>
       </Term>
-      <Term name="email" label="PayPal email to pay" term={p.payeeEmail}>
+      <Term byHand={byHand} name="email" label="PayPal email to pay" term={p.payeeEmail}>
         <Input aria-label="PayPal email to pay" type="email" value={payeeEmail} onChange={(e) => setPayeeEmail(e.target.value)} placeholder="Ask the vendor" />
       </Term>
-      <Term name="total" label="Total" term={p.totalCents}>
+      <Term byHand={byHand} name="total" label="Total" term={p.totalCents}>
         <MoneyInput aria-label="Total" value={total} onChange={(e) => setTotal(e.target.value)} />
       </Term>
-      <Term name="deposit" label="Deposit" term={p.depositCents}>
+      <Term byHand={byHand} name="deposit" label="Deposit" term={p.depositCents}>
         <MoneyInput aria-label="Deposit" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
       </Term>
-      <Term name="deposit-due" label="Deposit due" term={p.depositDue}>
+      <Term byHand={byHand} name="deposit-due" label="Deposit due" term={p.depositDue}>
         <Input aria-label="Deposit due" type="date" value={depositDue} onChange={(e) => setDepositDue(e.target.value)} />
       </Term>
-      <Term name="balance" label="Balance" term={{ ...p.balanceCents, basis: "Total minus deposit, worked out by the app" }}>
+      <Term byHand={byHand} name="balance" label="Balance" term={{ ...p.balanceCents, basis: "Total minus deposit, worked out by the app" }}>
         <p className="flex h-10 items-center font-mono text-lg font-semibold tabular-nums text-zinc-900" data-testid="balance-value">
           {balance !== null ? formatCents(balance) : "Enter the total and deposit"}
         </p>
       </Term>
       {balance === 0 ? null : (
-        <Term name="balance-due" label="Balance due" term={p.balanceDue}>
+        <Term byHand={byHand} name="balance-due" label="Balance due" term={p.balanceDue}>
           <Input aria-label="Balance due" type="date" value={balanceDue} onChange={(e) => setBalanceDue(e.target.value)} />
         </Term>
       )}
@@ -177,8 +181,8 @@ export function ReviewScreen() {
       <PageHeader
         eyebrow={<Link href="/contracts" className="hover:underline">Contracts</Link>}
         title={name}
-        description={contract.proposed.eventDate.value ? `Wedding day in this contract: ${formatDay(contract.proposed.eventDate.value)}` : "This contract doesn't give a clear wedding day."}
-        actions={<span data-testid="read-by"><Badge tone={read.mocked ? "neutral" : "brand"}>{read.mocked ? "Simulated read (AI mock)" : `Read by ${read.model}`}</Badge></span>}
+        description={read.skipped ? "Fill in the terms from your copy of the contract." : contract.proposed.eventDate.value ? `Wedding day in this contract: ${formatDay(contract.proposed.eventDate.value)}` : "This contract doesn't give a clear wedding day."}
+        actions={<span data-testid="read-by"><Badge tone={read.mocked || read.skipped ? "neutral" : "brand"}>{read.skipped ? "Not read by AI" : read.mocked ? "Simulated read (AI mock)" : `Read by ${read.model}`}</Badge></span>}
       />
       {contract.confirmed ? <ConfirmedSummary contract={contract} /> : <ReviewForm contract={contract} />}
       <details className="mt-6 rounded-2xl border border-zinc-200/80 bg-white px-5 py-4">

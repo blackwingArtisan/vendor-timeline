@@ -13,11 +13,24 @@ export class AiBudgetExceededError extends Error {
     readonly spentUsd: number,
     readonly estimateUsd: number,
   ) {
-    super(
-      `AI daily spend cap reached: $${spentUsd.toFixed(4)} spent of $${capUsd.toFixed(2)}; this call could cost up to $${estimateUsd.toFixed(4)}. Resets at 00:00 UTC.`,
-    );
+    super("This copy of the app has reached today's AI spending limit, so AI is off until tomorrow.");
     this.name = "AiBudgetExceededError";
   }
+}
+
+/** The Anthropic account behind the app has no credit left. Reads and the agent stop here. */
+export class AiCreditError extends Error {
+  readonly status = 402;
+  constructor() {
+    super("The AI has run out of credit, so it can't help right now.");
+    this.name = "AiCreditError";
+  }
+}
+
+/** The API says this with a 400 and these words, and may yet use 402. */
+export function isOutOfCredit(error: unknown): boolean {
+  const e = error as { status?: unknown; message?: unknown };
+  return e?.status === 402 || (e?.status === 400 && /credit balance/i.test(String(e?.message)));
 }
 
 export class AiRefusalError extends Error {

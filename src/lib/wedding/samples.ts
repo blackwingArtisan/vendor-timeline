@@ -95,3 +95,6 @@ export const BAND_ANSWERS = { payeeEmail: "bookings@velvet-almanacs.example.com"
 export const SAMPLES = [PHOTOGRAPHER, CATERER, VENUE, FLORIST, BAND];
 
 export const sampleUrl = (sample: SampleFacts) => `/sample-contracts/${sample.file}`;
+
+/** The photographer's contract as a PDF, made by scripts/make-sample-pdf.mjs. */
+export const SAMPLE_PDF = "photographer.pdf";

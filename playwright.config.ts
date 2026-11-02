@@ -25,8 +25,9 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
   webServer: {
-    // A dev cache left by the last run makes the page reload forever, so every run starts clean.
-    command: `rm -rf ${DIST_DIR}/dev && npx next dev --port ${PORT}`,
+    // A dev cache left by the last run makes the page reload forever, and old data skews the money
+    // checks, so every run starts clean.
+    command: `rm -rf ${DIST_DIR}/dev .data-e2e && npx next dev --port ${PORT}`,
     url: `http://localhost:${PORT}/api/kit/status`,
     reuseExistingServer: false,
     timeout: 120_000,

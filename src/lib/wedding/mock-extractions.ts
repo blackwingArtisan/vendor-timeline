@@ -86,7 +86,7 @@ const blankDate = { timing: "not_stated", date: null, days: null, sentence: null
 const blankText = { value: null, sentence: null, problem: null };
 
 /** A contract with no fixture: nothing is read, so the couple sees every term flagged. */
-const UNREAD: Extraction = {
+export const UNREAD: Extraction = {
   vendor_name: blankText,
   vendor_role: "other",
   payee_email: blankText,
@@ -100,5 +100,7 @@ const UNREAD: Extraction = {
 };
 
 export function mockExtraction(text: string): Extraction {
-  return FIXTURES.find((f) => text.includes(f.marker))?.extraction ?? UNREAD;
+  // A PDF breaks its lines in new places, so a name can land across two.
+  const flat = text.replace(/\s+/g, " ");
+  return FIXTURES.find((f) => flat.includes(f.marker))?.extraction ?? UNREAD;
 }

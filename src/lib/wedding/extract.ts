@@ -2,7 +2,7 @@
 import { generateObject } from "@/lib/ai";
 import { modelLabel } from "@/lib/ai/config";
 import { Extraction } from "./extraction-schema";
-import { mockExtraction } from "./mock-extractions";
+import { mockExtraction, UNREAD } from "./mock-extractions";
 import { toProposedTerms } from "./review";
 import type { ContractRead, ProposedTerms } from "./types";
 
@@ -28,4 +28,9 @@ export async function readContract(text: string): Promise<{ proposed: ProposedTe
     mock: () => mockExtraction(text),
   });
   return { proposed: toProposedTerms(data, text), read: { mocked, model: model ? modelLabel(model) : undefined, costUsd } };
+}
+
+/** Every term blank and flagged, for the couple to fill in from their own copy. */
+export function blankContract(text: string): { proposed: ProposedTerms; read: ContractRead } {
+  return { proposed: toProposedTerms(UNREAD, text), read: { mocked: false, skipped: true, costUsd: 0 } };
 }

@@ -52,4 +52,4 @@ export function buildTimeline(contracts: Contract[], today: string, monthlyBudge
   };
 }
 
-export const payLabel = (role: VendorRole, vendorName: string) => `Pay ${role === "other" ? vendorName : role}`;
+export const payLabel = (role: VendorRole) => `Pay ${role === "other" ? "vendor" : role}`;

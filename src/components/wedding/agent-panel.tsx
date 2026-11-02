@@ -5,7 +5,7 @@ import { Bot, Send } from "lucide-react";
 import { PacedWait } from "@/components/wedding/paced-wait";
 import { PayApproval } from "@/components/wedding/pay-approval";
 import { usePaced, WaitStopped } from "@/components/wedding/use-paced";
-import { useKit } from "@/components/kit/kit-provider";
+import { ApiError, useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, Input, type Tone } from "@/components/ui";
 import type { TimelineStep } from "@/lib/events/types";
@@ -31,6 +31,7 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
   const [runId, setRunId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const { paced, waitSeconds, stopWaiting } = usePaced();
+  const [blocked, setBlocked] = useState<string | null>(null);
 
   const runSteps = useMemo(() => steps.filter((s) => s.runId === runId), [steps, runId]);
   const messages = runSteps.filter((s) => s.kind === "agent.message");
@@ -43,12 +44,14 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
 
   async function ask() {
     setStarting(true);
+    setBlocked(null);
     try {
       const { run: started } = await paced(() => kitFetch<{ run: { id: string } }>("/api/agent/runs", { json: { agentId: "payments", goal, today: localToday() } }));
       setRunId(started.id);
       onRun(started.id);
     } catch (e) {
-      if (!(e instanceof WaitStopped)) toast({ title: "The agent couldn't start", description: (e as Error).message, variant: "error" });
+      if (e instanceof ApiError && (e.status === 402 || e.status === 429)) setBlocked(`${e.message} The agent can't start, and no money has moved. You can still pay from the timeline.`);
+      else if (!(e instanceof WaitStopped)) toast({ title: "The agent couldn't start", description: (e as Error).message, variant: "error" });
     } finally {
       setStarting(false);
     }
@@ -75,6 +78,7 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
           </Button>
         </form>
         {waitSeconds !== null ? <PacedWait className="mt-3" seconds={waitSeconds} what="agent" onStop={stopWaiting} testId="agent-wait" /> : null}
+        {blocked ? <p className="mt-3 text-sm text-red-700" data-testid="agent-blocked">{blocked}</p> : null}
         {messages.length ? (
           <ul className="mt-3 space-y-1.5 text-sm text-zinc-700" data-testid="agent-messages">
             {messages.map((m) => (
@@ -82,7 +86,11 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
             ))}
           </ul>
         ) : null}
-        {run?.status === "failed" ? <p className="mt-3 text-sm text-red-700" data-testid="agent-error">{run.detail}</p> : null}
+        {run?.status === "failed" ? (
+          <p className="mt-3 text-sm text-red-700" data-testid="agent-error">
+            {`${run.detail} The agent has stopped, and it can't pay anyone without your approval. You can still pay from the timeline.`}
+          </p>
+        ) : null}
         {pending?.approval ? (
           <PayApproval key={pending.approval.id} className="mt-3" item={pending} approval={pending.approval} cash={cash} sandbox={sandbox} onDecided={onDecided} />
         ) : null}
