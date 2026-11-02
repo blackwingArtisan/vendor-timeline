@@ -17,6 +17,20 @@ export function isCalendarDay(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && fromUtc(toUtc(value)) === value;
 }
 
+const realDay = (day: string) => (isCalendarDay(day) ? day : null);
+
+/** Reads a day however a contract writes it, because the model sometimes copies it as written. */
+export function parseDay(value: string): string | null {
+  const text = value.trim().toLowerCase();
+  if (isCalendarDay(text)) return text;
+  const pad = (n: string | number) => String(n).padStart(2, "0");
+  const numeric = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (numeric) return realDay(`${numeric[3]}-${pad(numeric[1])}-${pad(numeric[2])}`);
+  const named = text.match(/([a-z]{3,9})\.? (\d{1,2})(?:st|nd|rd|th)?,? (\d{4})$/);
+  const month = named ? MONTHS.findIndex((m) => m.startsWith(named[1])) : -1;
+  return named && month >= 0 ? realDay(`${named[3]}-${pad(month + 1)}-${pad(named[2])}`) : null;
+}
+
 export const addDays = (day: string, days: number) => fromUtc(toUtc(day) + days * DAY_MS);
 
 /** Whole days from `from` to `to`. Negative when `to` is earlier. */

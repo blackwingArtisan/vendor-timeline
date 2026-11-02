@@ -124,6 +124,28 @@ describe("what the AI can't be trusted with", () => {
     expect(signing.depositDue.value).toBeNull();
   });
 
+  it.each(["June 12, 2027", "Saturday, June 12, 2027", "Jun. 12 2027", "June 12th, 2027", "6/12/2027", "06-12-2027"])("reads a wedding day written %s", (value) => {
+    const terms = toProposedTerms({ ...base, event_date: { value, sentence: null, problem: null } }, contract);
+    expect(terms.eventDate.value).toBe("2027-06-12");
+    expect(terms.eventDate.flags).toEqual([]);
+    expect(terms.balanceDue.value).toBe("2027-06-02");
+  });
+
+  it("reads a due date written out in words", () => {
+    expect(toProposedTerms({ ...base, deposit_due: { ...base.deposit_due, date: "March 3, 2027" } }, contract).depositDue.value).toBe("2027-03-03");
+  });
+
+  it("flags a wedding day that isn't in its sentence", () => {
+    const terms = toProposedTerms({ ...base, event_date: { value: "2027-06-19", sentence: "The balance of $900.00 is due 10 days before the wedding on June 12, 2027.", problem: null } }, contract);
+    expect(terms.eventDate.flags[0]).toContain("isn't in the sentence");
+  });
+
+  it.each(["Junuary 12, 2027", "June 31, 2027", "13/40/2027", "next June"])("won't guess a day from %s", (value) => {
+    const terms = toProposedTerms({ ...base, event_date: { value, sentence: null, problem: null } }, contract);
+    expect(terms.eventDate.value).toBeNull();
+    expect(terms.eventDate.flags.join(" ")).toContain("clear wedding day");
+  });
+
   it("refuses a day that doesn't exist", () => {
     const terms = toProposedTerms({ ...base, deposit_due: { ...base.deposit_due, date: "2027-02-30" } }, contract);
     expect(terms.depositDue.value).toBeNull();

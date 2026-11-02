@@ -7,6 +7,8 @@ const problem = z.string().nullable().describe("If this term is missing or uncle
 
 const TextTerm = z.object({ value: z.string().nullable(), sentence, problem });
 
+const DayTerm = z.object({ value: z.string().nullable().describe("The date as YYYY-MM-DD, however the contract writes it. Null if it doesn't state one."), sentence, problem });
+
 const AmountTerm = z.object({
   written: z.string().nullable().describe('The amount exactly as the contract writes it, such as "$4,800.00" or "25%". Null if the contract states no figure for it. Never work one out.'),
   sentence,
@@ -25,8 +27,8 @@ export const Extraction = z.object({
   vendor_name: TextTerm,
   vendor_role: z.enum(VENDOR_ROLES),
   payee_email: TextTerm.describe("The email address the contract says to pay."),
-  event_date: TextTerm.describe("The wedding day as YYYY-MM-DD."),
-  signing_date: TextTerm.describe("The date of the contract as YYYY-MM-DD, if it states one."),
+  event_date: DayTerm.describe("The wedding day."),
+  signing_date: DayTerm.describe("The date of the contract, if it states one."),
   total: AmountTerm.describe("The vendor's whole price."),
   deposit: AmountTerm.describe("The first payment that holds the date, which may be called a deposit, retainer or booking payment."),
   deposit_due: DateTerm,

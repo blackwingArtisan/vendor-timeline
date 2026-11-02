@@ -5,12 +5,13 @@
  * minus deposit. A term that can't be read stays null with a flag. It is never guessed.
  */
 import { balanceCents, dollarFigures, formatCents, parseWrittenAmount, percentFigures, percentOfCents } from "./cents";
-import { addDays, formatDay, isCalendarDay, sentenceNamesDay } from "./dates";
+import { addDays, formatDay, parseDay, sentenceNamesDay } from "./dates";
 import type { Extraction } from "./extraction-schema";
 import type { ProposedTerm, ProposedTerms } from "./types";
 
 const NOT_FOUND = "This sentence isn't word for word in the contract. Check the contract yourself.";
 const FIGURE_NOT_IN_SENTENCE = "That figure isn't in the sentence shown. Check it against the contract.";
+const DATE_NOT_IN_SENTENCE = "That date isn't in the sentence shown. Check it against the contract.";
 
 const normalize = (text: string) => text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ").trim().toLowerCase();
 
@@ -34,7 +35,7 @@ function emailTerm(t: Extraction["payee_email"], contract: string): ProposedTerm
 }
 
 function dayValue(t: Extraction["event_date"]): string | null {
-  return t.value && isCalendarDay(t.value) ? t.value : null;
+  return t.value ? parseDay(t.value) : null;
 }
 
 function totalTerm(t: Extraction["total"], contract: string): ProposedTerm<number> {
@@ -69,8 +70,9 @@ function dueTerm(t: Extraction["deposit_due"], label: string, eventDay: string |
   const whole = t.days !== null && Number.isInteger(t.days) && t.days >= 0 ? t.days : null;
   switch (t.timing) {
     case "fixed_date": {
-      if (!t.date || !isCalendarDay(t.date)) return term<string>(null, t.sentence, contract, [t.problem, unclear]);
-      return term(t.date, t.sentence, contract, [t.problem, t.sentence && !sentenceNamesDay(t.sentence, t.date) ? "That date isn't in the sentence shown. Check it against the contract." : null]);
+      const day = t.date ? parseDay(t.date) : null;
+      if (!day) return term<string>(null, t.sentence, contract, [t.problem, unclear]);
+      return term(day, t.sentence, contract, [t.problem, t.sentence && !sentenceNamesDay(t.sentence, day) ? DATE_NOT_IN_SENTENCE : null]);
     }
     case "days_before_event": {
       if (whole === null || !eventDay) return term<string>(null, t.sentence, contract, [t.problem, eventDay ? unclear : "This date depends on the wedding day, which the contract doesn't state. Enter it."]);
@@ -98,7 +100,7 @@ export function toProposedTerms(x: Extraction, contract: string): ProposedTerms 
     vendorName: textTerm(x.vendor_name, contract, "The contract doesn't name the vendor. Enter it."),
     vendorRole: x.vendor_role,
     payeeEmail: emailTerm(x.payee_email, contract),
-    eventDate: term(eventDay, x.event_date.sentence, contract, [x.event_date.problem, eventDay ? null : "The contract doesn't give a clear wedding day."]),
+    eventDate: term(eventDay, x.event_date.sentence, contract, [x.event_date.problem, eventDay ? (x.event_date.sentence && !sentenceNamesDay(x.event_date.sentence, eventDay) ? DATE_NOT_IN_SENTENCE : null) : "The contract doesn't give a clear wedding day."]),
     totalCents,
     depositCents,
     depositDue: dueTerm(x.deposit_due, "deposit", eventDay, signingDay, contract),
