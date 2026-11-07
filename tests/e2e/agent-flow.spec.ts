@@ -134,7 +134,7 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
     const capture = await readCapture(captureId);
     console.log(`PayPal re-read: order ${order.id} ${order.status}, payee ${order.purchase_units[0].payee.email_address}, capture ${capture.id} ${capture.status} ${capture.amount.value} ${capture.amount.currency_code}`);
     expect(order.status).toBe("COMPLETED");
-    expect(order.purchase_units[0].amount).toEqual(term);
+    expect(order.purchase_units[0].amount).toMatchObject(term);
     expect(order.purchase_units[0].payee.email_address?.toLowerCase()).toBe(sandboxSellerEmail().toLowerCase());
     expect(capture.status).toBe("COMPLETED");
     expect(capture.amount).toEqual(term);

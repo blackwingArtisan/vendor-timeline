@@ -10,7 +10,8 @@ const SIZE = { width: 1440, height: 900 };
 const PAYPAL_MODE = process.env.DEMO_PAYPAL_MODE ?? process.env.PAYPAL_MODE ?? "mock";
 // Start clean, so the audit log on screen is only this story. Sandbox has no reset route, so fill
 // its ledger with the shared seed data.
-const SETUP = `rm -rf .data-demo && ${PAYPAL_MODE === "sandbox" ? "npx tsx scripts/seed.ts --sandbox && " : ""}`;
+// No kit seed: the app's ledger holds only its own PayPal orders.
+const SETUP = "rm -rf .data-demo && ";
 
 export default defineConfig({
   testDir: "demo",

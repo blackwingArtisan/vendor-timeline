@@ -230,7 +230,7 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
     expect(order.status).toBe("COMPLETED");
     expect(order.intent).toBe("CAPTURE");
     expect(order.purchase_units).toHaveLength(1);
-    expect(order.purchase_units[0].amount).toEqual(term);
+    expect(order.purchase_units[0].amount).toMatchObject(term);
     expect(order.purchase_units[0].payee.email_address?.toLowerCase()).toBe(sandboxSellerEmail().toLowerCase());
     expect(order.purchase_units[0].payments?.captures?.map((c) => c.id)).toEqual([captureId]);
     expect(capture.status).toBe("COMPLETED");

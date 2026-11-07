@@ -17,10 +17,31 @@ export async function payInCheckout(page: Page, box: Locator, sandbox: boolean, 
   await page.waitForURL(/\/timeline/, { timeout: 120_000 });
 }
 
+/**
+ * PayPal opens one of three screens: its card form; its login page, which links to the card form; or a
+ * guest page that asks for an email first. Step through whichever it shows until the card form is up.
+ */
+async function openCardForm(page: Page) {
+  const card = page.locator("#cardNumber");
+  const cardLink = page.getByRole("button", { name: "Pay with Debit or Credit Card" });
+  const guestEmail = page.getByRole("button", { name: "Continue to Payment" });
+  for (let step = 0; step < 4; step++) {
+    await expect(card.or(cardLink).or(guestEmail).first()).toBeVisible({ timeout: 60_000 });
+    if (await card.isVisible()) return;
+    if (await cardLink.isVisible()) await cardLink.click();
+    else {
+      await page.getByRole("textbox", { name: "Email" }).fill("couple@example.com");
+      await guestEmail.click();
+    }
+    await card.waitFor({ timeout: 8_000 }).catch(() => undefined);
+  }
+  await card.waitFor({ timeout: 30_000 });
+}
+
 /** PayPal's guest card form, on PayPal's checkout page. */
 export async function payAsGuest(page: Page, { typingDelay = 15, beforePay }: { typingDelay?: number; beforePay?: () => Promise<void> } = {}) {
   const card = page.locator("#cardNumber");
-  await card.waitFor({ timeout: 60_000 });
+  await openCardForm(page);
   await card.pressSequentially("4111111111111111", { delay: typingDelay });
   await page.locator("#cardExpiry").pressSequentially("1230", { delay: typingDelay });
   await page.locator("#cardCvv").pressSequentially("123", { delay: typingDelay });
@@ -37,5 +58,5 @@ export async function payAsGuest(page: Page, { typingDelay = 15, beforePay }: { 
   if ((await createAccount.count()) && (await createAccount.isChecked())) await createAccount.evaluate((el: HTMLInputElement) => el.click());
   if (await createAccount.count()) await expect(createAccount).not.toBeChecked();
   await beforePay?.();
-  await page.getByRole("button", { name: "Pay now as guest" }).click();
+  await page.getByRole("button", { name: /^Pay now( as guest)?$/i }).click();
 }
