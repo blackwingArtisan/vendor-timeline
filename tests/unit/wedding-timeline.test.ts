@@ -60,6 +60,12 @@ describe("buildTimeline", () => {
     expect(view.overdue).toEqual([]);
   });
 
+  it("keeps a past-due payment overdue while it waits on approval or the checkout", () => {
+    const view = buildTimeline([contract("a", terms({ depositDue: "2026-10-01" }), { deposit: payment("awaiting_checkout", 25_000) })], "2026-11-20");
+    expect(view.items[0].status).toBe("awaiting_checkout");
+    expect(view.overdue.map((i) => i.kind)).toEqual(["deposit"]);
+  });
+
   it("counts money as due until PayPal says it was paid", () => {
     const view = buildTimeline([contract("a", terms(), { deposit: payment("sending", 25_000) })], "2026-11-20");
     expect(view.items[0].status).toBe("sending");

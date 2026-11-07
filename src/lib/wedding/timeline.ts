@@ -41,7 +41,8 @@ export function buildTimeline(contracts: Contract[], today: string, monthlyBudge
   return {
     today,
     items,
-    overdue: items.filter((i) => i.status === "overdue"),
+    // Past due until PayPal says paid, even while it waits on an approval or the checkout.
+    overdue: unpaid.filter((i) => i.daysUntil < 0),
     nextDue: unpaid.find((i) => i.daysUntil >= 0 && i.status !== "sending") ?? null,
     payFirst: unpaid.find((i) => i.status === "overdue") ?? unpaid.find((i) => i.status === "due_today" || i.status === "upcoming") ?? null,
     totalDueCents: sumCents(unpaid.map((i) => i.cents)),

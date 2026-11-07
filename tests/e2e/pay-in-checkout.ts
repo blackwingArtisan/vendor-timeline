@@ -20,13 +20,18 @@ export async function payInCheckout(page: Page, box: Locator, sandbox: boolean, 
 /**
  * PayPal opens one of three screens: its card form; its login page, which links to the card form; or a
  * guest page that asks for an email first. Step through whichever it shows until the card form is up.
+ * The sandbox login page sometimes never finishes loading its card link; a reload brings it back.
  */
 async function openCardForm(page: Page) {
   const card = page.locator("#cardNumber");
   const cardLink = page.getByRole("button", { name: "Pay with Debit or Credit Card" });
   const guestEmail = page.getByRole("button", { name: "Continue to Payment" });
-  for (let step = 0; step < 4; step++) {
-    await expect(card.or(cardLink).or(guestEmail).first()).toBeVisible({ timeout: 60_000 });
+  const anyStep = card.or(cardLink).or(guestEmail).first();
+  for (let step = 0, reloads = 0; step < 4; step++) {
+    while (!(await anyStep.waitFor({ timeout: 25_000 }).then(() => true, () => false))) {
+      if (++reloads > 2) await expect(anyStep).toBeVisible({ timeout: 1_000 });
+      await page.reload();
+    }
     if (await card.isVisible()) return;
     if (await cardLink.isVisible()) await cardLink.click();
     else {

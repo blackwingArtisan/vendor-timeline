@@ -108,9 +108,12 @@ test("demo", async ({ page }) => {
   await deposit.scrollIntoViewIfNeeded();
   await highlight(page, deposit.getByTestId("paypal-proof"), 2600);
   const confirmedBy = await deposit.getByTestId("paid-by").innerText();
-  await caption(page, `Paid. PayPal's capture reads COMPLETED${confirmedBy.includes("webhook") ? ", and PayPal's webhook for it arrived" : ", read back from PayPal's API"}. The capture id is right there.`);
+  await caption(page, `Paid. PayPal's capture reads COMPLETED${confirmedBy.startsWith("Confirmed by PayPal webhook") ? ", and PayPal's webhook for it arrived" : ", read back from PayPal's API"}. The capture id is right there.`);
   clock.check("paid");
 
   await titleCard(page, "Wedding Vendor Timeline", "PayPal Orders checkout, capture re-reads, webhooks and Claude", 2600);
   clock.check("end");
+  const after = await (await page.request.get("/api/kit/status")).json();
+  console.log(`[demo] PayPal ${after.paypal.mode}, AI ${after.ai.mode}, AI spend today: ${JSON.stringify(after.ai.budget)}`);
+  console.log(`[demo] Paid: ${await deposit.getByTestId("paypal-proof").innerText()}`);
 });

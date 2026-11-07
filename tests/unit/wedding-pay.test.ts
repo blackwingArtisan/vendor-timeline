@@ -100,6 +100,8 @@ describe("paying", () => {
     let view = await viewTimeline(contract.planId, "2026-11-20");
     expect(view.items[0]).toMatchObject({ status: "awaiting_approval", approval: { summary: "Pay Quillfeather Photo Studio $1,200.00 for the deposit" } });
     expect(view.totalDueCents).toBe(PHOTOGRAPHER.totalCents);
+    // Waiting on the couple doesn't stop a late payment counting as overdue.
+    expect((await viewTimeline(contract.planId, "2027-01-01")).overdue).toMatchObject([{ id: view.items[0].id, status: "awaiting_approval" }]);
 
     getApprovals().decide(approval.id, "approved", "couple");
     await finished;

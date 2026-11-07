@@ -37,6 +37,8 @@ export default defineConfig({
     env: {
       PAYPAL_MODE,
       AI_MODE: process.env.DEMO_AI_MODE ?? "mock",
+      // A live-AI recording spends at most 40 cents; it usually spends under one.
+      AI_DAILY_CAP_USD: process.env.DEMO_AI_CAP_USD ?? "0.40",
       KIT_DATA_DIR: ".data-demo",
       MOCK_PAYPAL_LATENCY_MS: "250-600",
       DEMO_TEST_CARD: "1",
