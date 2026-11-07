@@ -9,16 +9,15 @@ import type { Contract, ItemKind, ItemStatus, Payment, TimelineItem, TimelineVie
 
 export const itemId = (contractId: string, kind: ItemKind) => `${contractId}.${kind}`;
 
-/** What a payout's status means for the couple. A batch that says SUCCESS doesn't mean this item was paid. */
-export function paymentState(itemStatus: string | undefined, batchStatus: string): Payment["state"] {
-  if (itemStatus === "SUCCESS") return "paid";
-  if (itemStatus && ["FAILED", "RETURNED", "BLOCKED", "REFUNDED", "REVERSED"].includes(itemStatus)) return "failed";
-  if (batchStatus === "DENIED" || batchStatus === "CANCELED") return "failed";
+/** What PayPal's capture status means for the couple. Only COMPLETED is money that arrived. */
+export function captureState(status: string | undefined): Payment["state"] {
+  if (status === "COMPLETED") return "paid";
+  if (status && ["DECLINED", "FAILED", "REFUNDED", "PARTIALLY_REFUNDED"].includes(status)) return "failed";
   return "sending";
 }
 
 function itemStatus(payment: Payment | undefined, daysUntil: number): ItemStatus {
-  if (payment?.state === "paid" || payment?.state === "sending" || payment?.state === "awaiting_approval") return payment.state;
+  if (payment && payment.state !== "failed") return payment.state;
   if (daysUntil < 0) return "overdue";
   return daysUntil === 0 ? "due_today" : "upcoming";
 }
@@ -44,6 +43,7 @@ export function buildTimeline(contracts: Contract[], today: string, monthlyBudge
     items,
     overdue: items.filter((i) => i.status === "overdue"),
     nextDue: unpaid.find((i) => i.daysUntil >= 0 && i.status !== "sending") ?? null,
+    payFirst: unpaid.find((i) => i.status === "overdue") ?? unpaid.find((i) => i.status === "due_today" || i.status === "upcoming") ?? null,
     totalDueCents: sumCents(unpaid.map((i) => i.cents)),
     paidCents: sumCents(items.filter((i) => i.status === "paid").map((i) => i.cents)),
     contractedCents: sumCents(contracts.map((c) => c.confirmed?.totalCents ?? 0)),

@@ -35,7 +35,7 @@ function humanize(name: string) {
 function directionFor(tool: AgentTool): MoneyDirection | undefined {
   if (tool.risk === "read") return undefined;
   if (/void/.test(tool.name)) return "neutral";
-  if (/refund|payout|accept_dispute/.test(tool.name)) return "out";
+  if (/refund|payout|vendor_order|accept_dispute/.test(tool.name)) return "out";
   if (/authoriz/.test(tool.name) && !/capture/.test(tool.name)) return "hold";
   if (/capture|pay_order|charge/.test(tool.name)) return "in";
   return "neutral";

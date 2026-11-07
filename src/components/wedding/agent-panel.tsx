@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bot, Send } from "lucide-react";
 import { PacedWait } from "@/components/wedding/paced-wait";
 import { PayApproval } from "@/components/wedding/pay-approval";
+import { PayPalCheckout } from "@/components/wedding/paypal-checkout";
 import { usePaced, WaitStopped } from "@/components/wedding/use-paced";
 import { ApiError, useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
@@ -12,7 +13,7 @@ import type { TimelineStep } from "@/lib/events/types";
 import { localToday } from "@/lib/wedding/dates";
 import type { CashPlan, TimelineItem } from "@/lib/wedding/types";
 
-const DEFAULT_GOAL = "Tell me what's due next, warn me about any cash clashes, and set up the next payment for my approval.";
+const DEFAULT_GOAL = "Tell me what's most urgent, warn me about any cash clashes, and set up that payment for my approval.";
 
 type Phase = "idle" | "working" | "waiting" | "finished" | "failed";
 
@@ -37,6 +38,7 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
   const messages = runSteps.filter((s) => s.kind === "agent.message");
   const run = runSteps.find((s) => s.kind === "run");
   const pending = items.find((i) => runId && i.payment?.runId === runId && i.approval);
+  const checkout = items.find((i) => runId && i.payment?.runId === runId && i.status === "awaiting_checkout");
   const running = !!runId && (!run || run.status === "running");
   const phase: Phase = !runId ? "idle" : pending ? "waiting" : running ? "working" : run?.status === "failed" ? "failed" : "finished";
 
@@ -61,7 +63,7 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
     <Card data-testid="agent-panel">
       <CardHeader
         title={<span className="inline-flex items-center gap-2"><Bot className="size-4 text-brand" /> Payment agent</span>}
-        description="Names what's due, explains the cash check and stops before paying."
+        description="Puts the most urgent payment first, explains the cash check and stops before paying."
         action={phase === "idle" ? null : <span data-testid="agent-phase"><Badge tone={PHASE[phase].tone}>{PHASE[phase].label}</Badge></span>}
       />
       <CardBody>
@@ -94,6 +96,7 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
         {pending?.approval ? (
           <PayApproval key={pending.approval.id} className="mt-3" item={pending} approval={pending.approval} cash={cash} sandbox={sandbox} onDecided={onDecided} />
         ) : null}
+        {checkout ? <PayPalCheckout className="mt-3" item={checkout} sandbox={sandbox} onPaid={onDecided} /> : null}
       </CardBody>
     </Card>
   );

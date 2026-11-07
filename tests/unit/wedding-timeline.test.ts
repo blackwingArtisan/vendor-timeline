@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTimeline, paymentState } from "@/lib/wedding/timeline";
+import { buildTimeline, captureState } from "@/lib/wedding/timeline";
 import type { ConfirmedTerms, Contract, ProposedTerms } from "@/lib/wedding/types";
 
 const terms = (over: Partial<ConfirmedTerms> = {}): ConfirmedTerms => ({
@@ -25,7 +25,7 @@ const contract = (id: string, confirmed?: ConfirmedTerms, payments: Contract["pa
   payments,
 });
 
-const payment = (state: "paid" | "sending" | "awaiting_approval" | "failed", cents: number) => ({ runId: "r", cents, attempt: 1, state, receiver: "a@example.com" });
+const payment = (state: "paid" | "sending" | "awaiting_checkout" | "awaiting_approval" | "failed", cents: number) => ({ runId: "r", cents, attempt: 1, state, payee: "a@example.com" });
 
 describe("buildTimeline", () => {
   it("leaves out anything unconfirmed", () => {
@@ -79,18 +79,31 @@ describe("buildTimeline", () => {
   });
 });
 
-describe("paymentState", () => {
+describe("captureState", () => {
   it.each([
-    ["SUCCESS", "PROCESSING", "paid"],
-    ["SUCCESS", "SUCCESS", "paid"],
-    ["PENDING", "PENDING", "sending"],
-    [undefined, "PENDING", "sending"],
-    ["UNCLAIMED", "SUCCESS", "sending"],
-    ["ONHOLD", "SUCCESS", "sending"],
-    ["FAILED", "SUCCESS", "failed"],
-    ["RETURNED", "SUCCESS", "failed"],
-    [undefined, "DENIED", "failed"],
-  ])("item %s in batch %s is %s", (item, batch, expected) => {
-    expect(paymentState(item, batch)).toBe(expected);
+    ["COMPLETED", "paid"],
+    ["PENDING", "sending"],
+    [undefined, "sending"],
+    ["DECLINED", "failed"],
+    ["FAILED", "failed"],
+    ["REFUNDED", "failed"],
+  ])("capture %s is %s", (status, expected) => {
+    expect(captureState(status)).toBe(expected);
+  });
+});
+
+describe("what to pay first", () => {
+  it("is the most overdue payment, then the next one due", () => {
+    const overdue = buildTimeline([contract("a", terms({ depositDue: "2026-11-10" })), contract("b", terms({ depositDue: "2026-10-01" })), contract("c", terms({ depositDue: "2026-11-25" }))], "2026-11-20");
+    expect(overdue.payFirst?.contractId).toBe("b");
+    expect(overdue.nextDue?.contractId).toBe("c");
+    const none = buildTimeline([contract("c", terms({ depositDue: "2026-11-25" }))], "2026-11-20");
+    expect(none.payFirst?.id).toBe(none.nextDue?.id);
+  });
+
+  it("skips a payment already waiting on the couple's PayPal checkout", () => {
+    const view = buildTimeline([contract("b", terms({ depositDue: "2026-10-01" }), { deposit: payment("awaiting_checkout", 25_000) })], "2026-11-20");
+    expect(view.items[0].status).toBe("awaiting_checkout");
+    expect(view.payFirst?.kind).toBe("balance");
   });
 });

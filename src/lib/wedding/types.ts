@@ -45,29 +45,32 @@ export interface ConfirmedTerms {
 export interface Payment {
   runId: string;
   cents: number;
-  /** Goes up only after a real batch failed, so a retry can never reuse its sender_batch_id. */
+  /** Goes up only after a real order failed, so a retry never reuses its PayPal-Request-Id. */
   attempt: number;
-  state: "awaiting_approval" | "sending" | "paid" | "failed";
-  /** Who PayPal pays. In sandbox this is a test account, see payoutReceiver(). */
-  receiver: string;
-  batchId?: string;
-  batchStatus?: string;
-  itemStatus?: string;
-  transactionId?: string;
+  /** Approved in the app, then paid by the couple in PayPal's checkout, then captured and confirmed. */
+  state: "awaiting_approval" | "awaiting_checkout" | "sending" | "paid" | "failed";
+  /** The PayPal account the order pays. In sandbox a test business account stands in for the vendor, see orderPayee(). */
+  payee: string;
+  orderId?: string;
+  orderStatus?: string;
+  /** PayPal's own checkout page for this order, where the couple pay. */
+  checkoutUrl?: string;
+  captureId?: string;
+  captureStatus?: string;
   error?: string;
   checkedAt?: string;
-  /** When a re-read first showed the item as paid. */
+  /** When a re-read first showed the capture as completed. */
   successSeenAt?: string;
-  /** The verified webhook that named this exact payment. */
+  /** The verified PAYMENT.CAPTURE.COMPLETED webhook for this payment's capture. */
   webhook?: PaymentWebhook;
-  /** What made this paid. "re-read" means PayPal's status arrived but no webhook ever did. */
+  /** What made this paid. "re-read" means PayPal's status arrived but no webhook could reach this copy. */
   paidBy?: "webhook" | "re-read";
 }
 
 export interface PaymentWebhook {
   eventId: string;
   eventType: string;
-  payoutItemId: string;
+  captureId: string;
   receivedAt: string;
 }
 
@@ -101,7 +104,7 @@ export interface PendingApproval {
   amountValue?: string;
 }
 
-export type ItemStatus = "paid" | "sending" | "awaiting_approval" | "overdue" | "due_today" | "upcoming";
+export type ItemStatus = "paid" | "sending" | "awaiting_checkout" | "awaiting_approval" | "overdue" | "due_today" | "upcoming";
 
 export interface TimelineItem {
   id: string;
@@ -166,10 +169,12 @@ export interface TimelineView {
   items: TimelineItem[];
   overdue: TimelineItem[];
   nextDue: TimelineItem | null;
+  /** What to pay first: the most overdue payment, or else the next one due. */
+  payFirst: TimelineItem | null;
   totalDueCents: number;
   paidCents: number;
   contractedCents: number;
   cash: CashPlan;
-  /** PayPal pays a test account in sandbox, because the vendors are fictional. */
+  /** In sandbox a test business account is paid in place of the fictional vendor. */
   sandboxStandIn: boolean;
 }

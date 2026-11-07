@@ -27,17 +27,17 @@ function wedding() {
 /** A script is the agent's decisions with AI switched off: here, whatever a test wants it to try. */
 async function runScript(plan: string, script: ScriptStep[]) {
   const paypal = new MockPayPal();
-  const create = vi.spyOn(paypal.payouts, "create");
+  const create = vi.spyOn(paypal.orders, "create");
   const runId = `run_test_${n++}`;
   const guard = new Guard({ paypal, policy: appConfig.agentPolicy });
-  const results: Record<string, { error?: { code: string; reason: string }; payout_batch_id?: string }> = {};
+  const results: Record<string, { error?: { code: string; reason: string }; order_id?: string }> = {};
   const capture: ScriptStep[] = script.map((s) => ({ ...s, as: s.as ?? "last" }));
   capture.push({ say: (r) => (Object.assign(results, r), "done") });
   await runScriptedAgent({ runId, channel: "test", def: paymentAgent(plan, TODAY), input: { goal: GOAL }, guard, script: capture, pauseMs: 0 });
   return { results, create, runId };
 }
 
-const ask = (contract_id: string, amount: string, kind = "deposit"): ScriptStep => ({ tool: "create_vendor_payout", input: { contract_id, kind, amount } });
+const ask = (contract_id: string, amount: string, kind = "deposit"): ScriptStep => ({ tool: "create_vendor_order", input: { contract_id, kind, amount } });
 
 async function pendingFor(runId: string) {
   for (let i = 0; i < 1500; i++) {
@@ -54,13 +54,13 @@ async function settled(run: { status: string }) {
 }
 
 beforeEach(async () => {
-  await getMockPayPal()!.advancePayouts();
+  await getMockPayPal()!.flushWebhooks();
 });
 
 describe("what the agent can reach", () => {
   it("has one read tool and one money tool, and the money tool takes no receiver", () => {
     const tools = paymentAgent("plan_x", TODAY).tools();
-    expect(tools.map((t) => [t.name, t.risk])).toEqual([["review_payments", "read"], ["create_vendor_payout", "money"]]);
+    expect(tools.map((t) => [t.name, t.risk])).toEqual([["review_payments", "read"], ["create_vendor_order", "money"]]);
     expect(tools[1].impact).toBeTypeOf("function");
     expect(tools[1].parse({ contract_id: "c", kind: "deposit", amount: "1.00", receiver: "thief@example.com" })).toEqual({ contract_id: "c", kind: "deposit", amount: "1.00" });
   });
@@ -72,11 +72,13 @@ describe("what the agent can reach", () => {
 });
 
 describe("the review", () => {
-  it("names the next payment and the clash, with every figure from code", async () => {
+  it("puts the overdue florist deposit first, names the next payment and the clash, with every figure from code", async () => {
     const { plan, photographer } = wedding();
+    const florist = listContracts(plan).find((c) => c.confirmed!.vendorRole === "florist")!;
     const review = await paymentAgent(plan, TODAY).tools()[0].execute({}, { runId: "r", actor: "a", paypal: getMockPayPal()!, idempotencyKey: "", requestId: "" });
     expect(review).toMatchObject({
       monthly_budget: "$5,000.00",
+      pay_first: { contract_id: florist.id, vendor: FLORIST.vendorName, kind: "deposit", amount_text: "$600.00", status: "overdue" },
       next_payment: { contract_id: photographer.id, vendor: PHOTOGRAPHER.vendorName, kind: "deposit", amount: "1200.00", amount_text: "$1,200.00", due: "Fri, Dec 18, 2026" },
       overdue: [{ vendor: FLORIST.vendorName, amount_text: "$600.00" }],
     });
@@ -87,6 +89,8 @@ describe("the review", () => {
     const { plan } = wedding();
     const said = paymentAgent(plan, TODAY).mockScript!({ goal: GOAL }).map((s) => s.say).filter((s) => typeof s === "string").join(" ");
     expect(said).toContain(`Next up is ${PHOTOGRAPHER.vendorName}: the deposit of $1,200.00, due Fri, Dec 18, 2026.`);
+    expect(said).toContain(`The ${FLORIST.vendorName} deposit is overdue, so it goes first.`);
+    expect(said.indexOf("Overdue:")).toBeLessThan(said.indexOf("Next up"));
   });
 
   it("shows the couple every warning itself, whatever the model says", async () => {
@@ -98,43 +102,45 @@ describe("the review", () => {
     await runScript(plan, [{ tool: "review_payments" }]);
     stop();
     expect(shown[0]).toContain("Heads up:");
-    expect(shown[0]).toContain("$12,200.00 in one week");
+    expect(shown[0]).toContain("$12,200.00 leaves in the week of");
     expect(shown).toHaveLength(3);
   });
 });
 
 describe("the agent stops before paying", () => {
-  it("waits for a person, and only their yes moves money", async () => {
-    const { plan, photographer } = wedding();
+  it("asks for the most overdue payment first, waits for a person, and only their yes creates a PayPal order", async () => {
+    const { plan } = wedding();
+    const florist = listContracts(plan).find((c) => c.confirmed!.vendorRole === "florist")!;
     const run = startAgentRun(paymentAgent(plan, TODAY), { goal: GOAL }, { channel: "test" });
     const approval = await pendingFor(run.id);
-    expect(approval.tool).toBe("create_vendor_payout");
-    expect(approval.amount?.value).toBe("1200.00");
-    expect(approval.counterparties).toEqual([PHOTOGRAPHER.payeeEmail]);
+    expect(approval.tool).toBe("create_vendor_order");
+    expect(approval.amount?.value).toBe((FLORIST.depositCents / 100).toFixed(2));
+    expect(approval.counterparties).toEqual([FLORIST.payeeEmail]);
     expect(run.status).toBe("running");
-    expect(requireContract(photographer.id).payments.deposit).toMatchObject({ state: "awaiting_approval", runId: run.id });
-    expect(requireContract(photographer.id).payments.deposit!.batchId).toBeUndefined();
+    expect(requireContract(florist.id).payments.deposit).toMatchObject({ state: "awaiting_approval", runId: run.id });
+    expect(requireContract(florist.id).payments.deposit!.orderId).toBeUndefined();
     expect(getAuditLog().list().filter((e) => e.runId === run.id && e.action === "tool.executed")).toEqual([]);
 
     getApprovals().decide(approval.id, "approved", "couple");
     await settled(run);
-    expect(requireContract(photographer.id).payments.deposit).toMatchObject({ state: "sending", cents: PHOTOGRAPHER.depositCents });
-    expect(requireContract(photographer.id).payments.deposit!.batchId).toBeTruthy();
+    expect(requireContract(florist.id).payments.deposit).toMatchObject({ state: "awaiting_checkout", cents: FLORIST.depositCents });
+    expect(requireContract(florist.id).payments.deposit!.orderId).toBeTruthy();
     expect(getAuditLog().list().filter((e) => e.runId === run.id).map((e) => e.action)).toEqual(expect.arrayContaining(["approval.requested", "approval.approved", "tool.executed"]));
   }, 20_000);
 
   it("moves nothing when the couple say no", async () => {
-    const { plan, photographer } = wedding();
+    const { plan } = wedding();
+    const florist = listContracts(plan).find((c) => c.confirmed!.vendorRole === "florist")!;
     const run = startAgentRun(paymentAgent(plan, TODAY), { goal: GOAL }, { channel: "test" });
     getApprovals().decide((await pendingFor(run.id)).id, "denied", "couple");
     await settled(run);
-    expect(requireContract(photographer.id).payments.deposit).toMatchObject({ state: "failed" });
-    expect(requireContract(photographer.id).payments.deposit!.batchId).toBeUndefined();
+    expect(requireContract(florist.id).payments.deposit).toMatchObject({ state: "failed" });
+    expect(requireContract(florist.id).payments.deposit!.orderId).toBeUndefined();
     expect(run.summary).toContain("didn't go");
   }, 20_000);
 });
 
-describe("code limits on a payout", () => {
+describe("code limits on a payment", () => {
   it.each([
     ["far too much", "9000.00"],
     ["one cent too much", "1200.01"],
@@ -172,10 +178,11 @@ describe("code limits on a payout", () => {
   });
 
   it("refuses a second payment for the same term", async () => {
-    const { plan, photographer } = wedding();
+    const { plan } = wedding();
+    const florist = listContracts(plan).find((c) => c.confirmed!.vendorRole === "florist")!;
     const run = startAgentRun(paymentAgent(plan, TODAY), { goal: GOAL }, { channel: "test" });
     const approval = await pendingFor(run.id);
-    const { results, create } = await runScript(plan, [ask(photographer.id, "1200.00")]);
+    const { results, create } = await runScript(plan, [ask(florist.id, (FLORIST.depositCents / 100).toFixed(2))]);
     expect(results.last.error!.reason).toMatch(/already has a payment/);
     expect(create).not.toHaveBeenCalled();
     getApprovals().decide(approval.id, "denied", "couple");

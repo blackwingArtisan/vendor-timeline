@@ -15,11 +15,13 @@ import type { ItemStatus, TimelineItem, TimelineView } from "@/lib/wedding/types
 import { AgentPanel } from "./agent-panel";
 import { CashCard } from "./cash-card";
 import { PayApproval } from "./pay-approval";
+import { PayPalCheckout, StandInLine } from "./paypal-checkout";
 import { PaymentChart } from "./payment-chart";
 
 const STATUS: Record<ItemStatus, { label: string; tone: Tone; dot: string }> = {
   paid: { label: "Paid", tone: "success", dot: "bg-emerald-500" },
-  sending: { label: "Sending", tone: "info", dot: "bg-sky-500" },
+  sending: { label: "Confirming with PayPal", tone: "info", dot: "bg-sky-500" },
+  awaiting_checkout: { label: "Approved: pay in PayPal", tone: "info", dot: "bg-sky-500" },
   awaiting_approval: { label: "Waiting for your approval", tone: "warning", dot: "bg-amber-500" },
   overdue: { label: "Overdue", tone: "danger", dot: "bg-red-500" },
   due_today: { label: "Due today", tone: "warning", dot: "bg-amber-500" },
@@ -35,30 +37,27 @@ function whenLabel(item: TimelineItem) {
 
 const itemName = (item: TimelineItem) => `${item.vendorName} ${item.kind}`;
 
+/** PayPal's own record of the payment: its order, its capture, and what confirmed it. */
 function PayPalProof({ item, standIn }: { item: TimelineItem; standIn: boolean }) {
   const p = item.payment;
-  if (!p?.batchId) return null;
+  if (!p?.captureId) return null;
   return (
     <div className="mt-2 rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-600" data-testid="paypal-proof">
       <p>
-        PayPal status: <span className="font-semibold text-zinc-900" data-testid="paypal-status">{p.itemStatus ?? p.batchStatus}</span>
+        PayPal capture status: <span className="font-semibold text-zinc-900" data-testid="paypal-status">{p.captureStatus ?? p.orderStatus}</span>
       </p>
       <p className="mt-0.5 break-all">
-        Batch <span className="font-mono" data-testid="paypal-batch-id">{p.batchId}</span>
-        {p.transactionId ? (
-          <>
-            {" · "}Transaction <span className="font-mono" data-testid="paypal-transaction-id">{p.transactionId}</span>
-          </>
-        ) : null}
+        Capture <span className="font-mono" data-testid="paypal-capture-id">{p.captureId}</span>
+        {" · "}Order <span className="font-mono" data-testid="paypal-order-id">{p.orderId}</span>
+        {" · "}Paid to <span data-testid="paypal-payee">{p.payee}</span>
       </p>
       {p.paidBy === "webhook" ? (
         <p className="mt-0.5" data-testid="paid-by">
-          Confirmed by PayPal webhook <span className="break-all font-mono" data-testid="paid-by-event">{p.webhook?.eventId}</span>
+          Confirmed by PayPal webhook <span className="break-all font-mono" data-testid="paid-by-event">{p.webhook?.eventId}</span> for this capture
         </p>
       ) : null}
-      {p.paidBy === "re-read" ? <p className="mt-0.5" data-testid="paid-by">Confirmed by re-reading PayPal. No webhook reached this copy of the app.</p> : null}
-      {p.itemStatus === "UNCLAIMED" ? <p className="mt-0.5">PayPal is holding this until the vendor claims it.</p> : null}
-      {standIn ? <p className="mt-0.5 text-zinc-500">Sandbox: sent to a PayPal test account standing in for this fictional vendor.</p> : null}
+      {p.paidBy === "re-read" ? <p className="mt-0.5" data-testid="paid-by">Confirmed by re-reading the capture from PayPal. PayPal can&apos;t send webhooks to this copy of the app.</p> : null}
+      {standIn ? <StandInLine item={item} className="mt-0.5 text-zinc-500" /> : null}
     </div>
   );
 }
@@ -94,7 +93,8 @@ function Row({ item, view, onPay, onMove, busy, onDecided, agentRunId }: { item:
   const isNext = view.nextDue?.id === item.id;
   const canPay = item.status === "overdue" || item.status === "due_today" || item.status === "upcoming";
   // The agent's panel shows the approval for its own run, up where the couple are reading.
-  const approval = item.payment?.runId === agentRunId ? null : item.approval;
+  const ownedByAgent = !!agentRunId && item.payment?.runId === agentRunId;
+  const approval = ownedByAgent ? null : item.approval;
   const when = whenLabel(item);
   return (
     <li className="relative pb-4 pl-7 last:pb-0" data-testid="timeline-item" data-role={item.vendorRole} data-kind={item.kind} data-status={item.status}>
@@ -129,6 +129,8 @@ function Row({ item, view, onPay, onMove, busy, onDecided, agentRunId }: { item:
           <PayApproval className="mt-3" item={item} approval={approval} cash={view.cash} sandbox={view.sandboxStandIn} onDecided={onDecided} />
         ) : null}
         {item.status === "awaiting_approval" && !approval ? <p className="mt-2 text-sm text-zinc-500">{item.approval ? "Waiting for your approval in the agent panel." : "Working with PayPal."}</p> : null}
+        {item.status === "awaiting_checkout" && !ownedByAgent ? <PayPalCheckout className="mt-3" item={item} sandbox={view.sandboxStandIn} onPaid={onDecided} /> : null}
+        {item.status === "awaiting_checkout" && ownedByAgent ? <p className="mt-2 text-sm text-zinc-500">Pay it from the agent panel above.</p> : null}
         {item.payment?.state === "failed" ? (
           <p className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="item-error">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {item.payment.error}
@@ -169,6 +171,7 @@ export function TimelineScreen() {
   const [loadingSamples, setLoadingSamples] = useState(false);
   const [agentRunId, setAgentRunId] = useState<string | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
+  const [capturing, setCapturing] = useState(false);
 
   const load = useCallback(() => kitFetch<TimelineView>(`/api/timeline?today=${localToday()}`), [kitFetch]);
   const refresh = useCallback(() => load().then(setView), [load]);
@@ -180,7 +183,7 @@ export function TimelineScreen() {
   }, [load]);
 
   // A payment waits on a person, then on PayPal, so follow it until it stops.
-  const moving = agentRunning || view?.items.some((i) => i.status === "awaiting_approval" || i.status === "sending");
+  const moving = agentRunning || capturing || view?.items.some((i) => i.status === "awaiting_approval" || i.status === "sending");
   useEffect(() => {
     if (!moving) return;
     const timer = setInterval(() => void refresh().catch(() => undefined), 1200);
@@ -211,6 +214,32 @@ export function TimelineScreen() {
     }
   }
 
+  // PayPal sends the couple back here from its checkout. Capture that order, then tidy the address.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const back = params.get("checkout");
+    const cancelled = params.get("cancelled");
+    const orderId = params.get("token");
+    if (!back && !cancelled) return;
+    window.history.replaceState(null, "", "/timeline");
+    if (cancelled) {
+      toast({ title: "PayPal checkout cancelled", description: "Nothing was paid. You can pay it from the timeline whenever you're ready." });
+      return;
+    }
+    const [contractId, kind] = back!.split(".");
+    void (async () => {
+      setCapturing(true);
+      try {
+        await kitFetch(`/api/contracts/${contractId}/capture`, { json: { kind, orderId } });
+      } catch (e) {
+        toast({ title: "PayPal didn't take that payment", description: (e as Error).message, variant: "error" });
+      } finally {
+        setCapturing(false);
+        await refresh().catch(() => undefined);
+      }
+    })();
+  }, [kitFetch, refresh, toast]);
+
   const move = useCallback(
     (item: TimelineItem, due: string) => {
       kitFetch(`/api/contracts/${item.contractId}/move`, { json: { kind: item.kind, due } })
@@ -233,6 +262,7 @@ export function TimelineScreen() {
   return (
     <>
       <PageHeader title="Your timeline" description="Every vendor's deposit and balance, by date." actions={<ButtonLink href="/contracts" variant="secondary">Add a contract</ButtonLink>} />
+      {capturing ? <p className="mb-4 rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-900" data-testid="capturing">Back from PayPal. Capturing your payment and reading it back from PayPal…</p> : null}
       {items.length === 0 ? (
         <EmptyState
           icon={<FileText className="size-5" />}

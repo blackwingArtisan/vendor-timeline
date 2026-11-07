@@ -36,9 +36,11 @@ function Sums({ payments, lines }: { payments: CashPayment[]; lines: [string, nu
   );
 }
 
+/** A week is summed as a week. Only a month is weighed against the monthly budget. */
 function warningLines(w: CashWarning, budget: number): [string, number][] {
+  if (w.kind === "same_week") return [["Leaves in one week", w.totalCents]];
   return [
-    [w.kind === "same_week" ? "Total in one week" : "Total for the month", w.totalCents],
+    ["Total for the month", w.totalCents],
     ["Monthly budget", budget],
     ["Over by", w.overByCents],
   ];

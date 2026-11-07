@@ -9,7 +9,7 @@ import { PacedWait } from "@/components/wedding/paced-wait";
 import { usePaced, WaitStopped } from "@/components/wedding/use-paced";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
-import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Textarea } from "@/components/ui";
+import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonText, Textarea } from "@/components/ui";
 import { formatCents } from "@/lib/wedding/cents";
 import { SAMPLE_PDF, SAMPLES, sampleUrl, type SampleFacts } from "@/lib/wedding/samples";
 import type { Contract } from "@/lib/wedding/types";
@@ -167,7 +167,9 @@ export function ContractsScreen() {
           <CardHeader title="Your contracts" />
           {contracts ? <span hidden data-testid="contracts-loaded" /> : null}
           <CardBody>
-            {contracts?.length ? (
+            {!contracts ? (
+              <SkeletonText lines={3} className="py-2" />
+            ) : contracts.length ? (
               <ul className="-my-1 divide-y divide-zinc-100" data-testid="contract-list">
                 {contracts.map((c) => (
                   <li key={c.id}>

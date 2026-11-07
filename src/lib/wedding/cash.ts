@@ -22,7 +22,7 @@ export function payDate(item: TimelineItem, today: string): string {
     const paidOn = (item.payment?.successSeenAt ?? item.payment?.checkedAt)?.slice(0, 10);
     return paidOn && paidOn < today ? paidOn : today;
   }
-  if (item.status === "sending" || item.status === "awaiting_approval" || item.due < today) return today;
+  if (item.status === "sending" || item.status === "awaiting_checkout" || item.status === "awaiting_approval" || item.due < today) return today;
   return item.due;
 }
 
@@ -43,7 +43,8 @@ function sameWeekWarnings(payments: CashPayment[], budget: number): CashWarning[
     const totalCents = sumCents(week.map((p) => p.cents));
     const [from, to] = [week[0].payDate, week.at(-1)!.payDate];
     const span = from === to ? `on ${formatDay(from)}` : `between ${formatDay(from)} and ${formatDay(to)}`;
-    return { kind: "same_week", from, to, payments: week, totalCents, overByCents: totalCents - budget, message: `${list(week)} land together ${span}: ${formatCents(totalCents)} in one week, ${formatCents(totalCents - budget)} over your ${formatCents(budget)} monthly budget.` };
+    // Said as a week's money. The month it falls in is weighed against the monthly budget by overMonthWarnings.
+    return { kind: "same_week", from, to, payments: week, totalCents, overByCents: totalCents - budget, message: `${formatCents(totalCents)} leaves in the week of ${formatDay(from)}: ${list(week)} land together ${span}.` };
   });
 }
 

@@ -1,11 +1,12 @@
 /**
- * Pays a vendor with a PayPal payout. Every payment, from the "Pay" button or from the agent, is one
- * call to vendorPayoutTool(), so it passes the same limits and then the Guard's human approval.
- * The route returns while the Guard waits; the browser follows the timeline.
+ * The couple pay a vendor from their own PayPal. Every payment, from the "Pay" button or from the
+ * agent, is one call to vendorOrderTool(), so it passes the same limits and then the Guard's human
+ * approval. Only then does the app ask PayPal for an order: exactly the confirmed term, payable to
+ * the vendor. The couple approve it in PayPal's own checkout, and the server captures it.
  *
- * A batch finishes on PayPal's side later. "Paid" takes PayPal's own status plus a verified webhook
- * naming this exact payment. If that webhook never arrives, the status re-read from PayPal stands
- * after WEBHOOK_WAIT_MS, and the screen says which of the two it was.
+ * "Paid" takes PayPal's own record of that capture, read back with GET, plus the verified
+ * PAYMENT.CAPTURE.COMPLETED webhook for that capture id. A copy of the app PayPal can't call back
+ * (a local one) takes the re-read alone, and the screen says which of the two it was.
  */
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -14,36 +15,36 @@ import { runTool } from "@/lib/agent/execute";
 import { getApprovals, type Approval } from "@/lib/agent/approvals";
 import { Guard, type GuardOutcome } from "@/lib/agent/guard";
 import { defineTool } from "@/lib/agent/tool";
-import { createPayout } from "@/lib/agent/tools/extensions";
 import { getEnv } from "@/lib/env";
 import { timeline, withContext } from "@/lib/events/bus";
 import { HttpError } from "@/lib/http";
 import { moneyFromMinor } from "@/lib/money";
 import { getPayPal } from "@/lib/paypal";
-import type { PayoutItem, WebhookEventEnvelope } from "@/lib/paypal/types";
+import type { Capture, CreateOrderRequest, Order, PurchaseUnit, WebhookEventEnvelope } from "@/lib/paypal/types";
 import { singleton } from "@/lib/singleton";
 import { monthlyBudget } from "./budget";
 import { centsToDollars, dollarsToCents, formatCents } from "./cents";
-import { contractWithBatch, findContract, listContracts, requireContract, requirePlanContract, saveContract } from "./contracts";
+import { contractWithPayPalId, findContract, listContracts, requireContract, requirePlanContract, saveContract } from "./contracts";
 import { utcToday } from "./dates";
-import { buildTimeline, itemId, paymentState } from "./timeline";
+import { appOrigin, isPublicOrigin } from "./origin";
+import { buildTimeline, captureState, itemId } from "./timeline";
 import type { Contract, ItemKind, Payment, PendingApproval, TimelineItem, TimelineView } from "./types";
 
 const RECHECK_MS = 2500;
 /** PayPal's webhook took about 15 seconds in the sandbox. A re-read stands on its own after this. */
 export const WEBHOOK_WAIT_MS = 60_000;
-export const VENDOR_PAYOUT_TOOL = "create_vendor_payout";
+export const VENDOR_ORDER_TOOL = "create_vendor_order";
 
 /** Payments running in this process. A pending approval dies with the process. */
 const activePayments = () => singleton("wedding:active-payments", () => new Set<string>());
 
 /**
- * The vendors are fictional, so PayPal would only hold their money as UNCLAIMED. In sandbox the
- * payout goes to a sandbox test account instead. The screen says so wherever it shows the payment.
+ * Who the order pays. The vendors are fictional, so in sandbox the app's own test business account
+ * stands in for them. The screen says so wherever it shows the payment.
  */
-export function payoutReceiver(vendorEmail: string): string {
+export function orderPayee(vendorEmail: string): string {
   const env = getEnv();
-  return env.paypalMode === "sandbox" ? env.sandboxBuyerEmail : vendorEmail;
+  return env.paypalMode === "sandbox" ? env.sandboxSellerEmail : vendorEmail;
 }
 
 const termCents = (contract: Contract, kind: ItemKind) => (kind === "deposit" ? contract.confirmed!.depositCents : contract.confirmed!.balanceCents);
@@ -64,7 +65,7 @@ function requirePayable(planId: string, contractId: string, kind: ItemKind, runI
   return contract;
 }
 
-/** The code limit: a payout is exactly one confirmed term. Nothing an agent asks for changes this. */
+/** The code limit: a payment is exactly one confirmed term. Nothing an agent asks for changes this. */
 function requireTermAmount(contract: Contract, kind: ItemKind, requestedCents: number) {
   const cents = termCents(contract, kind);
   if (requestedCents === cents) return;
@@ -73,15 +74,44 @@ function requireTermAmount(contract: Contract, kind: ItemKind, requestedCents: n
   throw new HttpError(422, `${formatCents(requestedCents)} ${verb} ${name}. Nothing was sent.`, "rule");
 }
 
+/**
+ * The only order this app asks PayPal for: one confirmed term, in US dollars, payable to that
+ * contract's payee. Anything else is refused here, before PayPal hears of it.
+ */
+export function vendorOrder(contract: Contract, kind: ItemKind, ask: { cents: number; payee: string }, origin = appOrigin()): CreateOrderRequest {
+  const terms = contract.confirmed;
+  if (!terms) throw new HttpError(409, "Confirm this contract before paying it.", "conflict");
+  requireTermAmount(contract, kind, ask.cents);
+  const payee = orderPayee(terms.payeeEmail);
+  if (ask.payee.trim().toLowerCase() !== payee.toLowerCase()) throw new HttpError(422, `${ask.payee} isn't who this contract pays. Nothing was sent.`, "rule");
+  const id = itemId(contract.id, kind);
+  return {
+    intent: "CAPTURE",
+    purchase_units: [{ reference_id: id, custom_id: id, description: `Wedding ${kind} for ${terms.vendorName}`.slice(0, 127), amount: { currency_code: "USD", value: centsToDollars(ask.cents) }, payee: { email_address: payee } }],
+    payment_source: {
+      paypal: {
+        experience_context: {
+          brand_name: terms.vendorName.slice(0, 127),
+          landing_page: "GUEST_CHECKOUT",
+          user_action: "PAY_NOW",
+          shipping_preference: "NO_SHIPPING",
+          return_url: `${origin}/timeline?checkout=${encodeURIComponent(id)}`,
+          cancel_url: `${origin}/timeline?cancelled=${encodeURIComponent(id)}`,
+        },
+      },
+    },
+  };
+}
+
 function claimPayment(contract: Contract, kind: ItemKind, runId: string): Contract {
   const previous = contract.payments[kind];
   if (previous?.runId === runId && previous.state === "awaiting_approval") return contract;
   const payment: Payment = {
     runId,
     cents: termCents(contract, kind),
-    attempt: previous ? previous.attempt + (previous.batchId ? 1 : 0) : 1,
+    attempt: previous ? previous.attempt + (previous.orderId ? 1 : 0) : 1,
     state: "awaiting_approval",
-    receiver: payoutReceiver(contract.confirmed!.payeeEmail),
+    payee: orderPayee(contract.confirmed!.payeeEmail),
   };
   activePayments().add(itemId(contract.id, kind));
   return saveContract({ ...contract, payments: { ...contract.payments, [kind]: payment } });
@@ -98,11 +128,11 @@ function settlePayment(contractId: string, kind: ItemKind, runId: string, outcom
   const payment = findContract(contractId)?.payments[kind];
   if (payment?.runId !== runId) return;
   activePayments().delete(itemId(contractId, kind));
-  // Once a batch exists the money is PayPal's to report, so keep following it.
+  // Once an order exists it is the couple's to pay in PayPal, so keep it.
   if (outcome.status !== "executed" && payment.state === "awaiting_approval") patchPayment(contractId, kind, { state: "failed", error: outcomeError(outcome) });
 }
 
-const PayoutInput = z.object({
+const OrderInput = z.object({
   contract_id: z.string().min(1).max(40).describe("The contract_id from review_payments"),
   kind: z.enum(["deposit", "balance"]),
   amount: z
@@ -110,16 +140,16 @@ const PayoutInput = z.object({
     .regex(/^\d{1,9}(\.\d{1,2})?$/)
     .describe('US dollars as a decimal string such as "1200.00". It must equal the confirmed term exactly.'),
 });
-type PayoutInput = z.infer<typeof PayoutInput>;
+type OrderInput = z.infer<typeof OrderInput>;
 
-/** The only way money leaves this app. It has no receiver input: the confirmed contract decides who is paid. */
-export function vendorPayoutTool(planId: string) {
+/** The only way money can leave this app. It has no payee input: the confirmed contract decides who is paid. */
+export function vendorOrderTool(planId: string) {
   return defineTool({
-    name: VENDOR_PAYOUT_TOOL,
-    description: "Ask to pay one confirmed deposit or balance to its vendor by PayPal payout. This stops at a person's approval and nothing moves before it. The amount must equal the confirmed term exactly, and the app decides who gets paid.",
+    name: VENDOR_ORDER_TOOL,
+    description: "Ask to pay one confirmed deposit or balance to its vendor. This stops at a person's approval and nothing moves before it; then the couple pay it in PayPal's own checkout. The amount must equal the confirmed term exactly, and the app decides who gets paid.",
     risk: "money",
     source: "app",
-    schema: PayoutInput,
+    schema: OrderInput,
     title: (i) => `Pay the ${i.kind}`,
     check: (i, ctx) => {
       try {
@@ -135,25 +165,18 @@ export function vendorPayoutTool(planId: string) {
     impact: async (i) => {
       const contract = requireContract(i.contract_id);
       const payment = contract.payments[i.kind]!;
-      return { amount: moneyFromMinor(payment.cents, "USD"), counterparties: [payment.receiver], summary: `Pay ${contract.confirmed!.vendorName} ${formatCents(payment.cents)} for the ${i.kind}` };
+      return { amount: moneyFromMinor(payment.cents, "USD"), counterparties: [payment.payee], summary: `Pay ${contract.confirmed!.vendorName} ${formatCents(payment.cents)} for the ${i.kind}` };
     },
-    execute: async (i, ctx) => {
+    execute: async (i) => {
       // Read again after the wait for a person: what goes to PayPal is the term, not the request.
       const contract = requireContract(i.contract_id);
-      const terms = contract.confirmed!;
       const payment = contract.payments[i.kind]!;
-      requireTermAmount(contract, i.kind, payment.cents);
-      const payout = {
-        items: [{ receiver: payment.receiver, amount: centsToDollars(payment.cents), currency: "USD", note: `${i.kind} for ${terms.vendorName}`, sender_item_id: itemId(contract.id, i.kind) }],
-        email_subject: `Wedding ${i.kind} for ${terms.vendorName}`,
-        // Fixed for each attempt, so PayPal itself refuses a second batch for the same payment.
-        sender_batch_id: `vt-${contract.id}-${i.kind}-${payment.attempt}`,
-      };
-      const sent = await createPayout.execute(createPayout.parse(payout), ctx);
-      const { payout_batch_id, batch_status } = sent as { payout_batch_id: string; batch_status: string };
-      patchPayment(contract.id, i.kind, { state: "sending", batchId: payout_batch_id, batchStatus: batch_status, error: undefined });
-      await syncPayment(contract.id, i.kind).catch(() => undefined); // The timeline keeps following it.
-      return { payout_batch_id, batch_status, note: "A person approved this and PayPal has it. The timeline shows paid once PayPal confirms." };
+      const body = vendorOrder(contract, i.kind, { cents: payment.cents, payee: payment.payee });
+      // Fixed for each attempt, so PayPal itself refuses a second order for the same payment.
+      const order = await getPayPal().orders.create(body, { requestId: `vt-${contract.id}-${i.kind}-${payment.attempt}` });
+      const checkoutUrl = order.links?.find((l) => l.rel === "payer-action" || l.rel === "approve")?.href;
+      patchPayment(contract.id, i.kind, { state: "awaiting_checkout", orderId: order.id, orderStatus: order.status, checkoutUrl, error: undefined });
+      return { order_id: order.id, status: order.status, note: "A person approved this. Nothing has moved yet: the couple now pay it in PayPal's own checkout." };
     },
     after: (i, outcome, ctx) => settlePayment(i.contract_id, i.kind, ctx.runId, outcome),
   });
@@ -161,7 +184,7 @@ export function vendorPayoutTool(planId: string) {
 
 async function send(planId: string, contractId: string, kind: ItemKind, runId: string, channel: string) {
   const ctx = { runId, actor: "couple", channel, guard: new Guard({ paypal: getPayPal(), policy: appConfig.agentPolicy }) };
-  await runTool(vendorPayoutTool(planId), { contract_id: contractId, kind, amount: centsToDollars(requireContract(contractId).payments[kind]!.cents) }, ctx);
+  await runTool(vendorOrderTool(planId), { contract_id: contractId, kind, amount: centsToDollars(requireContract(contractId).payments[kind]!.cents) }, ctx);
 }
 
 /** The "Pay" button. Sends one payment to the approval gate. Resolves when the Guard has finished with it. */
@@ -174,79 +197,115 @@ export function requestPayment(planId: string, contractId: string, kind: ItemKin
   return { contract: saved, finished };
 }
 
-const webhookExpected = () => getEnv().paypalMode === "mock" || !!getEnv().paypalWebhookId;
+/** Why PayPal's record of an order or capture isn't this payment, or null if it is. */
+function amountMismatch(amount: { currency_code: string; value: string } | undefined, payment: Payment): string | null {
+  if (!amount) return "it gives no amount";
+  if (amount.currency_code !== "USD" || dollarsToCents(amount.value) !== payment.cents) return `PayPal shows ${amount.value} ${amount.currency_code}, not the approved ${centsToDollars(payment.cents)} USD`;
+  return null;
+}
+
+function orderMismatch(unit: PurchaseUnit | undefined, payment: Payment): string | null {
+  const amount = amountMismatch(unit?.amount, payment);
+  if (amount) return amount;
+  if (unit?.payee?.email_address && unit.payee.email_address.toLowerCase() !== payment.payee.toLowerCase()) return "it pays a different account";
+  return null;
+}
+
+/** Captures in flight in this process, so a doubled return from PayPal captures once. */
+const capturing = () => singleton("wedding:capturing", () => new Set<string>());
 
 /**
- * Re-reads the payment from PayPal, the only source of its status. A webhook is what turns that
- * status into paid. See the top of this file for when a webhook doesn't come.
+ * The couple approved the order in PayPal's checkout and PayPal sent them back. The order is read
+ * back first: it must be this payment's order, approved, for the approved amount, to the payee.
+ * Only then is it captured. A second return for the same order changes nothing.
+ */
+export async function captureCheckout(planId: string, contractId: string, kind: ItemKind, orderId: string): Promise<Contract> {
+  const contract = requirePlanContract(planId, contractId);
+  const payment = contract.payments[kind];
+  if (!payment?.orderId || payment.orderId !== orderId) throw new HttpError(409, "That PayPal checkout isn't for this payment.", "conflict");
+  const key = itemId(contractId, kind);
+  if (payment.state !== "awaiting_checkout" || capturing().has(key)) return contract;
+  capturing().add(key);
+  try {
+    requireTermAmount(contract, kind, payment.cents);
+    const order = await getPayPal().orders.get(orderId);
+    const mismatch = orderMismatch(order.purchase_units?.[0], payment);
+    if (mismatch) {
+      patchPayment(contractId, kind, { state: "failed", orderStatus: order.status, error: `PayPal's order doesn't match this payment: ${mismatch}. Nothing was captured.` });
+      throw new HttpError(422, `PayPal's order doesn't match this payment: ${mismatch}.`, "rule");
+    }
+    if (order.status !== "APPROVED" && order.status !== "COMPLETED") throw new HttpError(409, `PayPal says this checkout is ${order.status}, so there is nothing to capture yet.`, "conflict");
+    const captured: Order = order.status === "COMPLETED" ? order : await getPayPal().orders.capture(orderId, { requestId: `vt-capture-${contractId}-${kind}-${payment.attempt}` });
+    const capture = captured.purchase_units?.[0]?.payments?.captures?.[0];
+    patchPayment(contractId, kind, {
+      state: capture ? "sending" : "failed",
+      orderStatus: captured.status,
+      captureId: capture?.id,
+      captureStatus: capture?.status,
+      error: capture ? undefined : `PayPal reports the order ${captured.status} with no capture.`,
+    });
+    await syncPayment(contractId, kind).catch(() => undefined); // The timeline keeps following it.
+    return requireContract(contractId);
+  } finally {
+    capturing().delete(key);
+  }
+}
+
+/** A webhook can only reach a copy of the app with a public address and a PayPal webhook id. */
+const webhookExpected = () => getEnv().paypalMode === "mock" || (!!getEnv().paypalWebhookId && isPublicOrigin());
+
+/**
+ * Re-reads the capture from PayPal, the only source of its status. The webhook for that capture is
+ * what turns that status into paid. See the top of this file for when a webhook can't come.
  */
 export async function syncPayment(contractId: string, kind: ItemKind): Promise<void> {
   const payment = requireContract(contractId).payments[kind];
-  if (payment?.state !== "sending" || !payment.batchId) return;
-  const batch = await getPayPal().payouts.get(payment.batchId);
-  const item = batch.items.find((i) => i.payout_item.sender_item_id === itemId(contractId, kind));
-  const batchStatus = batch.batch_header.batch_status;
-  const itemCents = item ? dollarsToCents(item.payout_item.amount.value) : payment.cents;
-  const amountOff = itemCents !== payment.cents;
-  const reported = amountOff ? "sending" : paymentState(item?.transaction_status, batchStatus);
+  if (payment?.state !== "sending" || !payment.captureId) return;
+  const capture = await getPayPal().payments.getCapture(payment.captureId);
+  const amountOff = amountMismatch(capture.amount, payment);
+  const reported = amountOff ? "sending" : captureState(capture.status);
   const now = new Date().toISOString();
   const successSeenAt = reported === "paid" ? (payment.successSeenAt ?? now) : undefined;
   const waitedOut = successSeenAt ? !webhookExpected() || Date.now() - Date.parse(successSeenAt) >= WEBHOOK_WAIT_MS : false;
-  const paidBy = reported !== "paid" ? undefined : payment.webhook ? "webhook" : waitedOut ? "re-read" : undefined;
+  const webhooked = payment.webhook?.captureId === payment.captureId;
+  const paidBy = reported !== "paid" ? undefined : webhooked ? "webhook" : waitedOut ? "re-read" : undefined;
   const state = reported === "paid" && !paidBy ? "sending" : reported;
   patchPayment(contractId, kind, {
     state,
-    batchStatus,
-    itemStatus: item?.transaction_status,
-    transactionId: item?.transaction_id,
-    error: amountOff ? `PayPal shows ${formatCents(itemCents)}, not the approved ${formatCents(payment.cents)}.` : state === "failed" ? (item?.errors?.message ?? `PayPal reports ${item?.transaction_status ?? batchStatus}.`) : undefined,
+    captureStatus: capture.status,
+    error: amountOff ? `${amountOff}.` : state === "failed" ? `PayPal reports the capture ${capture.status}${capture.status_details?.reason ? ` (${capture.status_details.reason})` : ""}.` : undefined,
     checkedAt: now,
     successSeenAt,
     paidBy,
   });
 }
 
-/** Why a verified item webhook doesn't belong to this payment, or null if it does. */
-function webhookMismatch(event: PayoutItem, contract: Contract, kind: ItemKind, payment: Payment): string | null {
-  const paid = event.payout_item;
-  if (paid.sender_item_id !== itemId(contract.id, kind)) return `it names item ${paid.sender_item_id ?? "none"}`;
-  if (paid.amount.currency !== "USD" || dollarsToCents(paid.amount.value) !== payment.cents) return `it says ${paid.amount.value} ${paid.amount.currency}, not ${centsToDollars(payment.cents)} USD`;
-  if (paid.receiver?.toLowerCase() !== payment.receiver.toLowerCase()) return "it names a different receiver";
-  return null;
-}
-
-function paymentForBatch(batchId: string) {
-  const contract = contractWithBatch(batchId);
-  const found = contract && Object.entries(contract.payments).find(([, p]) => p.batchId === batchId);
+function paymentForPayPalId(id: string | undefined) {
+  const contract = id ? contractWithPayPalId(id) : undefined;
+  const found = contract && Object.entries(contract.payments).find(([, p]) => p.orderId === id || p.captureId === id);
   return found ? { contract, kind: found[0] as ItemKind, payment: found[1] } : null;
 }
 
 /**
- * A payout item webhook, already verified by signature. It counts only if it names this exact
- * payment: its batch, its item, its amount and its receiver. Anything else changes nothing.
- * All entries can share one PayPal app, so a batch we didn't create is ignored.
+ * A capture webhook, already verified by signature. It counts only for this app's own payment, and
+ * only if its order, capture and amount are that payment's. Anything else changes nothing.
+ * All entries can share one PayPal app, so a capture this app didn't make is ignored.
  */
-export async function payoutItemWebhook(event: WebhookEventEnvelope<string, PayoutItem>): Promise<boolean> {
-  const found = paymentForBatch(event.resource.payout_batch_id);
+export async function captureWebhook(event: WebhookEventEnvelope<string, Capture>): Promise<boolean> {
+  const capture = event.resource;
+  const orderId = capture.supplementary_data?.related_ids?.order_id;
+  const found = paymentForPayPalId(capture.id) ?? paymentForPayPalId(orderId);
   if (!found) return false;
   const { contract, kind, payment } = found;
-  const mismatch = webhookMismatch(event.resource, contract, kind, payment);
+  const mismatch = (orderId && orderId !== payment.orderId ? `it names order ${orderId}` : null) ?? (payment.captureId && payment.captureId !== capture.id ? `it names capture ${capture.id}` : null) ?? amountMismatch(capture.amount, payment);
   if (mismatch) {
-    timeline.emit({ kind: "webhook", status: "failed", channel: "global", title: "Payout webhook ignored", detail: `${event.event_type} doesn't match this payment: ${mismatch}.` });
+    timeline.emit({ kind: "webhook", status: "failed", channel: "global", title: "Capture webhook ignored", detail: `${event.event_type} doesn't match this payment: ${mismatch}.` });
     return false;
   }
-  if (event.event_type === "PAYMENT.PAYOUTS-ITEM.SUCCEEDED") {
-    patchPayment(contract.id, kind, { webhook: { eventId: event.id, eventType: event.event_type, payoutItemId: event.resource.payout_item_id, receivedAt: new Date().toISOString() } });
+  if (event.event_type === "PAYMENT.CAPTURE.COMPLETED") {
+    patchPayment(contract.id, kind, { webhook: { eventId: event.id, eventType: event.event_type, captureId: capture.id, receivedAt: new Date().toISOString() } });
   }
   await syncPayment(contract.id, kind);
-  return true;
-}
-
-/** A batch event says nothing about one item, so it can only prompt a re-read. */
-export async function payoutBatchWebhook(batchId: string): Promise<boolean> {
-  const found = paymentForBatch(batchId);
-  if (!found) return false;
-  await syncPayment(found.contract.id, found.kind);
   return true;
 }
 
@@ -293,5 +352,6 @@ export async function viewTimeline(planId: string, today = utcToday()): Promise<
   await syncOpenPayments(planId);
   const view = buildTimeline(listContracts(planId), today, monthlyBudget(planId));
   const items = view.items.map((item) => ({ ...item, approval: pendingApproval(item) }));
-  return { ...view, items, nextDue: items.find((i) => i.id === view.nextDue?.id) ?? null, overdue: items.filter((i) => i.status === "overdue"), sandboxStandIn: getEnv().paypalMode === "sandbox" };
+  const same = (item: TimelineItem | null) => items.find((i) => i.id === item?.id) ?? null;
+  return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => i.status === "overdue"), sandboxStandIn: getEnv().paypalMode === "sandbox" };
 }

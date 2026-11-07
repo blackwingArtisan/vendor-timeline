@@ -4,6 +4,7 @@ import { HttpError, readJson, route } from "@/lib/http";
 import { getContext } from "@/lib/events/bus";
 import { listRuns, startAgentRun } from "@/lib/agent/runs";
 import { isCalendarDay, utcToday } from "@/lib/wedding/dates";
+import { rememberOrigin } from "@/lib/wedding/origin";
 import { currentPlanId } from "@/lib/wedding/plan";
 
 const Body = z.object({ agentId: z.string(), goal: z.string().min(3).max(2000), today: z.string().refine(isCalendarDay).optional() });
@@ -12,6 +13,7 @@ const Body = z.object({ agentId: z.string(), goal: z.string().min(3).max(2000), 
 export const POST = route(
   async (req) => {
     const b = await readJson(req, Body);
+    rememberOrigin(req);
     const today = b.today ?? utcToday();
     const def = agentFor(b.agentId, await currentPlanId(), today);
     if (!def) throw new HttpError(404, `Unknown agent "${b.agentId}"`, "not_found");

@@ -6,7 +6,7 @@ services:
     runtime: node
     plan: free # free instances sleep when idle; the first request after a nap takes ~1 min
     buildCommand: npm ci && npm run build
-    startCommand: npm run seed:sandbox; npm start -- -H 0.0.0.0 # the disk is wiped on deploy; a rerun only reads. `;` so a failed seed still boots
+    startCommand: npm start -- -H 0.0.0.0 # no kit seed: the ledger holds only this app's own PayPal orders
     healthCheckPath: /api/kit/status
     autoDeploy: true
     envVars:

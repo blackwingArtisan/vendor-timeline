@@ -1,15 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getApprovals } from "@/lib/agent/approvals";
 import { getAuditLog } from "@/lib/agent/audit";
 import { getMockPayPal, getPayPal } from "@/lib/paypal";
 import { addContract, confirmContract, listContracts, requireContract, saveContract } from "@/lib/wedding/contracts";
 import { handleWebhookRequest } from "@/lib/paypal/webhook-handler";
-import type { PayoutItem, WebhookEventEnvelope } from "@/lib/paypal/types";
+import type { Capture, WebhookEventEnvelope } from "@/lib/paypal/types";
 import { moveDueDate } from "@/lib/wedding/contracts";
-import { ownsApproval, payoutBatchWebhook, payoutItemWebhook, payoutReceiver, requestPayment, syncPayment, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
-import { itemId } from "@/lib/wedding/timeline";
+import { captureCheckout, captureWebhook, orderPayee, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
 import { BAND, PHOTOGRAPHER } from "@/lib/wedding/samples";
 import type { Contract } from "@/lib/wedding/types";
 
@@ -41,20 +40,24 @@ async function pending(runId: string) {
 
 const paymentOf = (id: string) => requireContract(id).payments.deposit!;
 
-/** PayPal finishes the batch, and its webhook arrives. */
-async function finishOnPayPal() {
-  await getMockPayPal()!.advancePayouts();
-  await getMockPayPal()!.flushWebhooks();
-}
-
+/** The couple approved, so the app has a PayPal order waiting for their checkout. */
 async function approvedPayment(contract: Contract) {
   const { contract: asked, finished } = requestPayment(contract.planId, contract.id, "deposit", "test");
   getApprovals().decide((await pending(asked.payments.deposit!.runId)).id, "approved", "couple");
   await finished;
+  return paymentOf(contract.id);
+}
+
+/** What the couple do in PayPal's checkout, then PayPal sending them back to the app. */
+async function payInCheckout(contract: Contract) {
+  const { orderId } = paymentOf(contract.id);
+  await getMockPayPal()!.simulateBuyerApproval(orderId!);
+  await captureCheckout(contract.planId, contract.id, "deposit", orderId!);
+  return paymentOf(contract.id);
 }
 
 beforeEach(async () => {
-  await getMockPayPal()!.advancePayouts();
+  await getMockPayPal()!.flushWebhooks();
 });
 
 describe("confirming", () => {
@@ -83,15 +86,15 @@ describe("confirming", () => {
 });
 
 describe("paying", () => {
-  it("moves nothing until a person approves, then follows PayPal to paid", async () => {
+  it("moves nothing until a person approves, then the couple pay in PayPal and PayPal confirms it", async () => {
     const contract = await confirmedContract();
     const { contract: asked, finished } = requestPayment(contract.planId, contract.id, "deposit", "test");
     const runId = asked.payments.deposit!.runId;
     const approval = await pending(runId);
-    expect(approval.tool).toBe("create_vendor_payout");
+    expect(approval.tool).toBe("create_vendor_order");
     expect(approval.amount?.value).toBe("1200.00");
     expect(approval.counterparties).toEqual([PHOTOGRAPHER.payeeEmail]);
-    expect(paymentOf(contract.id).batchId).toBeUndefined();
+    expect(paymentOf(contract.id).orderId).toBeUndefined();
     expect(getAuditLog().list().filter((e) => e.runId === runId && e.action === "tool.executed")).toEqual([]);
 
     let view = await viewTimeline(contract.planId, "2026-11-20");
@@ -100,19 +103,27 @@ describe("paying", () => {
 
     getApprovals().decide(approval.id, "approved", "couple");
     await finished;
-    const sent = paymentOf(contract.id);
-    expect(sent.state).toBe("sending");
-    expect(sent.batchId).toBeTruthy();
+    const ordered = paymentOf(contract.id);
+    expect(ordered).toMatchObject({ state: "awaiting_checkout", orderStatus: "PAYER_ACTION_REQUIRED", payee: PHOTOGRAPHER.payeeEmail });
+    expect(ordered.checkoutUrl).toMatch(/checkoutnow\?token=/);
+    const order = await getPayPal().orders.get(ordered.orderId!);
+    expect(order.intent).toBe("CAPTURE");
+    expect(order.purchase_units![0]).toMatchObject({ amount: { currency_code: "USD", value: "1200.00" }, payee: { email_address: PHOTOGRAPHER.payeeEmail } });
 
-    await finishOnPayPal();
+    // Not paid until the couple pay in PayPal's checkout.
+    await expect(captureCheckout(contract.planId, contract.id, "deposit", ordered.orderId!)).rejects.toThrow(/nothing to capture/);
+    expect(paymentOf(contract.id).state).toBe("awaiting_checkout");
+
+    const captured = await payInCheckout(contract);
+    expect(captured).toMatchObject({ state: "sending", captureStatus: "COMPLETED" });
+    expect(captured.captureId).toBeTruthy();
+
+    await getMockPayPal()!.flushWebhooks();
     view = await viewTimeline(contract.planId, "2026-11-20");
-    expect(view.items[0]).toMatchObject({ status: "paid", payment: { state: "paid", itemStatus: "SUCCESS", batchId: sent.batchId, paidBy: "webhook" } });
-    expect(view.items[0].payment!.transactionId).toBeTruthy();
+    expect(view.items[0]).toMatchObject({ status: "paid", payment: { state: "paid", captureId: captured.captureId, paidBy: "webhook", webhook: { eventType: "PAYMENT.CAPTURE.COMPLETED", captureId: captured.captureId } } });
     expect(view.paidCents).toBe(PHOTOGRAPHER.depositCents);
     expect(view.totalDueCents).toBe(PHOTOGRAPHER.balanceCents);
-
-    const batch = await getPayPal().payouts.get(sent.batchId!);
-    expect(batch.items[0].payout_item.amount.value).toBe("1200.00");
+    expect((await getPayPal().payments.getCapture(captured.captureId!)).amount).toEqual({ currency_code: "USD", value: "1200.00" });
   });
 
   it("moves nothing when the couple decline, and lets them ask again", async () => {
@@ -121,7 +132,7 @@ describe("paying", () => {
     getApprovals().decide((await pending(asked.payments.deposit!.runId)).id, "denied", "couple");
     await finished;
     expect(paymentOf(contract.id)).toMatchObject({ state: "failed", attempt: 1 });
-    expect(paymentOf(contract.id).batchId).toBeUndefined();
+    expect(paymentOf(contract.id).orderId).toBeUndefined();
 
     const again = requestPayment(contract.planId, contract.id, "deposit", "test");
     expect(again.contract.payments.deposit!.attempt).toBe(1);
@@ -138,21 +149,32 @@ describe("paying", () => {
     expect(() => requestPayment(contract.planId, contract.id, "deposit", "test")).toThrow(/already has a payment/);
   });
 
-  it("marks a payout PayPal failed, and a retry uses a new batch id", async () => {
+  it("captures only this payment's own order, and only once", async () => {
     const contract = await confirmedContract();
-    const failing = { ...requireContract(contract.id).confirmed!, payeeEmail: "fail@example.com" };
-    saveContract({ ...requireContract(contract.id), confirmed: failing });
-    const first = requestPayment(contract.planId, contract.id, "deposit", "test");
-    getApprovals().decide((await pending(first.contract.payments.deposit!.runId)).id, "approved", "couple");
-    await first.finished;
-    await getMockPayPal()!.advancePayouts();
-    await syncPayment(contract.id, "deposit");
-    expect(paymentOf(contract.id)).toMatchObject({ state: "failed", itemStatus: "FAILED", attempt: 1 });
+    const other = await confirmedContract();
+    await approvedPayment(contract);
+    await approvedPayment(other);
+    await expect(captureCheckout(contract.planId, contract.id, "deposit", paymentOf(other.id).orderId!)).rejects.toThrow(/isn't for this payment/);
+    await expect(captureCheckout("plan_someone_else", contract.id, "deposit", paymentOf(contract.id).orderId!)).rejects.toThrow(/not found/);
+    const first = await payInCheckout(contract);
+    const spy = vi.spyOn(getPayPal().orders, "capture");
+    await captureCheckout(contract.planId, contract.id, "deposit", first.orderId!);
+    expect(spy).not.toHaveBeenCalled();
+    expect(paymentOf(contract.id).captureId).toBe(first.captureId);
+    spy.mockRestore();
+  });
 
-    const second = requestPayment(contract.planId, contract.id, "deposit", "test");
-    expect(second.contract.payments.deposit!.attempt).toBe(2);
-    getApprovals().decide((await pending(second.contract.payments.deposit!.runId)).id, "denied", "couple");
-    await second.finished;
+  it("won't capture an order PayPal shows for another amount", async () => {
+    const contract = await confirmedContract();
+    const ordered = await approvedPayment(contract);
+    await getMockPayPal()!.simulateBuyerApproval(ordered.orderId!);
+    const stored = requireContract(contract.id);
+    saveContract({ ...stored, payments: { deposit: { ...ordered, cents: 1100_00 } }, confirmed: { ...stored.confirmed!, depositCents: 1100_00 } });
+    const spy = vi.spyOn(getPayPal().orders, "capture");
+    await expect(captureCheckout(contract.planId, contract.id, "deposit", ordered.orderId!)).rejects.toThrow(/doesn't match this payment/);
+    expect(spy).not.toHaveBeenCalled();
+    expect(paymentOf(contract.id)).toMatchObject({ state: "failed" });
+    spy.mockRestore();
   });
 
   it("the guard blocks a payee outside the allowlist", async () => {
@@ -165,92 +187,117 @@ describe("paying", () => {
   });
 
   it("pays the vendor's own address outside sandbox", () => {
-    expect(payoutReceiver(PHOTOGRAPHER.payeeEmail!)).toBe(PHOTOGRAPHER.payeeEmail);
+    expect(orderPayee(PHOTOGRAPHER.payeeEmail!)).toBe(PHOTOGRAPHER.payeeEmail);
   });
 });
 
-describe("payout webhooks", () => {
-  function itemEvent(contractId: string, batchId: string, change: Partial<PayoutItem["payout_item"]> = {}): WebhookEventEnvelope<string, PayoutItem> {
-    const payment = paymentOf(contractId);
-    return {
-      id: `WH-${n++}`,
-      event_type: "PAYMENT.PAYOUTS-ITEM.SUCCEEDED",
-      event_version: "1.0",
-      create_time: "2026-11-02T03:05:57.307Z",
-      resource_type: "payouts_item",
-      summary: "Payout item succeeded",
-      links: [],
-      resource: {
-        payout_item_id: "ITEM-1",
-        transaction_status: "SUCCESS",
-        payout_batch_id: batchId,
-        links: [],
-        payout_item: { recipient_type: "EMAIL", amount: { currency: "USD", value: "1200.00" }, receiver: payment.receiver, sender_item_id: itemId(contractId, "deposit"), ...change },
-      },
-    };
-  }
+describe("the only order the app will ask PayPal for", () => {
+  const origin = "https://vendor-timeline.example.com";
 
-  /** PayPal has finished and says SUCCESS, and only the webhook is missing. */
-  async function paidOnPayPal(contractId: string) {
-    await getMockPayPal()!.advancePayouts();
-    await syncPayment(contractId, "deposit");
-    expect(paymentOf(contractId)).toMatchObject({ state: "sending", itemStatus: "SUCCESS" });
-  }
-
-  it("ignores a batch this app didn't create", async () => {
+  it("is exactly the confirmed term, in dollars, to the contract's payee, with PayPal's checkout coming back here", async () => {
     const contract = await confirmedContract();
-    await approvedPayment(contract);
-    expect(await payoutItemWebhook(itemEvent(contract.id, "SOMEONE-ELSES-BATCH"))).toBe(false);
-    expect(await payoutBatchWebhook("SOMEONE-ELSES-BATCH")).toBe(false);
-  });
-
-  it("marks the payment paid from the webhook that names it", async () => {
-    const contract = await confirmedContract();
-    await approvedPayment(contract);
-    const { batchId } = paymentOf(contract.id);
-    await paidOnPayPal(contract.id);
-    const event = itemEvent(contract.id, batchId!);
-    expect(await payoutItemWebhook(event)).toBe(true);
-    expect(paymentOf(contract.id)).toMatchObject({ state: "paid", paidBy: "webhook", webhook: { eventId: event.id, payoutItemId: "ITEM-1" } });
+    const order = vendorOrder(contract, "deposit", { cents: PHOTOGRAPHER.depositCents, payee: PHOTOGRAPHER.payeeEmail! }, origin);
+    expect(order.intent).toBe("CAPTURE");
+    expect(order.purchase_units).toEqual([expect.objectContaining({ amount: { currency_code: "USD", value: "1200.00" }, payee: { email_address: PHOTOGRAPHER.payeeEmail } })]);
+    expect(order.payment_source?.paypal?.experience_context).toMatchObject({ return_url: `${origin}/timeline?checkout=${contract.id}.deposit`, cancel_url: `${origin}/timeline?cancelled=${contract.id}.deposit`, shipping_preference: "NO_SHIPPING" });
+    const balance = vendorOrder(contract, "balance", { cents: PHOTOGRAPHER.balanceCents, payee: PHOTOGRAPHER.payeeEmail! }, origin);
+    expect(balance.purchase_units[0].amount.value).toBe((PHOTOGRAPHER.balanceCents / 100).toFixed(2));
   });
 
   it.each([
-    ["another item in the batch", { sender_item_id: "ctr_other.deposit" }],
-    ["a different amount", { amount: { currency: "USD", value: "1200.01" } }],
-    ["a different currency", { amount: { currency: "EUR", value: "1200.00" } }],
-    ["a different receiver", { receiver: "someone-else@example.com" }],
-  ])("doesn't accept a webhook naming %s", async (_name, change) => {
+    ["one cent more", { cents: PHOTOGRAPHER.depositCents + 1 }, /is more than the confirmed deposit/],
+    ["one cent less", { cents: PHOTOGRAPHER.depositCents - 1 }, /doesn't match the confirmed deposit/],
+    ["the balance's amount for the deposit", { cents: PHOTOGRAPHER.balanceCents }, /confirmed deposit/],
+    ["another payee", { payee: "someone-else@example.com" }, /isn't who this contract pays/],
+  ])("refuses %s before any PayPal call", async (_name, change, error) => {
+    const contract = await confirmedContract();
+    expect(() => vendorOrder(contract, "deposit", { cents: PHOTOGRAPHER.depositCents, payee: PHOTOGRAPHER.payeeEmail!, ...change }, origin)).toThrow(error);
+  });
+
+  it("refuses an unconfirmed term before any PayPal call", async () => {
+    const contract = await addContract(PLAN, { text });
+    expect(() => vendorOrder(contract, "deposit", { cents: PHOTOGRAPHER.depositCents, payee: PHOTOGRAPHER.payeeEmail! }, origin)).toThrow(/Confirm this contract/);
+  });
+
+  it("stops a payment whose payee changed under its approval, and PayPal never hears of it", async () => {
+    const contract = await confirmedContract();
+    const { contract: asked, finished } = requestPayment(contract.planId, contract.id, "deposit", "test");
+    const approval = await pending(asked.payments.deposit!.runId);
+    const stored = requireContract(contract.id);
+    saveContract({ ...stored, payments: { deposit: { ...stored.payments.deposit!, payee: "attacker@example.com" } } });
+    const spy = vi.spyOn(getPayPal().orders, "create");
+    getApprovals().decide(approval.id, "approved", "couple");
+    await finished;
+    expect(spy).not.toHaveBeenCalled();
+    expect(paymentOf(contract.id)).toMatchObject({ state: "failed" });
+    expect(paymentOf(contract.id).orderId).toBeUndefined();
+    spy.mockRestore();
+  });
+});
+
+describe("capture webhooks", () => {
+  function captureEvent(payment: { captureId?: string; orderId?: string }, change: Partial<Capture> = {}): WebhookEventEnvelope<string, Capture> {
+    return {
+      id: `WH-${n++}`,
+      event_type: "PAYMENT.CAPTURE.COMPLETED",
+      event_version: "1.0",
+      create_time: "2026-11-02T03:05:57.307Z",
+      resource_type: "capture",
+      summary: "Payment completed",
+      links: [],
+      resource: { id: payment.captureId ?? "CAPTURE-X", status: "COMPLETED", amount: { currency_code: "USD", value: "1200.00" }, final_capture: true, supplementary_data: { related_ids: { order_id: payment.orderId } }, links: [], create_time: "", update_time: "", ...change },
+    };
+  }
+
+  /** PayPal shows the capture COMPLETED, and only the webhook is missing. */
+  async function capturedNoWebhook(contract: Contract) {
+    await approvedPayment(contract);
+    const paid = await payInCheckout(contract);
+    expect(paid).toMatchObject({ state: "sending", captureStatus: "COMPLETED" });
+    return paid;
+  }
+
+  it("ignores a capture this app didn't make", async () => {
     const contract = await confirmedContract();
     await approvedPayment(contract);
-    const { batchId } = paymentOf(contract.id);
-    await paidOnPayPal(contract.id);
-    expect(await payoutItemWebhook(itemEvent(contract.id, batchId!, change))).toBe(false);
+    expect(await captureWebhook(captureEvent({ captureId: "SOMEONE-ELSES", orderId: "SOMEONE-ELSES-ORDER" }))).toBe(false);
+  });
+
+  it("marks the payment paid from the webhook for its capture, once PayPal's status agrees", async () => {
+    const contract = await confirmedContract();
+    const paid = await capturedNoWebhook(contract);
+    const event = captureEvent(paid);
+    expect(await captureWebhook(event)).toBe(true);
+    expect(paymentOf(contract.id)).toMatchObject({ state: "paid", paidBy: "webhook", webhook: { eventId: event.id, captureId: paid.captureId } });
+  });
+
+  it.each([
+    ["another order", () => ({ supplementary_data: { related_ids: { order_id: "OTHER-ORDER" } } }) as Partial<Capture>],
+    ["a different amount", () => ({ amount: { currency_code: "USD", value: "1200.01" } })],
+    ["a different currency", () => ({ amount: { currency_code: "EUR", value: "1200.00" } })],
+  ])("doesn't accept a webhook naming %s", async (_name, change) => {
+    const contract = await confirmedContract();
+    const paid = await capturedNoWebhook(contract);
+    expect(await captureWebhook(captureEvent(paid, change()))).toBe(false);
     expect(paymentOf(contract.id)).toMatchObject({ state: "sending" });
     expect(paymentOf(contract.id).webhook).toBeUndefined();
   });
 
-  it("won't let a batch webhook mark anything paid", async () => {
+  it("a webhook alone isn't enough: the capture must exist and PayPal's own status must agree", async () => {
     const contract = await confirmedContract();
-    await approvedPayment(contract);
-    const { batchId } = paymentOf(contract.id);
-    await paidOnPayPal(contract.id);
-    expect(await payoutBatchWebhook(batchId!)).toBe(true);
-    expect(paymentOf(contract.id)).toMatchObject({ state: "sending" });
-  });
-
-  it("a webhook alone isn't enough: PayPal's own status must agree", async () => {
-    const contract = await confirmedContract();
-    await approvedPayment(contract);
-    expect(await payoutItemWebhook(itemEvent(contract.id, paymentOf(contract.id).batchId!))).toBe(true);
-    expect(paymentOf(contract.id).state).toBe("sending");
-    await paidOnPayPal(contract.id).catch(() => undefined);
+    const ordered = await approvedPayment(contract);
+    // Early: it names the order, but nothing is captured yet.
+    expect(await captureWebhook(captureEvent({ orderId: ordered.orderId, captureId: "EARLY-CAPTURE" }))).toBe(true);
+    expect(paymentOf(contract.id).state).toBe("awaiting_checkout");
+    const paid = await payInCheckout(contract);
+    expect(paid.state).toBe("sending");
+    expect(await captureWebhook(captureEvent(paid))).toBe(true);
     expect(paymentOf(contract.id)).toMatchObject({ state: "paid", paidBy: "webhook" });
   });
 
-  it("if no webhook ever comes, the status read from PayPal stands and says so", async () => {
+  it("if no webhook ever comes, the capture read from PayPal stands and says so", async () => {
     const contract = await confirmedContract();
-    await approvedPayment(contract);
-    await paidOnPayPal(contract.id);
+    await capturedNoWebhook(contract);
     const stored = requireContract(contract.id);
     const longAgo = new Date(Date.now() - WEBHOOK_WAIT_MS - 1000).toISOString();
     saveContract({ ...stored, payments: { deposit: { ...stored.payments.deposit!, successSeenAt: longAgo } } });
@@ -260,10 +307,8 @@ describe("payout webhooks", () => {
 
   it("rejects a webhook with no valid signature before it reaches a payment", async () => {
     const contract = await confirmedContract();
-    await approvedPayment(contract);
-    const { batchId } = paymentOf(contract.id);
-    await paidOnPayPal(contract.id);
-    const res = await handleWebhookRequest(new Request("http://localhost/api/paypal/webhooks", { method: "POST", body: JSON.stringify(itemEvent(contract.id, batchId!)) }));
+    const paid = await capturedNoWebhook(contract);
+    const res = await handleWebhookRequest(new Request("http://localhost/api/paypal/webhooks", { method: "POST", body: JSON.stringify(captureEvent(paid)) }));
     expect(res.status).toBe(400);
     expect(paymentOf(contract.id).state).toBe("sending");
   });

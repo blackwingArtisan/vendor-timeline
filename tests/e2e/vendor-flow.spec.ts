@@ -1,12 +1,13 @@
 /**
  * The whole story in a real browser: contracts in, terms checked, one timeline out, then a real
- * vendor payment after a person approves it. `npm run test:e2e` runs it on mock PayPal;
- * `npm run test:e2e:sandbox` runs it on the PayPal sandbox and re-reads the payout straight from
- * PayPal. AI is mocked unless E2E_AI_MODE=live, which then reads only the photographer's contract.
+ * vendor payment after a person approves it, paid by the couple in PayPal's checkout. `npm run test:e2e`
+ * runs it on mock PayPal; `npm run test:e2e:sandbox` runs it on the PayPal sandbox, pays on PayPal's own
+ * checkout page with the test card, and re-reads the order and capture straight from PayPal. AI is mocked unless E2E_AI_MODE=live, which then reads only the photographer's contract.
  */
 import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { readFinishedPayout, readPayoutEvent } from "./paypal-reread";
+import { payInCheckout } from "./pay-in-checkout";
+import { readCapture, readCaptureEvent, readOrder, sandboxSellerEmail } from "./paypal-reread";
 import { formatCents, sumCents } from "../../src/lib/wedding/cents";
 import { formatDay } from "../../src/lib/wedding/dates";
 import { BAND, BAND_ANSWERS, CATERER, CATERER_STATED_BALANCE_CENTS, FLORIST, PHOTOGRAPHER, SAMPLES, VENUE, type SampleFacts } from "../../src/lib/wedding/samples";
@@ -167,34 +168,45 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   const prompt = deposit.getByTestId("approval-prompt");
   await expect(prompt).toBeVisible({ timeout: 30_000 });
   await expect(prompt).toContainText(`Pay ${PHOTOGRAPHER.vendorName} ${formatCents(PHOTOGRAPHER.depositCents)} for the deposit`);
-  await expect(prompt.getByTestId("approval-from")).toHaveText("Your PayPal balance");
+  await expect(prompt.getByTestId("approval-from")).toHaveText("Your PayPal, in PayPal's checkout");
   await expect(prompt.getByTestId("approval-to")).toHaveText(PHOTOGRAPHER.vendorName);
-  await expect(prompt.getByTestId("approval-note")).toContainText(sandbox ? "standing in for this fictional vendor" : "no real money");
+  await expect(prompt).not.toContainText("balance");
+  await expect(prompt.getByTestId("stand-in")).toHaveCount(sandbox ? 1 : 0);
   await expect(deposit.getByTestId("item-status")).toHaveText("Waiting for your approval");
   await expect(deposit.getByTestId("paypal-proof")).toHaveCount(0);
   await expect(page.getByTestId("stat-paid")).toContainText("$0.00");
   await page.screenshot({ path: `screenshots/approval-${sandbox ? "sandbox" : "mock"}.png`, fullPage: true });
 
-  // Approved: the real payment, then the status PayPal reports.
+  // Approved in the app. Nothing has moved: the couple now pay it themselves in PayPal's checkout.
   await prompt.getByTestId("approve-button").click();
+  const box = deposit.getByTestId("checkout-box");
+  await expect(box).toBeVisible({ timeout: 60_000 });
+  await expect(deposit.getByTestId("item-status")).toHaveText("Approved: pay in PayPal");
+  await expect(page.getByTestId("stat-paid")).toContainText("$0.00");
+  const orderId = (await box.getByTestId("checkout-order-id").textContent())!;
+  const payee = sandbox ? sandboxSellerEmail() : PHOTOGRAPHER.payeeEmail!;
+  await expect(box.getByTestId("checkout-payee")).toHaveText(payee);
+  if (sandbox) await expect(box.getByTestId("stand-in")).toHaveText(`In the sandbox, this test business account (${payee}) stands in for ${PHOTOGRAPHER.vendorName}.`);
+  await payInCheckout(page, box, sandbox);
+
+  // Back from PayPal: captured, then Paid only once PayPal's own record of the capture says so.
   await expect(deposit.getByTestId("item-status")).toHaveText("Paid", { timeout: 200_000 });
-  await expect(deposit.getByTestId("paypal-status")).toHaveText("SUCCESS");
+  await expect(deposit.getByTestId("paypal-status")).toHaveText("COMPLETED");
+  await expect(deposit.getByTestId("paypal-order-id")).toHaveText(orderId);
   await expect(page.getByTestId("stat-paid")).toContainText(formatCents(PHOTOGRAPHER.depositCents));
   await expect(page.getByTestId("stat-total")).toContainText(formatCents(unpaidCents - PHOTOGRAPHER.depositCents));
-  if (sandbox) await expect(deposit.getByTestId("paypal-proof")).toContainText("standing in for this fictional vendor");
+  if (sandbox) await expect(deposit.getByTestId("paypal-proof").getByTestId("stand-in")).toContainText(`stands in for ${PHOTOGRAPHER.vendorName}`);
 
-  // On mock and on the hosted copy a PayPal webhook is what marks it paid. A local sandbox run has
-  // no public address for PayPal to call, so there the re-read may stand in.
-  await expect(deposit.getByTestId("paid-by")).toContainText(!sandbox || HOSTED ? "Confirmed by PayPal webhook" : "Confirmed by");
+  // On mock and on the hosted copy a PayPal webhook for the capture is what marks it paid. A local
+  // sandbox run has no public address for PayPal to call, so there the re-read stands in.
+  await expect(deposit.getByTestId("paid-by")).toContainText(!sandbox || HOSTED ? "Confirmed by PayPal webhook" : "Confirmed by re-reading the capture");
   const webhookEventId = HOSTED ? await deposit.getByTestId("paid-by-event").textContent() : null;
 
   // The next one due moves on. A real-AI run has only the photographer, so it's their balance.
   await expect(page.getByTestId("stat-next")).toContainText(formatCents(live ? PHOTOGRAPHER.balanceCents : CATERER.depositCents));
 
-  const batchId = (await deposit.getByTestId("paypal-batch-id").textContent())!;
-  const transactionId = (await deposit.getByTestId("paypal-transaction-id").textContent())!;
-  expect(batchId).toBeTruthy();
-  expect(transactionId).toBeTruthy();
+  const captureId = (await deposit.getByTestId("paypal-capture-id").textContent())!;
+  expect(captureId).toBeTruthy();
   await deposit.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `screenshots/timeline-after-payment-${sandbox ? "sandbox" : "mock"}.png`, fullPage: true });
 
@@ -210,21 +222,24 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   await expect(page.getByTestId("audit-row").first()).toBeVisible();
 
   if (sandbox) {
-    const payout = await readFinishedPayout(batchId);
-    const payoutItem = payout.items[0];
-    console.log(`PayPal re-read: batch ${batchId} ${payout.batch_header.batch_status}, item ${payoutItem.transaction_status}, transaction ${payoutItem.transaction_id}, ${payoutItem.payout_item.amount.value} ${payoutItem.payout_item.amount.currency}, sender_batch_id ${payout.batch_header.sender_batch_header.sender_batch_id}`);
-    expect(payout.batch_header.batch_status).toBe("SUCCESS");
-    expect(payout.batch_header.sender_batch_header.sender_batch_id).toMatch(/^vt-ctr_.+-deposit-1$/);
-    expect(payout.items).toHaveLength(1);
-    expect(payoutItem.transaction_status).toBe("SUCCESS");
-    expect(payoutItem.transaction_id).toBe(transactionId);
-    expect(payoutItem.payout_item.amount).toEqual({ currency: "USD", value: (PHOTOGRAPHER.depositCents / 100).toFixed(2) });
-    expect(payoutItem.payout_item.receiver).toMatch(/@personal\.example\.com$/);
+    // Straight from PayPal: the couple's order, paid to the app's sandbox business account, for exactly the confirmed term.
+    const term = { currency_code: "USD", value: (PHOTOGRAPHER.depositCents / 100).toFixed(2) };
+    const order = await readOrder(orderId);
+    const capture = await readCapture(captureId);
+    console.log(`PayPal re-read: order ${order.id} ${order.status}, payee ${order.purchase_units[0].payee.email_address}, capture ${capture.id} ${capture.status} ${capture.amount.value} ${capture.amount.currency_code}`);
+    expect(order.status).toBe("COMPLETED");
+    expect(order.intent).toBe("CAPTURE");
+    expect(order.purchase_units).toHaveLength(1);
+    expect(order.purchase_units[0].amount).toEqual(term);
+    expect(order.purchase_units[0].payee.email_address?.toLowerCase()).toBe(sandboxSellerEmail().toLowerCase());
+    expect(order.purchase_units[0].payments?.captures?.map((c) => c.id)).toEqual([captureId]);
+    expect(capture.status).toBe("COMPLETED");
+    expect(capture.amount).toEqual(term);
+    expect(capture.supplementary_data?.related_ids?.order_id).toBe(orderId);
     if (HOSTED) {
-      const event = await readPayoutEvent(batchId);
-      console.log(`PayPal webhook event: ${event?.id} ${event?.event_type} for ${event?.resource.payout_batch_id}`);
+      const event = await readCaptureEvent(captureId);
+      console.log(`PayPal webhook event: ${event?.id} ${event?.event_type} for capture ${event?.resource.id}`);
       expect(event?.id).toBe(webhookEventId);
-      expect(event?.resource.payout_item.sender_item_id).toBe(payoutItem.payout_item.sender_item_id);
     }
   }
 });

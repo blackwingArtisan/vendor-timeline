@@ -1,11 +1,13 @@
 /**
- * "Five contracts in, one timeline, pay the photographer", with the agent doing the asking.
- * `npm run test:e2e` runs it on mock PayPal and scripted AI. `npm run test:e2e:sandbox` runs it on
- * the real PayPal sandbox and reads the money back from PayPal. E2E_AI_MODE=live uses real Claude.
+ * "Five contracts in, one timeline, pay the most overdue vendor first", with the agent doing the asking
+ * and the couple paying in PayPal's checkout. `npm run test:e2e` runs it on mock PayPal and scripted AI.
+ * `npm run test:e2e:sandbox` runs it on the real PayPal sandbox, pays on PayPal's own checkout page,
+ * and reads the order and capture back from PayPal. E2E_AI_MODE=live uses real Claude.
  * Against the hosted copy (E2E_BASE_URL) a real PayPal webhook must be what marks the payment paid.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { readFinishedPayout, readPayoutEvent } from "./paypal-reread";
+import { payInCheckout } from "./pay-in-checkout";
+import { readCapture, readCaptureEvent, readOrder, sandboxSellerEmail } from "./paypal-reread";
 import { formatCents, sumCents } from "../../src/lib/wedding/cents";
 import { formatDay } from "../../src/lib/wedding/dates";
 import { CATERER, FLORIST, PHOTOGRAPHER, SAMPLES } from "../../src/lib/wedding/samples";
@@ -27,7 +29,7 @@ async function askAgent(page: Page, goal?: string) {
   await page.getByTestId("ask-agent").click();
 }
 
-test("five contracts, one timeline, and the agent stops before paying the photographer", async ({ page }) => {
+test("five contracts, one timeline, and the agent puts the overdue florist first and stops before paying", async ({ page }) => {
   await fiveContracts(page);
   const status = await (await page.request.get("/api/kit/status")).json();
   const sandbox = status.paypal.mode === "sandbox";
@@ -52,37 +54,37 @@ test("five contracts, one timeline, and the agent stops before paying the photog
 
   // The cash check is code, so it's on the page before any AI runs.
   const clash = page.locator('[data-testid="cash-warning"][data-kind="same_week"]');
-  await expect(clash).toContainText(`${formatCents(clashTotal)} in one week`);
+  await expect(clash).toContainText(`${formatCents(clashTotal)} leaves in the week of Sat, May 29, 2027`);
   await expect(clash).toContainText(CATERER.vendorName);
   await expect(clash).toContainText(FLORIST.vendorName);
-  await expect(clash).toContainText("$7,200.00 over your $5,000.00 monthly budget");
+  await expect(clash).not.toContainText("monthly budget");
 
   // Each warning opens to the payments, their pay dates and the sum.
   await clash.getByText("Show the sums").click();
   const sums = clash.getByTestId("cash-sums");
   await expect(sums).toContainText("Pays Sat, May 29, 2027");
-  await expect(sums).toContainText("Total in one week");
-  await expect(sums).toContainText("Monthly budget");
-  await expect(sums).toContainText("Over by");
-  await expect(sums).toContainText("$7,200.00");
+  await expect(sums).toContainText("Leaves in one week");
+  await expect(sums).toContainText(formatCents(clashTotal));
+  await expect(sums).not.toContainText("Monthly budget");
   await page.screenshot({ path: "screenshots/cash-sums.png", fullPage: true });
 
-  // The agent names the next payment, warns about the clash, and stops.
+  // The agent puts the overdue florist deposit first, warns about the clash, and stops.
   await askAgent(page);
   const panel = page.getByTestId("agent-panel");
   const prompt = panel.getByTestId("approval-prompt");
   await expect(prompt).toBeVisible({ timeout: 90_000 });
-  await expect(prompt).toContainText(`Pay ${PHOTOGRAPHER.vendorName} ${formatCents(PHOTOGRAPHER.depositCents)} for the deposit`);
+  await expect(prompt).toContainText(`Pay ${FLORIST.vendorName} ${formatCents(FLORIST.depositCents)} for the deposit`);
   await expect(page.getByTestId("agent-phase")).toHaveText("Stopped for your approval");
   await expect(prompt).toContainText("This is your money");
-  await expect(prompt.getByTestId("approval-from")).toHaveText("Your PayPal balance");
-  await expect(prompt.getByTestId("approval-to")).toHaveText(PHOTOGRAPHER.vendorName);
+  await expect(prompt.getByTestId("approval-from")).toHaveText("Your PayPal, in PayPal's checkout");
+  await expect(prompt.getByTestId("approval-to")).toHaveText(FLORIST.vendorName);
   await expect(prompt.getByTestId("approval-budget")).toContainText("monthly budget");
   const said = await panel.getByTestId("agent-messages").innerText();
   console.log(`Agent said: ${said}`);
-  expect(said).toContain(PHOTOGRAPHER.vendorName);
-  expect(said).toContain(formatCents(PHOTOGRAPHER.depositCents));
+  expect(said).toContain(FLORIST.vendorName);
+  expect(said).toContain(formatCents(FLORIST.depositCents));
   expect(said).toContain(formatCents(clashTotal));
+  expect(said.indexOf(FLORIST.vendorName)).toBeLessThan(said.indexOf(PHOTOGRAPHER.vendorName));
   if (realAi) {
     // The AI only explains: every dollar figure it wrote must be one the code gave it.
     const view = await (await page.request.get(`/api/timeline?today=${TODAY}`)).json();
@@ -92,50 +94,56 @@ test("five contracts, one timeline, and the agent stops before paying the photog
   await page.screenshot({ path: `screenshots/agent-approval-${sandbox ? "sandbox" : "mock"}.png`, fullPage: true });
 
   // Nothing has moved, and the item waits for the same person.
-  const deposit = row(page, "photographer", "deposit");
+  const deposit = row(page, "florist", "deposit");
   await expect(deposit.getByTestId("item-status")).toHaveText("Waiting for your approval");
   await expect(deposit.getByTestId("paypal-proof")).toHaveCount(0);
   await expect(page.getByTestId("stat-paid")).toContainText("$0.00");
 
-  // Yes: the payment goes, and the status is PayPal's.
+  // Yes: the couple pay it in PayPal's checkout, right from the agent panel.
   await prompt.getByTestId("approve-button").click();
+  const box = panel.getByTestId("checkout-box");
+  await expect(box).toBeVisible({ timeout: 60_000 });
+  const orderId = (await box.getByTestId("checkout-order-id").textContent())!;
+  await payInCheckout(page, box, sandbox);
+
+  // Paid, and the status is PayPal's own record of the capture.
   await expect(deposit.getByTestId("item-status")).toHaveText("Paid", { timeout: 200_000 });
-  await expect(deposit.getByTestId("paypal-status")).toHaveText("SUCCESS");
-  await expect(page.getByTestId("stat-paid")).toContainText(formatCents(PHOTOGRAPHER.depositCents));
-  await expect(page.getByTestId("agent-phase")).toHaveText("Finished", { timeout: 60_000 });
+  await expect(deposit.getByTestId("paypal-status")).toHaveText("COMPLETED");
+  await expect(page.getByTestId("stat-paid")).toContainText(formatCents(FLORIST.depositCents));
+  await expect(page.getByTestId("stat-overdue")).toContainText("$0.00");
   const proof = await deposit.getByTestId("paypal-proof").innerText();
   console.log(`Proof on screen: ${proof}`);
 
-  const batchId = (await deposit.getByTestId("paypal-batch-id").textContent())!;
-  const transactionId = (await deposit.getByTestId("paypal-transaction-id").textContent())!;
+  const captureId = (await deposit.getByTestId("paypal-capture-id").textContent())!;
   const expectWebhook = !sandbox || HOSTED;
   if (expectWebhook) await expect(deposit.getByTestId("paid-by")).toContainText("Confirmed by PayPal webhook");
-  else await expect(deposit.getByTestId("paid-by")).toContainText("Confirmed by");
+  else await expect(deposit.getByTestId("paid-by")).toContainText("Confirmed by re-reading the capture");
 
   // It stays paid and can't go twice, whoever asks.
   await page.reload();
-  await expect(row(page, "photographer", "deposit").getByTestId("item-status")).toHaveText("Paid");
-  await expect(row(page, "photographer", "deposit").getByTestId("pay-item")).toHaveCount(0);
+  await expect(row(page, "florist", "deposit").getByTestId("item-status")).toHaveText("Paid");
+  await expect(row(page, "florist", "deposit").getByTestId("pay-item")).toHaveCount(0);
   await page.screenshot({ path: `screenshots/agent-paid-${sandbox ? "sandbox" : "mock"}.png`, fullPage: true });
 
   const audit = await (await page.request.get("/api/audit")).json();
   expect(audit.integrity.ok).toBe(true);
 
   if (sandbox) {
-    const payout = await readFinishedPayout(batchId);
-    const paid = payout.items[0];
-    console.log(`PayPal re-read: batch ${batchId} ${payout.batch_header.batch_status}, item ${paid.transaction_status}, transaction ${paid.transaction_id}, ${paid.payout_item.amount.value} ${paid.payout_item.amount.currency}`);
-    expect(payout.items).toHaveLength(1);
-    expect(paid.transaction_status).toBe("SUCCESS");
-    expect(paid.transaction_id).toBe(transactionId);
-    expect(paid.payout_item.amount).toEqual({ currency: "USD", value: (PHOTOGRAPHER.depositCents / 100).toFixed(2) });
-    expect(paid.payout_item.receiver).toMatch(/@personal\.example\.com$/);
+    const term = { currency_code: "USD", value: (FLORIST.depositCents / 100).toFixed(2) };
+    const order = await readOrder(orderId);
+    const capture = await readCapture(captureId);
+    console.log(`PayPal re-read: order ${order.id} ${order.status}, payee ${order.purchase_units[0].payee.email_address}, capture ${capture.id} ${capture.status} ${capture.amount.value} ${capture.amount.currency_code}`);
+    expect(order.status).toBe("COMPLETED");
+    expect(order.purchase_units[0].amount).toEqual(term);
+    expect(order.purchase_units[0].payee.email_address?.toLowerCase()).toBe(sandboxSellerEmail().toLowerCase());
+    expect(capture.status).toBe("COMPLETED");
+    expect(capture.amount).toEqual(term);
+    expect(capture.supplementary_data?.related_ids?.order_id).toBe(orderId);
     if (HOSTED) {
-      const eventId = (await row(page, "photographer", "deposit").getByTestId("paid-by-event").textContent())!;
-      const event = await readPayoutEvent(batchId);
-      console.log(`PayPal webhook event: ${event?.id} ${event?.event_type} for ${event?.resource.payout_batch_id}`);
+      const eventId = (await row(page, "florist", "deposit").getByTestId("paid-by-event").textContent())!;
+      const event = await readCaptureEvent(captureId);
+      console.log(`PayPal webhook event: ${event?.id} ${event?.event_type} for capture ${event?.resource.id}`);
       expect(event?.id).toBe(eventId);
-      expect(event?.resource.payout_item.sender_item_id).toBe(paid.payout_item.sender_item_id);
     }
   }
 });
@@ -169,7 +177,7 @@ test("declining the agent's payment moves no money and leaves it payable", async
   await expect(prompt).toBeVisible({ timeout: 60_000 });
   await prompt.getByRole("button", { name: "Decline" }).click();
   await expect(page.getByTestId("agent-phase")).toHaveText("Finished", { timeout: 60_000 });
-  const deposit = row(page, "photographer", "deposit");
+  const deposit = row(page, "florist", "deposit");
   await expect(deposit.getByTestId("pay-item")).toBeVisible();
   await expect(deposit.getByTestId("paypal-proof")).toHaveCount(0);
   await expect(page.getByTestId("stat-paid")).toContainText("$0.00");

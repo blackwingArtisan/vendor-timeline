@@ -48,7 +48,9 @@ describe("the sample wedding", () => {
     expect(week.totalCents).toBe(total);
     expect(week.overByCents).toBe(total - 500_000);
     expect(week.from).toBe("2027-05-29");
-    expect(week.message).toContain("$12,200.00 in one week, $7,200.00 over your $5,000.00 monthly budget");
+    // Like with like: a week's money is said as a week's money, not weighed against a month's budget.
+    expect(week.message).toMatch(/^\$12,200\.00 leaves in the week of Sat, May 29, 2027: /);
+    expect(week.message).not.toContain("monthly budget");
     expect(cash.warnings.filter((w) => w.kind === "over_month").map((w) => w.from.slice(0, 7))).toEqual(["2027-04", "2027-05"]);
   });
 

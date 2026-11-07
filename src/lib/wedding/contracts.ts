@@ -43,7 +43,8 @@ export function requirePlanContract(planId: string, id: string): Contract {
 
 export const saveContract = (contract: Contract) => contracts().upsert(contract);
 
-export const contractWithBatch = (batchId: string) => contracts().list().find((c) => Object.values(c.payments).some((p) => p.batchId === batchId));
+/** The contract with a payment on this PayPal order or capture. */
+export const contractWithPayPalId = (id: string) => contracts().list().find((c) => Object.values(c.payments).some((p) => p.orderId === id || p.captureId === id));
 
 export type ConfirmInput = Omit<ConfirmedTerms, "balanceCents">;
 
