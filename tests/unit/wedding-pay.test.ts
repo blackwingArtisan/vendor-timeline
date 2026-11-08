@@ -10,8 +10,10 @@ import type { Capture, WebhookEventEnvelope } from "@/lib/paypal/types";
 import { moveDueDate } from "@/lib/wedding/contracts";
 import { timeline } from "@/lib/events/bus";
 
-import { captureCheckout, captureWebhook, orderPayee, planChannel, planPayPalIds, webhookPlanChannel, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
-import { BAND, PHOTOGRAPHER } from "@/lib/wedding/samples";
+import { resetEnvCache } from "@/lib/env";
+import { DEFAULT_SANDBOX_VENDOR_EMAIL } from "@/lib/env-core";
+import { captureCheckout, captureWebhook, checkoutAfterApproval, orderPayee, sandboxPayee, planChannel, planPayPalIds, webhookPlanChannel, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
+import { BAND, CATERER, FLORIST, PHOTOGRAPHER, VENUE } from "@/lib/wedding/samples";
 import type { Contract } from "@/lib/wedding/types";
 
 const text = fs.readFileSync(path.join("public/sample-contracts", PHOTOGRAPHER.file), "utf8");
@@ -201,6 +203,23 @@ describe("paying", () => {
 
   it("pays the vendor's own address outside sandbox", () => {
     expect(orderPayee(PHOTOGRAPHER.payeeEmail!)).toBe(PHOTOGRAPHER.payeeEmail);
+    expect(sandboxPayee(FLORIST.payeeEmail!)).toBeUndefined();
+  });
+
+  it("in sandbox pays the florist and caterer to a separate vendor account, the rest to the app's own", () => {
+    vi.stubEnv("PAYPAL_MODE", "sandbox");
+    vi.stubEnv("PAYPAL_CLIENT_ID", "test-client");
+    vi.stubEnv("PAYPAL_CLIENT_SECRET", "test-secret");
+    vi.stubEnv("PAYPAL_SANDBOX_SELLER_EMAIL", "own-app@business.example.com");
+    resetEnvCache();
+    try {
+      for (const vendor of [FLORIST, CATERER]) expect(sandboxPayee(vendor.payeeEmail!)).toEqual({ email: DEFAULT_SANDBOX_VENDOR_EMAIL, own: false });
+      for (const vendor of [PHOTOGRAPHER, VENUE]) expect(sandboxPayee(vendor.payeeEmail!)).toEqual({ email: "own-app@business.example.com", own: true });
+      expect(orderPayee("someone@gmail.com")).toBe("own-app@business.example.com");
+    } finally {
+      vi.unstubAllEnvs();
+      resetEnvCache();
+    }
   });
 });
 
@@ -391,6 +410,27 @@ describe("answering an approval", () => {
     expect(ownsApproval(contract.planId, approval)).toBe(true);
     expect(ownsApproval("plan_someone", approval)).toBe(false);
     getApprovals().decide(approval.id, "denied", "couple");
+    await finished;
+  });
+
+  it("hands back the order right after a yes, so checkout opens with no second step", async () => {
+    const contract = await confirmedContract();
+    const { contract: asked, finished } = requestPayment(contract.planId, contract.id, "deposit", "test");
+    const approval = await pending(asked.payments.deposit!.runId);
+    const decided = getApprovals().decide(approval.id, "approved", "couple");
+    const checkout = await checkoutAfterApproval(decided);
+    await finished;
+    expect(checkout.orderId).toBe(paymentOf(contract.id).orderId);
+    expect(paymentOf(contract.id).state).toBe("awaiting_checkout");
+    // Mock PayPal has no real checkout page to send the browser to.
+    expect(checkout.checkoutUrl).toBeUndefined();
+  });
+
+  it("hands back nothing after a no", async () => {
+    const contract = await confirmedContract();
+    const { contract: asked, finished } = requestPayment(contract.planId, contract.id, "deposit", "test");
+    const decided = getApprovals().decide((await pending(asked.payments.deposit!.runId)).id, "denied", "couple");
+    expect(await checkoutAfterApproval(decided)).toEqual({});
     await finished;
   });
 });

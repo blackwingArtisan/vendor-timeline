@@ -98,3 +98,9 @@ export const sampleUrl = (sample: SampleFacts) => `/sample-contracts/${sample.fi
 
 /** The photographer's contract as a PDF, made by scripts/make-sample-pdf.mjs. */
 export const SAMPLE_PDF = "photographer.pdf";
+
+/**
+ * In sandbox these two vendors are paid to a separate test business account, not the app's own,
+ * so a payment visibly reaches a vendor's account (KitEnv.sandboxVendorEmail).
+ */
+export const PAID_TO_VENDOR_ACCOUNT: ReadonlySet<string> = new Set([FLORIST.payeeEmail!, CATERER.payeeEmail!].map((e) => e.toLowerCase()));

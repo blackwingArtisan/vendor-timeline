@@ -26,9 +26,10 @@ import { isSamplePlan, monthlyBudget } from "./budget";
 import { centsToDollars, dollarsToCents, formatCents } from "./cents";
 import { contractWithPayPalId, findContract, listContracts, requireContract, requirePlanContract, saveContract } from "./contracts";
 import { utcToday } from "./dates";
+import { PAID_TO_VENDOR_ACCOUNT } from "./samples";
 import { appOrigin, isPublicOrigin } from "./origin";
 import { buildTimeline, captureState, itemId } from "./timeline";
-import type { Contract, ItemKind, Payment, PendingApproval, TimelineItem, TimelineView } from "./types";
+import type { Contract, ItemKind, Payment, PendingApproval, SandboxPayee, TimelineItem, TimelineView } from "./types";
 
 const RECHECK_MS = 2500;
 /** PayPal's webhook took about 15 seconds in the sandbox. A re-read stands on its own after this. */
@@ -39,12 +40,22 @@ export const VENDOR_ORDER_TOOL = "create_vendor_order";
 const activePayments = () => singleton("wedding:active-payments", () => new Set<string>());
 
 /**
- * Who the order pays. The vendors are fictional, so in sandbox the app's own test business account
- * stands in for them. The screen says so wherever it shows the payment.
+ * Who the order pays. The vendors are fictional, so in sandbox a test business account stands in
+ * for each one: a separate vendor account for the florist and caterer, the app's own for the rest.
+ * The screen says which wherever it shows the payment.
  */
 export function orderPayee(vendorEmail: string): string {
   const env = getEnv();
-  return env.paypalMode === "sandbox" ? env.sandboxSellerEmail : vendorEmail;
+  if (env.paypalMode !== "sandbox") return vendorEmail;
+  return env.sandboxVendorEmail && PAID_TO_VENDOR_ACCOUNT.has(vendorEmail.trim().toLowerCase()) ? env.sandboxVendorEmail : env.sandboxSellerEmail;
+}
+
+/** In sandbox: which test account an item pays, and whether it is the app's own. */
+export function sandboxPayee(vendorEmail: string): SandboxPayee | undefined {
+  const env = getEnv();
+  if (env.paypalMode !== "sandbox") return undefined;
+  const email = orderPayee(vendorEmail);
+  return { email, own: email.toLowerCase() === env.sandboxSellerEmail.toLowerCase() };
 }
 
 const termCents = (contract: Contract, kind: ItemKind) => (kind === "deposit" ? contract.confirmed!.depositCents : contract.confirmed!.balanceCents);
@@ -338,6 +349,24 @@ export async function captureWebhook(event: WebhookEventEnvelope<string, Capture
   return true;
 }
 
+/**
+ * "Approve and pay" is one step. After the approval, wait the moment it takes the app to ask PayPal
+ * for the order, and hand back PayPal's checkout address so the browser can go straight there.
+ * With mock PayPal there is no real page, so only the order id comes back.
+ */
+export async function checkoutAfterApproval(approval: Approval, waitMs = 30_000): Promise<{ orderId?: string; checkoutUrl?: string; error?: string }> {
+  if (approval.tool !== VENDOR_ORDER_TOOL || approval.state !== "approved") return {};
+  const { contract_id: contractId, kind } = (approval.input ?? {}) as { contract_id?: string; kind?: ItemKind };
+  if (!contractId || (kind !== "deposit" && kind !== "balance")) return {};
+  for (const deadline = Date.now() + waitMs; Date.now() < deadline; await new Promise((r) => setTimeout(r, 100))) {
+    const payment = findContract(contractId)?.payments[kind];
+    if (!payment) return {};
+    if (payment.state === "failed") return { error: payment.error };
+    if (payment.orderId && payment.state !== "awaiting_approval") return { orderId: payment.orderId, checkoutUrl: getEnv().paypalMode === "sandbox" && payment.state === "awaiting_checkout" ? payment.checkoutUrl : undefined };
+  }
+  return {};
+}
+
 /** Only the couple whose payment this is can answer its approval. */
 export function ownsApproval(planId: string, approval: Approval): boolean {
   const contractId = (approval.input as { contract_id?: string } | null)?.contract_id;
@@ -380,7 +409,8 @@ export async function viewTimeline(planId: string, today = utcToday()): Promise<
   recoverLostApprovals(planId);
   await syncOpenPayments(planId);
   const view = buildTimeline(listContracts(planId), today, monthlyBudget(planId));
-  const items = view.items.map((item) => ({ ...item, approval: pendingApproval(item) }));
+  const byId = new Map(listContracts(planId).map((c) => [c.id, c]));
+  const items = view.items.map((item) => ({ ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(byId.get(item.contractId)?.confirmed?.payeeEmail ?? "") }));
   const same = (item: TimelineItem | null) => items.find((i) => i.id === item?.id) ?? null;
   return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId) };
 }

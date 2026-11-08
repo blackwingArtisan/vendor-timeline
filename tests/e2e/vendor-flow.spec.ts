@@ -6,7 +6,7 @@
  */
 import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { payInCheckout } from "./pay-in-checkout";
+import { approveAndPay } from "./pay-in-checkout";
 import { readCapture, readCaptureEvent, readOrder, sandboxSellerEmail } from "./paypal-reread";
 import { formatCents, sumCents } from "../../src/lib/wedding/cents";
 import { formatDay } from "../../src/lib/wedding/dates";
@@ -175,22 +175,15 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   await expect(prompt.getByTestId("approval-to")).toHaveText(PHOTOGRAPHER.vendorName);
   await expect(prompt).not.toContainText("balance");
   await expect(prompt.getByTestId("stand-in")).toHaveCount(sandbox ? 1 : 0);
+  // The photographer has no vendor test account, so the app's own business account stands in, and says so.
+  if (sandbox) await expect(prompt.getByTestId("stand-in")).toHaveText(`In the sandbox, this app's own test business account (${sandboxSellerEmail()}) stands in for ${PHOTOGRAPHER.vendorName}.`);
   await expect(deposit.getByTestId("item-status")).toHaveText("Waiting for your approval");
   await expect(deposit.getByTestId("paypal-proof")).toHaveCount(0);
   await expect(page.getByTestId("stat-paid")).toContainText("$0.00");
   await page.screenshot({ path: `screenshots/approval-${sandbox ? "sandbox" : "mock"}.png`, fullPage: true });
 
-  // Approved in the app. Nothing has moved: the couple now pay it themselves in PayPal's checkout.
-  await prompt.getByTestId("approve-button").click();
-  const box = deposit.getByTestId("checkout-box");
-  await expect(box).toBeVisible({ timeout: 60_000 });
-  await expect(deposit.getByTestId("item-status")).toHaveText("Approved: pay in PayPal");
-  await expect(page.getByTestId("stat-paid")).toContainText("$0.00");
-  const orderId = (await box.getByTestId("checkout-order-id").textContent())!;
-  const payee = sandbox ? sandboxSellerEmail() : PHOTOGRAPHER.payeeEmail!;
-  await expect(box.getByTestId("checkout-payee")).toHaveText(payee);
-  if (sandbox) await expect(box.getByTestId("stand-in")).toHaveText(`In the sandbox, this test business account (${payee}) stands in for ${PHOTOGRAPHER.vendorName}.`);
-  await payInCheckout(page, box, sandbox);
+  // One approval, and PayPal's checkout opens at once. The couple pay it themselves there.
+  const orderId = await approveAndPay(page, prompt, sandbox);
 
   // Back from PayPal: captured, then Paid only once PayPal's own record of the capture says so.
   await expect(deposit.getByTestId("item-status")).toHaveText("Paid", { timeout: 200_000 });

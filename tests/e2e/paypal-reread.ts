@@ -1,5 +1,5 @@
 /** Reads the PayPal sandbox directly, so the checks don't depend on the app under test. */
-import { loadEnvFiles } from "../../src/lib/env-core";
+import { DEFAULT_SANDBOX_VENDOR_EMAIL, loadEnvFiles } from "../../src/lib/env-core";
 
 const API = "https://api-m.sandbox.paypal.com";
 
@@ -92,6 +92,12 @@ export const readCapture = (captureId: string) => get<CaptureRead>(`/v2/payments
 export function sandboxSellerEmail(): string {
   loadEnvFiles();
   return process.env.PAYPAL_SANDBOX_SELLER_EMAIL!;
+}
+
+/** The separate vendor account the florist and caterer are paid to in sandbox. */
+export function sandboxVendorEmail(): string {
+  loadEnvFiles();
+  return process.env.PAYPAL_SANDBOX_VENDOR_EMAIL?.trim() ?? DEFAULT_SANDBOX_VENDOR_EMAIL;
 }
 
 export interface CaptureEvent {
