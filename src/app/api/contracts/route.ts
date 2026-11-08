@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { readJson, route } from "@/lib/http";
+import { isSamplePlan } from "@/lib/wedding/budget";
 import { addContract, listContracts } from "@/lib/wedding/contracts";
 import { MAX_CONTRACT_CHARS } from "@/lib/wedding/limits";
 import { currentPlanId } from "@/lib/wedding/plan";
@@ -9,6 +10,9 @@ const Body = z.object({
   fileName: z.string().max(200, "That file name is too long.").optional(),
 });
 
-export const GET = route(async () => ({ contracts: listContracts(await currentPlanId()) }));
+export const GET = route(async () => {
+  const planId = await currentPlanId();
+  return { contracts: listContracts(planId), samplePlan: isSamplePlan(planId) };
+});
 
 export const POST = route(async (req) => addContract(await currentPlanId(), await readJson(req, Body)), { rateLimit: "ai" });

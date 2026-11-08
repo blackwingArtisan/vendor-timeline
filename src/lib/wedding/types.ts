@@ -179,4 +179,6 @@ export interface TimelineView {
   cash: CashPlan;
   /** In sandbox a test business account is paid in place of the fictional vendor. */
   sandboxStandIn: boolean;
+  /** The labelled sample plan a new visitor starts with. */
+  samplePlan?: boolean;
 }

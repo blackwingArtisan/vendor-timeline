@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { CircleAlert, ChevronRight, FileText, Upload } from "lucide-react";
 import { ApiError, useKit } from "@/components/kit/kit-provider";
 import { PacedWait } from "@/components/wedding/paced-wait";
+import { SamplePlanBanner } from "@/components/wedding/sample-plan-banner";
 import { usePaced, WaitStopped } from "@/components/wedding/use-paced";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
@@ -20,6 +21,7 @@ export function ContractsScreen() {
   const { toast } = useToast();
   const router = useRouter();
   const [contracts, setContracts] = useState<Contract[] | null>(null);
+  const [samplePlan, setSamplePlan] = useState(false);
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string>();
   const [reading, setReading] = useState(false);
@@ -48,8 +50,11 @@ export function ContractsScreen() {
   }, []);
 
   useEffect(() => {
-    kitFetch<{ contracts: Contract[] }>("/api/contracts")
-      .then((r) => setContracts(r.contracts))
+    kitFetch<{ contracts: Contract[]; samplePlan?: boolean }>("/api/contracts")
+      .then((r) => {
+        setContracts(r.contracts);
+        setSamplePlan(!!r.samplePlan);
+      })
       .catch(() => setContracts([]));
   }, [kitFetch]);
 
@@ -135,6 +140,7 @@ export function ContractsScreen() {
   return (
     <>
       <PageHeader title="Contracts" description="Add each vendor's contract. AI pulls out the payment terms, and nothing reaches your timeline until you confirm them." />
+      {samplePlan ? <SamplePlanBanner className="mb-6" /> : null}
       <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <Card>
           <CardHeader title="Add a contract" description="Paste the text, or upload a .txt or .pdf file." />

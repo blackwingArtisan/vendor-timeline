@@ -12,7 +12,8 @@ const BARS = ".b-gantt-task-wrap:not(.b-released)";
 
 async function sampleWedding(page: Page) {
   await page.goto("/timeline");
-  await page.getByTestId("load-samples").click();
+  // A new visitor starts on the labelled sample plan, already confirmed.
+  await expect(page.getByTestId("sample-plan")).toContainText("Sample plan");
   await expect(page.getByTestId("timeline-item")).toHaveCount(10);
 }
 

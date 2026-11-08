@@ -78,9 +78,12 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   for (const path of OPEN_PAYPAL_ROUTES) expect((await api.post(path, { data: {} })).status()).toBe(404);
   await expect(page.locator(`a[href="/example"], a[href="/dashboard"]`)).toHaveCount(0);
 
-  // Before any contract is confirmed the timeline is empty.
+  // A new visitor starts on the sample plan. Their own plan starts empty.
   await page.goto("/timeline");
+  await expect(page.getByTestId("sample-plan")).toBeVisible();
+  await page.getByTestId("start-own-plan").click();
   await expect(page.getByText("Nothing confirmed yet")).toBeVisible();
+  await expect(page.getByTestId("sample-plan")).toHaveCount(0);
 
   // Photographer: sample text in the box, terms beside their sentences.
   await pickSample(page, PHOTOGRAPHER);
@@ -253,6 +256,9 @@ test("declining a payment moves no money and leaves the item payable", async ({ 
   const { ai } = await (await page.request.get("/api/kit/status")).json();
   test.skip(ai.mode === "live", "Each real read costs money, and the first test already proved it.");
 
+  await page.goto("/timeline");
+  await page.getByTestId("start-own-plan").click();
+  await expect(page.getByText("Nothing confirmed yet")).toBeVisible();
   await pickSample(page, VENUE);
   await read(page);
   await confirm(page);
