@@ -1,14 +1,18 @@
-import { ArrowRight, Check, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, ShieldCheck, Sparkles } from "lucide-react";
 import { appConfig } from "@/app.config";
+import { cashPlan, DEFAULT_MONTHLY_BUDGET_CENTS } from "@/lib/wedding/cash";
+import { cashFix } from "@/lib/wedding/cash-moves";
 import { formatCents } from "@/lib/wedding/cents";
-import { formatDay } from "@/lib/wedding/dates";
-import { CATERER, FLORIST, PHOTOGRAPHER, VENUE } from "@/lib/wedding/samples";
+import { daysBetween, formatDay } from "@/lib/wedding/dates";
+import { BAND_ANSWERS, SAMPLES, WEDDING_DAY } from "@/lib/wedding/samples";
+import { HEADLINE, PAIN_POINTS } from "@/lib/wedding/story";
+import type { ItemKind, TimelineItem } from "@/lib/wedding/types";
 import { ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
 
 /**
  * Landing page sections. Content comes from appConfig.landing; reorder or replace freely.
- *   <SiteHeader /> <Hero /> <HowItWorks /> <Features /> <CtaBand /> <SiteFooter />
+ *   <SiteHeader /> <Hero /> <PainPoints /> <HowItWorks /> <Features /> <CtaBand /> <SiteFooter />
  */
 
 export function SiteHeader() {
@@ -17,6 +21,9 @@ export function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <AppLogo />
         <nav className="flex items-center gap-2">
+          <a href="#why" className="hidden rounded-md px-3 py-2 text-sm text-zinc-600 hover:text-zinc-900 sm:block">
+            Why it matters
+          </a>
           <a href="#how" className="hidden rounded-md px-3 py-2 text-sm text-zinc-600 hover:text-zinc-900 sm:block">
             How it works
           </a>
@@ -29,39 +36,113 @@ export function SiteHeader() {
   );
 }
 
-function TimelinePreview() {
-  const rows = [
-    { sample: FLORIST, when: FLORIST.depositDue, label: "Deposit", cents: FLORIST.depositCents, tone: "bg-red-500", note: "Overdue" },
-    { sample: PHOTOGRAPHER, when: PHOTOGRAPHER.depositDue, label: "Deposit", cents: PHOTOGRAPHER.depositCents, tone: "bg-brand", note: "Pay after you approve" },
-    { sample: CATERER, when: CATERER.depositDue, label: "Deposit", cents: CATERER.depositCents, tone: "bg-zinc-300", note: "Upcoming" },
-    { sample: VENUE, when: VENUE.depositDue, label: "Deposit", cents: VENUE.depositCents, tone: "bg-zinc-300", note: "Upcoming" },
-  ];
+/** The five sample contracts as timeline items, so the landing shows the real cash check's own words. */
+function sampleItems(today: string): TimelineItem[] {
+  return SAMPLES.flatMap((s) => {
+    const entry = (kind: ItemKind, cents: number, due: string): TimelineItem => ({ id: `${s.vendorRole}.${kind}`, contractId: s.vendorRole, kind, vendorName: s.vendorName, vendorRole: s.vendorRole, cents, due, daysUntil: daysBetween(today, due), status: due < today ? "overdue" : "upcoming", weddingDay: WEDDING_DAY });
+    return [entry("deposit", s.depositCents, s.depositDue), entry("balance", s.balanceCents, s.balanceDue ?? BAND_ANSWERS.balanceDue)];
+  });
+}
+
+/** The sample wedding's worst month, as the app's cash check says it, with the sums and code's plan. */
+function CashPreview() {
+  // A fixed day keeps the page static: the sample's first payment date. Nothing is overdue on it,
+  // and the worst month and the plan are the same as the app shows on any day before May 2027.
+  const today = SAMPLES.map((s) => s.depositDue).sort()[0];
+  const items = sampleItems(today);
+  const cash = cashPlan(items, today, DEFAULT_MONTHLY_BUDGET_CENTS);
+  const worst = cash.warnings.filter((w) => w.kind === "over_month").sort((a, b) => b.totalCents - a.totalCents)[0];
+  const fix = cashFix(items, today, DEFAULT_MONTHLY_BUDGET_CENTS);
+  if (!worst) return null;
   return (
-    <div className="relative rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-2xl shadow-brand-900/10 ring-1 ring-black/5 backdrop-blur" data-testid="landing-preview">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-sm font-semibold text-zinc-900">One timeline, every vendor</span>
-        <span className="text-xs text-zinc-500">Fictional sample</span>
+    <div className="relative rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-2xl shadow-brand-900/10 ring-1 ring-black/5 backdrop-blur" data-testid="landing-cash">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <span className="text-sm font-semibold text-zinc-900">The cash check, on the sample wedding</span>
+        <span className="shrink-0 text-xs text-zinc-500">Fictional sample</span>
       </div>
-      <ol className="relative space-y-3 before:absolute before:bottom-3 before:left-[6px] before:top-3 before:w-px before:bg-zinc-200">
-        {rows.map((r) => (
-          <li key={r.sample.file} className="relative flex items-start gap-3">
-            <span className={`z-10 mt-4 size-3.5 shrink-0 rounded-full ring-4 ring-white ${r.tone}`} />
-            <div className="min-w-0 flex-1 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-semibold text-zinc-900">{formatDay(r.when)}</p>
-                <p className="font-mono text-sm font-semibold tabular-nums text-zinc-900">{formatCents(r.cents)}</p>
-              </div>
-              <div className="flex items-center justify-between gap-2 text-xs text-zinc-500">
-                <p className="truncate">
-                  {r.sample.vendorName} · {r.label}
+      <div className="rounded-xl bg-amber-50 px-4 py-3 text-amber-900">
+        <p className="flex items-start gap-2 text-sm font-medium">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" /> <span data-testid="landing-cash-warning">{worst.message}</span>
+        </p>
+        <ul className="mt-3 space-y-1 pl-6 text-xs tabular-nums">
+          {worst.payments.map((p) => (
+            <li key={p.id} className="flex justify-between gap-3">
+              <span className="min-w-0 truncate">{p.label}, {formatDay(p.payDate)}</span>
+              <span className="shrink-0">{formatCents(p.cents)}</span>
+            </li>
+          ))}
+          <li className="flex justify-between gap-3 border-t border-amber-900/20 pt-1 font-semibold">
+            <span>Monthly budget</span>
+            <span>{formatCents(cash.monthlyBudgetCents)}</span>
+          </li>
+        </ul>
+      </div>
+      {fix?.moves.length ? (
+        <div className="mt-4" data-testid="landing-cash-plan">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Cash plan, each move yours to approve</p>
+          <ul className="mt-2 space-y-1.5 text-sm text-zinc-700">
+            {fix.moves.map((m) => (
+              <li key={m.id} className="flex items-start gap-2">
+                <Check className="mt-0.5 size-4 shrink-0 text-brand" /> {m.title}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <p className="mt-4 text-xs text-zinc-500">Worked out by the app&apos;s code from the five sample contracts and a $5,000 monthly budget.</p>
+    </div>
+  );
+}
+
+/** The researched headline figure, with its source named and linked. */
+function HeadlineFigure() {
+  return (
+    <p className="mt-6 max-w-xl rounded-xl border border-zinc-200 bg-white/80 px-4 py-3 text-sm text-zinc-600 shadow-sm" data-testid="landing-headline-figure">
+      <span className="font-semibold text-zinc-900">{HEADLINE.figure} per couple.</span> {HEADLINE.line}{" "}
+      <span className="text-zinc-500">
+        Source:{" "}
+        <a href={HEADLINE.source.url} className="underline underline-offset-2 hover:text-zinc-900" target="_blank" rel="noreferrer">
+          {HEADLINE.source.label}
+        </a>
+        , {HEADLINE.method}.
+      </span>
+    </p>
+  );
+}
+
+/** The pain points from the research, each with its sources and what the app does about it. */
+export function PainPoints() {
+  return (
+    <section id="why" className="border-t border-zinc-200/70 bg-white py-20" data-testid="pain-points">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <p className="text-sm font-semibold uppercase tracking-wider text-brand">Why this matters</p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">What couples say about paying vendors</h2>
+        <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {PAIN_POINTS.map((p) => (
+            <div key={p.title} className="flex flex-col rounded-2xl border border-zinc-200 bg-zinc-50/50 p-6" data-testid="pain-point">
+              <h3 className="text-lg font-semibold text-zinc-900">{p.title}</h3>
+              <ul className="mt-3 space-y-2.5 text-[15px] leading-relaxed text-zinc-700">
+                {p.evidence.map((e) => (
+                  <li key={e.text}>
+                    {e.text}{" "}
+                    <a href={e.source.url} className="text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-900" target="_blank" rel="noreferrer" data-testid="pain-source">
+                      {e.source.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-auto pt-4">
+                <p className="border-t border-zinc-200 pt-3 text-sm text-zinc-600">
+                  <span className="font-semibold text-zinc-900">What the app does: </span>
+                  {p.answer}
                 </p>
-                <p className="shrink-0">{r.note}</p>
               </div>
             </div>
-          </li>
-        ))}
-      </ol>
-    </div>
+          ))}
+        </div>
+        <p className="mt-6 text-xs text-zinc-500">Forum posts are single couples&apos; words. They show a problem comes up, not how often it does.</p>
+      </div>
+    </section>
   );
 }
 
@@ -78,6 +159,7 @@ export function Hero() {
           </span>
           <h1 className="mt-6 text-4xl font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:text-5xl lg:text-[56px]">{l.headline}</h1>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-zinc-600">{l.subheadline}</p>
+          <HeadlineFigure />
           <div className="mt-8 flex flex-wrap gap-3">
             <ButtonLink href={l.primaryCta.href} size="lg">
               {l.primaryCta.label} <ArrowRight className="size-4" />
@@ -90,7 +172,7 @@ export function Hero() {
             <ShieldCheck className="size-4 text-emerald-600" /> No money moves until you approve it.
           </p>
         </div>
-        <TimelinePreview />
+        <CashPreview />
       </div>
     </section>
   );

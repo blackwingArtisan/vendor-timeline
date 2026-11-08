@@ -22,20 +22,20 @@ export const appConfig = {
 
   landing: {
     eyebrow: "For couples juggling wedding vendors",
-    headline: "Never lose a vendor to a missed deposit.",
+    headline: "About 13 vendors. Every one with its own payment dates.",
     subheadline:
-      "Every vendor buries its payment deadlines in a different contract. Paste them in. AI pulls out each deposit and balance, you check them against the exact sentences, and one timeline shows what is due next. When you approve, PayPal pays the vendor.",
+      "Vendor Timeline reads each contract, shows the sentence behind every payment, puts them all on one timeline with cash warnings, and lets you pay each vendor through PayPal, most urgent first.",
     primaryCta: { label: "Open your timeline", href: "/timeline" },
     secondaryCta: { label: "Add a contract", href: "/contracts" },
     steps: [
       { title: "Add your contracts", body: "Paste the text or upload a file. Photographer, caterer, venue, florist, band: any wording." },
       { title: "Check the terms", body: "AI shows each amount and date beside the sentence it came from. You confirm or fix them, and it flags anything missing or unclear." },
-      { title: "Pay on time", body: "One timeline shows every deposit and balance by date. You approve a payment, and PayPal sends it from your balance." },
+      { title: "Pay on time", body: "One timeline shows every deposit and balance by date, most urgent first, and warns when a month goes over your budget. You approve a payment, then pay it yourself in PayPal's checkout." },
     ],
     features: [
       { title: "Sentences, not guesses", body: "Every amount and date sits beside the contract sentence it came from. If a term is missing, it is flagged, not filled in." },
       { title: "Sums you can trust", body: "Balances and totals are worked out in code from the amounts you confirmed, never stated by the AI." },
-      { title: "Nothing moves without you", body: "Your money stays in your PayPal balance until you approve each payment. Then the timeline shows the status PayPal reports." },
+      { title: "Nothing moves without you", body: "No money moves until you approve a payment and pay it in PayPal's checkout. Then the timeline shows the status PayPal reports." },
     ],
   },
 
