@@ -101,12 +101,12 @@ function MoveDate({ item, onMove }: { item: TimelineItem; onMove: (item: Timelin
   );
 }
 
-function Row({ item, view, onPay, onMove, busy, onDecided, agentRunId }: { item: TimelineItem; view: TimelineView; onPay: (item: TimelineItem) => void; onMove: (item: TimelineItem, due: string) => void; busy: boolean; onDecided: () => void; agentRunId: string | null }) {
+function Row({ item, view, onPay, onMove, busy, onDecided, panelRuns }: { item: TimelineItem; view: TimelineView; onPay: (item: TimelineItem) => void; onMove: (item: TimelineItem, due: string) => void; busy: boolean; onDecided: () => void; panelRuns: string[] }) {
   const status = STATUS[item.status];
   const isNext = view.nextDue?.id === item.id;
   const canPay = item.status === "overdue" || item.status === "due_today" || item.status === "upcoming";
-  // The agent's panel shows the approval for its own run, up where the couple are reading.
-  const ownedByAgent = !!agentRunId && item.payment?.runId === agentRunId;
+  // The agent's panel shows the approval for its own run and its cash plan, up where the couple are reading.
+  const ownedByAgent = !!item.payment && panelRuns.includes(item.payment.runId);
   const approval = ownedByAgent ? null : item.approval;
   const when = whenLabel(item);
   return (
@@ -183,7 +183,7 @@ export function TimelineScreen() {
   const [view, setView] = useState<TimelineView | null>(null);
   const [paying, setPaying] = useState<string | null>(null);
   const [loadingSamples, setLoadingSamples] = useState(false);
-  const [agentRunId, setAgentRunId] = useState<string | null>(null);
+  const [panelRuns, setPanelRuns] = useState<string[]>([]);
   const [agentRunning, setAgentRunning] = useState(false);
   const [capturing, setCapturing] = useState(false);
 
@@ -313,7 +313,7 @@ export function TimelineScreen() {
             </div>
           </div>
           <div className="mb-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
-            <AgentPanel steps={steps} items={items} cash={view.cash} sandbox={view.sandboxStandIn} onRun={setAgentRunId} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
+            <AgentPanel steps={steps} items={items} cash={view.cash} fix={view.cashFix} sandbox={view.sandboxStandIn} onRuns={setPanelRuns} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
             <CashCard key={view.cash.monthlyBudgetCents} cash={view.cash} onChanged={() => void refresh().catch(() => undefined)} />
           </div>
           <PaymentChart view={view} onMove={move} />
@@ -328,7 +328,7 @@ export function TimelineScreen() {
                     {month.items.map((item, index) => (
                       <Fragment key={item.id}>
                         {index > 0 && item.id === todayBefore ? <TodayMarker day={view.today} /> : null}
-                        <Row item={item} view={view} onPay={pay} onMove={move} busy={paying === item.id} onDecided={() => void refresh().catch(() => undefined)} agentRunId={agentRunId} />
+                        <Row item={item} view={view} onPay={pay} onMove={move} busy={paying === item.id} onDecided={() => void refresh().catch(() => undefined)} panelRuns={panelRuns} />
                       </Fragment>
                     ))}
                   </ol>

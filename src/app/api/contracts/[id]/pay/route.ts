@@ -11,6 +11,6 @@ const Body = z.object({ kind: z.enum(["deposit", "balance"]) });
 export const POST = route<RouteContext<"/api/contracts/[id]/pay">>(async (req, ctx) => {
   const { kind } = await readJson(req, Body);
   rememberOrigin(req);
-  requestPayment(await currentPlanId(), (await ctx.params).id, kind, getContext().channel);
-  return { ok: true };
+  const { contract } = requestPayment(await currentPlanId(), (await ctx.params).id, kind, getContext().channel);
+  return { ok: true, runId: contract.payments[kind]?.runId };
 });

@@ -9,7 +9,8 @@ import type { ItemStatus, TimelineItem, TimelineView } from "./types";
 /** Titles of the agent messages written by code, not the model. The agent panel shows these first. */
 export const PAY_FIRST_TITLE = "Pay first";
 export const CASH_CHECK_TITLE = "Cash check";
-export const APP_MESSAGE_TITLES: readonly string[] = [PAY_FIRST_TITLE, CASH_CHECK_TITLE];
+export const CASH_PLAN_TITLE = "Cash plan";
+export const APP_MESSAGE_TITLES: readonly string[] = [PAY_FIRST_TITLE, CASH_CHECK_TITLE, CASH_PLAN_TITLE];
 
 const name = (i: TimelineItem) => `the ${i.vendorName} ${i.kind}`;
 const late = (i: TimelineItem) => `${formatCents(i.cents)}, ${-i.daysUntil === 1 ? "1 day" : `${-i.daysUntil} days`} overdue since ${formatDay(i.due)}`;

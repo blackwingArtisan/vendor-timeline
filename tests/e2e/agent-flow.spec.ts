@@ -90,6 +90,10 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   await expect(first).toHaveAttribute("data-from", "app");
   await expect(first).toContainText(`Pay first: the ${FLORIST.vendorName} deposit, ${formatCents(FLORIST.depositCents)}`);
   await expect(first).toContainText("Overdue comes first.");
+  // The cash plan is code's too, and comes after the warnings, before anything the model wrote.
+  const appSaid = panel.locator('[data-testid="agent-message"][data-from="app"]');
+  await expect(appSaid.last()).toContainText("Cash plan: No plan fits every month in your $5,000.00 monthly budget");
+  await expect(panel.getByTestId("cash-move")).toHaveCount(2);
   const said = await panel.getByTestId("agent-messages").innerText();
   console.log(`Agent said: ${said}`);
   expect(said).toContain(FLORIST.vendorName);
@@ -102,7 +106,7 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   if (realAi) {
     // The AI only explains: every dollar figure it wrote must be one the code gave it.
     const view = await (await page.request.get(`/api/timeline?today=${TODAY}`)).json();
-    const fromCode = `${JSON.stringify(view.cash.warnings.map((w: { message: string }) => w.message))} ${view.items.map((i: { cents: number }) => formatCents(i.cents)).join(" ")} ${formatCents(view.totalDueCents)}`;
+    const fromCode = `${JSON.stringify(view.cash.warnings.map((w: { message: string }) => w.message))} ${view.items.map((i: { cents: number }) => formatCents(i.cents)).join(" ")} ${formatCents(view.totalDueCents)} ${view.cashFix?.summary ?? ""} ${view.cashFix?.stillOver ?? ""} ${formatCents(view.cash.monthlyBudgetCents)}`;
     for (const figure of said.match(/\$[\d,]+(\.\d{2})?/g) ?? []) expect(fromCode).toContain(figure.includes(".") ? figure : `${figure}.00`);
   }
   await page.screenshot({ path: `screenshots/agent-approval-${sandbox ? "sandbox" : "mock"}.png`, fullPage: true });

@@ -131,6 +131,8 @@ export interface TimelineItem {
   sandboxPayee?: SandboxPayee;
   /** The wedding day the contract gives, if any. A payment can move to at most a year after it. */
   weddingDay?: string;
+  /** The contract's own sentence for this payment's date, when it has one. */
+  dueSentence?: string;
 }
 
 /** One payment as the cash check sees it. */
@@ -174,6 +176,38 @@ export interface CashPlan {
   months: CashMonth[];
 }
 
+/**
+ * One move the cash plan suggests, all worked out by code. "pay_now" runs the usual guarded PayPal
+ * checkout today; "ask_vendor" asks the vendor for a later date, which only counts once they agree.
+ */
+export interface CashMove {
+  id: string;
+  kind: "pay_now" | "ask_vendor";
+  itemId: string;
+  contractId: string;
+  itemKind: ItemKind;
+  vendorName: string;
+  cents: number;
+  /** The date it's due now. */
+  due: string;
+  /** Today for "pay_now", the date to ask for otherwise. */
+  to: string;
+  title: string;
+  why: string;
+  /** The drafted note to the vendor, for "ask_vendor". */
+  message?: string;
+}
+
+/** The cash plan for the clashes the cash check found. */
+export interface CashFix {
+  moves: CashMove[];
+  /** True when, with every move made, no warning is left. */
+  fits: boolean;
+  summary: string;
+  /** What is still over budget after the moves, or null. */
+  stillOver: string | null;
+}
+
 export interface TimelineView {
   today: string;
   items: TimelineItem[];
@@ -185,6 +219,8 @@ export interface TimelineView {
   paidCents: number;
   contractedCents: number;
   cash: CashPlan;
+  /** Moves the contracts allow that fit, or come closer to, the budget. Null when nothing clashes. */
+  cashFix: CashFix | null;
   /** In sandbox a test business account is paid in place of the fictional vendor. */
   sandboxStandIn: boolean;
   /** The labelled sample plan a new visitor starts with. */
