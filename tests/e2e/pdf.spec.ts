@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { amountText, formatCents } from "../../src/lib/wedding/cents";
+import { formatCents } from "../../src/lib/wedding/cents";
 import { PHOTOGRAPHER } from "../../src/lib/wedding/samples";
 
 const live = process.env.E2E_AI_MODE === "live";
@@ -24,8 +24,8 @@ test("a PDF contract goes in, gets read into terms and reaches the timeline", as
   await page.waitForURL(/\/contracts\/ctr_/, { timeout: 90_000 });
 
   await expect(page.getByLabel("Vendor name")).toHaveValue(PHOTOGRAPHER.vendorName);
-  await expect(page.getByLabel("Total", { exact: true })).toHaveValue(amountText(PHOTOGRAPHER.totalCents));
-  await expect(page.getByLabel("Deposit", { exact: true })).toHaveValue(amountText(PHOTOGRAPHER.depositCents));
+  await expect(page.getByLabel("Total", { exact: true })).toHaveValue((PHOTOGRAPHER.totalCents / 100).toFixed(2));
+  await expect(page.getByLabel("Deposit", { exact: true })).toHaveValue((PHOTOGRAPHER.depositCents / 100).toFixed(2));
   await expect(page.getByLabel("Deposit due")).toHaveValue(PHOTOGRAPHER.depositDue);
   await expect(page.getByTestId("balance-value")).toHaveText(formatCents(PHOTOGRAPHER.balanceCents));
   // The app checks each quote against the contract, so a broken line would show up here.

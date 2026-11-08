@@ -2,7 +2,6 @@
 
 import { ApprovalPrompt } from "@/components/agent/approval-prompt";
 import { formatCents } from "@/lib/wedding/cents";
-import { formatMonth } from "@/lib/wedding/dates";
 import type { CashPlan, PendingApproval, TimelineItem } from "@/lib/wedding/types";
 import { openCheckoutFor } from "./open-checkout";
 import { StandInLine } from "./paypal-checkout";
@@ -12,10 +11,7 @@ function budgetLine(item: TimelineItem, cash: CashPlan) {
   const month = cash.months.find((m) => m.payments.some((p) => p.id === item.id));
   if (!month) return null;
   const spent = `${month.label} comes to ${formatCents(month.totalCents)} of your ${formatCents(month.budgetCents)} monthly budget`;
-  const sum = month.leftCents < 0 ? `With this, ${spent}, ${formatCents(-month.leftCents)} over.` : `With this, ${spent}, ${formatCents(month.leftCents)} left.`;
-  // Paid now, it counts in this month, not the month it's due. Say so, or the month looks wrong.
-  const dueMonth = formatMonth(item.due);
-  return dueMonth === month.label ? sum : `Paid now, it counts in ${month.label}, not ${dueMonth} when it's due. ${sum}`;
+  return month.leftCents < 0 ? `With this, ${spent}, ${formatCents(-month.leftCents)} over.` : `With this, ${spent}, ${formatCents(month.leftCents)} left.`;
 }
 
 /**

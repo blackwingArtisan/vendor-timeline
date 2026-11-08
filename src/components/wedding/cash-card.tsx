@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, CircleCheck } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { Button, Card, CardBody, CardHeader, Field, MoneyInput } from "@/components/ui";
-import { amountText, formatCents } from "@/lib/wedding/cents";
+import { centsToDollars, formatCents } from "@/lib/wedding/cents";
 import { MAX_BUDGET_CENTS, readAmount } from "@/lib/wedding/limits";
 import { formatDay } from "@/lib/wedding/dates";
 import type { CashMonth, CashPayment, CashPlan, CashWarning } from "@/lib/wedding/types";
@@ -57,7 +57,7 @@ function monthLines(m: CashMonth): [string, number][] {
 /** Everything here is worked out by code, so it stays right with AI switched off. */
 export function CashCard({ cash, onChanged }: { cash: CashPlan; onChanged: () => void }) {
   const { kitFetch } = useKit();
-  const [budget, setBudget] = useState(amountText(cash.monthlyBudgetCents));
+  const [budget, setBudget] = useState(centsToDollars(cash.monthlyBudgetCents));
   const [saving, setSaving] = useState(false);
   /** Why the budget wasn't saved. Stays until the box changes. */
   const [problem, setProblem] = useState<string | null>(null);

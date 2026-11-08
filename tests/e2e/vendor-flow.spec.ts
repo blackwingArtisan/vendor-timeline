@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { approveAndPay } from "./pay-in-checkout";
 import { readCapture, readCaptureEvent, readOrder, sandboxSellerEmail } from "./paypal-reread";
-import { amountText, formatCents, sumCents } from "../../src/lib/wedding/cents";
+import { formatCents, sumCents } from "../../src/lib/wedding/cents";
 import { formatDay } from "../../src/lib/wedding/dates";
 import { BAND, BAND_ANSWERS, CATERER, CATERER_STATED_BALANCE_CENTS, FLORIST, PHOTOGRAPHER, SAMPLES, VENUE, type SampleFacts } from "../../src/lib/wedding/samples";
 
@@ -50,8 +50,8 @@ function expectSource(term: Locator, words: string) {
 
 async function expectCheckedTerms(page: Page, s: SampleFacts) {
   await expect(page.getByLabel("Vendor name")).toHaveValue(s.vendorName);
-  await expect(page.getByLabel("Total", { exact: true })).toHaveValue(amountText(s.totalCents));
-  await expect(page.getByLabel("Deposit", { exact: true })).toHaveValue(amountText(s.depositCents));
+  await expect(page.getByLabel("Total", { exact: true })).toHaveValue((s.totalCents / 100).toFixed(2));
+  await expect(page.getByLabel("Deposit", { exact: true })).toHaveValue((s.depositCents / 100).toFixed(2));
   await expect(page.getByLabel("Deposit due")).toHaveValue(s.depositDue);
   await expect(page.getByTestId("balance-value")).toHaveText(formatCents(s.balanceCents));
   for (const name of ["total", "deposit", "deposit-due"]) {
