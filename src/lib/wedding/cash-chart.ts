@@ -50,3 +50,20 @@ export function chartMonths(cash: CashPlan): ChartMonth[] {
 
 /** The chart's top: the biggest month or the budget, whichever is higher, with room for a label. */
 export const chartTopCents = (months: ChartMonth[], budgetCents: number) => Math.max(budgetCents, ...months.map((m) => m.totalCents)) * 1.15;
+
+export interface ChartChange {
+  month: string;
+  label: string;
+  fromCents: number;
+  toCents: number;
+}
+
+/** Which months' totals changed between two charts, and by how much: what a move just did. */
+export function chartChanges(before: ChartMonth[], after: ChartMonth[]): ChartChange[] {
+  const was = new Map(before.map((m) => [m.month, m]));
+  const now = new Map(after.map((m) => [m.month, m]));
+  const months = [...new Set([...was.keys(), ...now.keys()])].sort();
+  return months
+    .map((month) => ({ month, label: (now.get(month) ?? was.get(month))!.label, fromCents: was.get(month)?.totalCents ?? 0, toCents: now.get(month)?.totalCents ?? 0 }))
+    .filter((c) => c.fromCents !== c.toCents);
+}

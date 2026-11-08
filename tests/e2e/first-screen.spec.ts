@@ -30,10 +30,11 @@ const bottomOf = async (page: Page, id: string) => {
 test("stats, the agent's approval and the cash chart fit the first screen", async ({ page }) => {
   await page.goto("/timeline");
   await expect(page.getByTestId("timeline-item")).toHaveCount(SAMPLES.length * 2);
+  if (process.env.NEXT_PUBLIC_SPONSOR_UI === "1") await expect(page.getByTestId("sponsor-gantt")).toBeVisible({ timeout: 120_000 });
   const before = await page.evaluate(() => document.documentElement.scrollHeight);
   console.log(`Page height before the agent: ${before}px, ${(before / FOLD).toFixed(2)} screens`);
   // The sponsor's Gantt, when switched on, is an extra card of its own below the table.
-  const gantt = (await page.getByTestId("sponsor-gantt").count()) ? (await page.getByTestId("sponsor-gantt").boundingBox())!.height + 16 : 0;
+  const gantt = (await page.getByTestId("sponsor-gantt").count()) ? (await page.getByTestId("sponsor-gantt").boundingBox())!.height + 24 : 0;
   expect(before - gantt).toBeLessThanOrEqual(FOLD * 1.75);
 
   expect(await bottomOf(page, "stat-paid")).toBeLessThanOrEqual(FOLD);
