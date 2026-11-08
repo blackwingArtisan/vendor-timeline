@@ -15,7 +15,7 @@
     "test:e2e:sandbox": "playwright test -c playwright.sandbox.config.ts",
     "test:e2e:engines": "playwright test -c playwright.engines.config.ts",
     "test:e2e:limits": "playwright test -c playwright.limits.config.ts && LIMIT_CASE=credit playwright test -c playwright.limits.config.ts",
-    "demo:record": "playwright test -c playwright.demo.config.ts && cp test-results/demo/demo-demo-chromium/video.webm videos/demo-$(date +%Y%m%d-%H%M).webm",
+    "demo:record": "playwright test -c playwright.demo.config.ts && T=$(date +%Y%m%d-%H%M) && cp test-results/demo/demo-demo-chromium/video.webm videos/demo-$T.webm && cp test-results/demo/cuts.json videos/demo-$T.cuts.json",
     "demo:mp4": "bash scripts/webm-to-mp4.sh",
     "seed": "tsx scripts/seed.ts",
     "seed:reset": "tsx scripts/seed.ts --reset",
