@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { HttpError } from "@/lib/http";
 import { collection } from "@/lib/store/collection";
 import { balanceCents, RuleError } from "./cents";
-import { isCalendarDay } from "./dates";
+import { utcToday } from "./dates";
+import { centsProblem, contractDayRange, dayProblem, moveDayRange } from "./limits";
 import { blankContract, readContract } from "./extract";
 import type { ConfirmedTerms, Contract, ItemKind } from "./types";
 
@@ -53,6 +54,13 @@ export function confirmContract(planId: string, id: string, input: ConfirmInput)
   const contract = requirePlanContract(planId, id);
   if (contract.confirmed) throw new HttpError(409, "This contract is already confirmed.", "conflict");
   try {
+    const range = contractDayRange(utcToday(), contract.proposed.eventDate.value);
+    const problem =
+      centsProblem(input.totalCents, "Total") ??
+      centsProblem(input.depositCents, "Deposit") ??
+      dayProblem(input.depositDue, "The deposit date", range) ??
+      (input.balanceDue ? dayProblem(input.balanceDue, "The balance date", range) : null);
+    if (problem) throw new RuleError(problem);
     const balance = balanceCents(input.totalCents, input.depositCents);
     if (balance > 0 && !input.balanceDue) throw new RuleError("Enter the date the balance is due.");
     const confirmed: ConfirmedTerms = { ...input, balanceCents: balance, balanceDue: balance > 0 ? input.balanceDue : null };
@@ -66,11 +74,12 @@ export function confirmContract(planId: string, id: string, input: ConfirmInput)
  * The couple move a payment, from the chart or the list. The amount never changes with it. A date
  * that is on its way to PayPal stays put, so a payment can't change under an approval.
  */
-export function moveDueDate(planId: string, id: string, kind: ItemKind, due: string): Contract {
+export function moveDueDate(planId: string, id: string, kind: ItemKind, due: string, today = utcToday()): Contract {
   const contract = requirePlanContract(planId, id);
   const terms = contract.confirmed;
   if (!terms) throw new HttpError(409, "Confirm this contract before moving its dates.", "conflict");
-  if (!isCalendarDay(due)) throw new HttpError(422, "Enter a real date.", "rule");
+  const problem = dayProblem(due, "The new date", moveDayRange(today, contract.proposed.eventDate.value));
+  if (problem) throw new HttpError(422, problem, "rule");
   const current = kind === "deposit" ? terms.depositDue : terms.balanceDue;
   if (!current) throw new HttpError(409, `This contract has no ${kind} to move.`, "conflict");
   const payment = contract.payments[kind];

@@ -28,7 +28,7 @@ function itemsOf(contract: Contract, today: string): TimelineItem[] {
   const entry = (kind: ItemKind, cents: number, due: string): TimelineItem => {
     const payment = contract.payments[kind];
     const daysUntil = daysBetween(today, due);
-    return { id: itemId(contract.id, kind), contractId: contract.id, kind, vendorName: terms.vendorName, vendorRole: terms.vendorRole, cents, due, daysUntil, status: itemStatus(payment, daysUntil), payment, movedFrom: contract.movedFrom?.[kind] };
+    return { id: itemId(contract.id, kind), contractId: contract.id, kind, vendorName: terms.vendorName, vendorRole: terms.vendorRole, cents, due, daysUntil, status: itemStatus(payment, daysUntil), payment, movedFrom: contract.movedFrom?.[kind], weddingDay: contract.proposed?.eventDate?.value ?? undefined };
   };
   const items = [entry("deposit", terms.depositCents, terms.depositDue)];
   if (terms.balanceCents > 0 && terms.balanceDue) items.push(entry("balance", terms.balanceCents, terms.balanceDue));

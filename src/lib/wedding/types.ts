@@ -121,6 +121,8 @@ export interface TimelineItem {
   approval?: PendingApproval | null;
   /** The date in the contract, when the couple moved this one. */
   movedFrom?: string;
+  /** The wedding day the contract gives, if any. A payment can move to at most a year after it. */
+  weddingDay?: string;
 }
 
 /** One payment as the cash check sees it. */

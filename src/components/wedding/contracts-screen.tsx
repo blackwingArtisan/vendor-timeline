@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonText, Textarea } from "@/components/ui";
 import { formatCents } from "@/lib/wedding/cents";
+import { MAX_CONTRACT_CHARS } from "@/lib/wedding/limits";
 import { SAMPLE_PDF, SAMPLES, sampleUrl, type SampleFacts } from "@/lib/wedding/samples";
 import type { Contract } from "@/lib/wedding/types";
 
@@ -26,6 +27,8 @@ export function ContractsScreen() {
   const [typing, setTyping] = useState(false);
   /** Why AI can't read this one, kept on screen beside the way forward. */
   const [blocked, setBlocked] = useState<string | null>(null);
+  /** Why a file couldn't go in. Stays until a good one does. */
+  const [fileProblem, setFileProblem] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   const { paced, waitSeconds, stopWaiting } = usePaced();
 
@@ -51,6 +54,7 @@ export function ContractsScreen() {
   }, [kitFetch]);
 
   const fill = (body: string, name?: string) => {
+    setFileProblem(null);
     if (box.current) box.current.value = body;
     setText(body);
     setFileName(name);
@@ -63,8 +67,15 @@ export function ContractsScreen() {
 
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (file?.type === "application/pdf" || file?.name.toLowerCase().endsWith(".pdf")) await openPdf(file);
-    else if (file) fill(await file.text(), file.name);
+    const name = file?.name.toLowerCase() ?? "";
+    if (file?.type === "application/pdf" || name.endsWith(".pdf")) await openPdf(file!);
+    else if (file && !(file.type === "text/plain" || name.endsWith(".txt"))) setFileProblem(`${file.name} isn't a .txt or .pdf file, so nothing was added. Upload the contract as text or a PDF.`);
+    else if (file) {
+      const body = await file.text();
+      // A picture or other binary file renamed .txt reads as junk characters.
+      if (body.includes("\u0000") || (body.match(/\uFFFD/g)?.length ?? 0) > 5) setFileProblem(`${file.name} doesn't contain readable text, so nothing was added.`);
+      else fill(body, file.name);
+    }
     e.target.value = "";
   }
 
@@ -77,6 +88,7 @@ export function ContractsScreen() {
       const pdf = await kitFetch<{ text: string; fileName: string }>("/api/contracts/pdf", { method: "POST", body: form });
       fill(pdf.text, pdf.fileName);
     } catch (e) {
+      setFileProblem(null);
       setBlocked((e as Error).message);
     } finally {
       setOpening(false);
@@ -118,6 +130,8 @@ export function ContractsScreen() {
     }
   }
 
+  const tooLong = text.length > MAX_CONTRACT_CHARS;
+
   return (
     <>
       <PageHeader title="Contracts" description="Add each vendor's contract. AI pulls out the payment terms, and nothing reaches your timeline until you confirm them." />
@@ -138,9 +152,19 @@ export function ContractsScreen() {
                 </Button>
               </div>
             </div>
-            <Field label="Contract text" htmlFor="contract-text">
+            <Field
+              label="Contract text"
+              htmlFor="contract-text"
+              error={tooLong ? `That contract is too long. The most the app reads is ${MAX_CONTRACT_CHARS.toLocaleString("en-US")} characters, so paste just the payment terms.` : undefined}
+              hint={text.length > MAX_CONTRACT_CHARS * 0.8 ? `${text.length.toLocaleString("en-US")} of ${MAX_CONTRACT_CHARS.toLocaleString("en-US")} characters` : undefined}
+            >
               <Textarea ref={box} id="contract-text" rows={14} placeholder="Paste the contract here" className="font-mono text-[13px] leading-relaxed" data-testid="contract-text" />
             </Field>
+            {fileProblem ? (
+              <p role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800" data-testid="file-problem">
+                <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> {fileProblem}
+              </p>
+            ) : null}
             {blocked ? (
               <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950" data-testid="read-blocked">
                 <CircleAlert className="size-4 shrink-0 text-amber-700" aria-hidden />
@@ -156,7 +180,7 @@ export function ContractsScreen() {
                 <Upload className="size-4" /> {opening ? "Opening the PDF" : "Upload a .txt or .pdf file"}
                 <input type="file" accept=".txt,text/plain,.pdf,application/pdf" className="sr-only" onChange={onFile} data-testid="upload-contract" />
               </label>
-              <Button onClick={read} loading={reading} disabled={opening || text.trim().length < 40} data-testid="read-contract">
+              <Button onClick={read} loading={reading} disabled={opening || text.trim().length < 40 || tooLong} data-testid="read-contract">
                 Read the payment terms
               </Button>
             </div>

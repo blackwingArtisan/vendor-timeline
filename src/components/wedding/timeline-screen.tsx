@@ -10,6 +10,7 @@ import { useToast } from "@/components/toast";
 import { Badge, Button, ButtonLink, Card, CardBody, CardHeader, EmptyState, Input, SkeletonCard, Stat, type Tone } from "@/components/ui";
 import { formatCents, sumCents } from "@/lib/wedding/cents";
 import { formatDay, formatMonth, localToday } from "@/lib/wedding/dates";
+import { dayProblem, moveDayRange } from "@/lib/wedding/limits";
 import { payLabel } from "@/lib/wedding/timeline";
 import type { ItemStatus, TimelineItem, TimelineView } from "@/lib/wedding/types";
 import { AgentPanel } from "./agent-panel";
@@ -66,6 +67,7 @@ function PayPalProof({ item, standIn }: { item: TimelineItem; standIn: boolean }
 function MoveDate({ item, onMove }: { item: TimelineItem; onMove: (item: TimelineItem, due: string) => void }) {
   const [open, setOpen] = useState(false);
   const [due, setDue] = useState(item.due);
+  const [tried, setTried] = useState(false);
   if (!open) {
     return (
       <button type="button" className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900" onClick={() => setOpen(true)} data-testid="move-date">
@@ -73,17 +75,27 @@ function MoveDate({ item, onMove }: { item: TimelineItem; onMove: (item: Timelin
       </button>
     );
   }
+  // From today to a year after the wedding: the same rule the server holds to.
+  const range = moveDayRange(localToday(), item.weddingDay);
+  const problem = dayProblem(due, "The new date", range);
   return (
     <form
-      className="flex items-center gap-1"
+      // The app says what's wrong in its own words, rather than the browser's bubble.
+      noValidate
+      className="flex flex-col items-end gap-1"
       onSubmit={(e) => {
         e.preventDefault();
-        if (due) onMove(item, due);
+        setTried(true);
+        if (problem) return;
+        onMove(item, due);
         setOpen(false);
       }}
     >
-      <Input type="date" aria-label={`New date for the ${item.vendorName} ${item.kind}`} className="h-8 w-36 text-xs" value={due} onChange={(e) => setDue(e.target.value)} data-testid="move-date-input" />
-      <Button type="submit" size="sm" variant="secondary" data-testid="move-date-save">Save</Button>
+      <span className="flex items-center gap-1">
+        <Input type="date" min={range.from} max={range.to} aria-label={`New date for the ${item.vendorName} ${item.kind}`} aria-invalid={tried && !!problem} className="h-8 w-36 text-xs" value={due} onChange={(e) => setDue(e.target.value)} data-testid="move-date-input" />
+        <Button type="submit" size="sm" variant="secondary" data-testid="move-date-save">Save</Button>
+      </span>
+      {tried && problem ? <span className="max-w-56 text-right text-xs text-red-700" role="alert" data-testid="move-date-error">{problem}</span> : null}
     </form>
   );
 }
@@ -227,6 +239,10 @@ export function TimelineScreen() {
       return;
     }
     const [contractId, kind] = back!.split(".");
+    if (!orderId || !contractId || (kind !== "deposit" && kind !== "balance")) {
+      toast({ title: "Nothing was paid", description: "That link back from PayPal is missing its order, so nothing was taken. Pay from the timeline to open PayPal's checkout again.", variant: "error" });
+      return;
+    }
     void (async () => {
       setCapturing(true);
       try {
@@ -242,7 +258,7 @@ export function TimelineScreen() {
 
   const move = useCallback(
     (item: TimelineItem, due: string) => {
-      kitFetch(`/api/contracts/${item.contractId}/move`, { json: { kind: item.kind, due } })
+      kitFetch(`/api/contracts/${item.contractId}/move`, { json: { kind: item.kind, due, today: localToday() } })
         .catch((e) => toast({ title: "Could not move that date", description: (e as Error).message, variant: "error" }))
         .finally(() => void refresh().catch(() => undefined)); // On a refusal this puts the bar back.
     },
