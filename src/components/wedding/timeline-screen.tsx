@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CalendarClock, CalendarDays, CircleCheck, FileText, ReceiptText, Send, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarDays, CircleCheck, FileText, Send, Wallet } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
@@ -20,7 +20,6 @@ import { PayApproval } from "./pay-approval";
 import { PayPalCheckout, StandInLine } from "./paypal-checkout";
 import { SamplePlanBanner } from "@/components/wedding/sample-plan-banner";
 import { PaymentChart, SPONSOR_UI } from "./payment-chart";
-import { ReceiptView } from "./receipt-view";
 import { AxisHeader, axisFor, VendorBar, type Axis } from "./vendor-bars";
 
 const STATUS: Record<ItemStatus, { label: string; tone: Tone; dot: string }> = {
@@ -102,7 +101,6 @@ function MoveDateForm({ item, onMove, onClose }: { item: TimelineItem; onMove: (
  */
 function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { item: TimelineItem; view: TimelineView; axis: Axis | null; onPay: (item: TimelineItem) => void; onMove: (item: TimelineItem, due: string) => void; busy: boolean; onDecided: () => void; panelRuns: string[] }) {
   const [moving, setMoving] = useState(false);
-  const [receipt, setReceipt] = useState(false);
   const status = STATUS[item.status];
   const isNext = view.nextDue?.id === item.id;
   // The most urgent payment is tagged, overdue or not. One tag at most, beside its status.
@@ -153,11 +151,6 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
               </Button>
             </>
           ) : null}
-          {item.status === "paid" && item.payment?.captureId ? (
-            <Button size="sm" variant="secondary" icon={<ReceiptText className="size-3.5" />} onClick={() => setReceipt((r) => !r)} aria-expanded={receipt} data-testid="receipt-open">
-              Receipt
-            </Button>
-          ) : null}
         </div>
       </div>
       {canPay && moving ? <MoveDateForm key={item.due} item={item} onMove={onMove} onClose={() => setMoving(false)} /> : null}
@@ -173,7 +166,6 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
         </p>
       ) : null}
       <PayPalProof item={item} standIn={view.sandboxStandIn} />
-      {receipt && item.status === "paid" ? <ReceiptView item={item} onClose={() => setReceipt(false)} /> : null}
     </li>
   );
 }

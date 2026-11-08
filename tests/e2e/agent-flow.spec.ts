@@ -141,24 +141,6 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   if (expectWebhook) await expect(deposit.getByTestId("paid-by")).toContainText("Confirmed by PayPal webhook");
   else await expect(deposit.getByTestId("paid-by")).toContainText("Confirmed by re-reading the capture");
 
-  // Its receipt is read back from PayPal when opened: the same order and capture, the webhook
-  // event that marked it paid, and PayPal's debug_id for each re-read.
-  await deposit.getByTestId("receipt-open").click();
-  const receipt = deposit.getByTestId("receipt");
-  await expect(receipt.getByTestId("receipt-order-id")).toHaveText(orderId, { timeout: 30_000 });
-  await expect(receipt.getByTestId("receipt-order")).toContainText("COMPLETED");
-  await expect(receipt.getByTestId("receipt-capture-id")).toHaveText(captureId);
-  await expect(receipt.getByTestId("receipt-capture")).toContainText(`COMPLETED ${(FLORIST.depositCents / 100).toFixed(2)} USD`);
-  const debugIds = receipt.getByTestId("receipt-debug-id");
-  await expect(debugIds).toHaveCount(2);
-  for (const op of ["orders.get", "payments.getCapture"]) await expect(debugIds.and(page.locator(`[data-operation="${op}"]`))).toHaveText(/^[0-9a-f]{8,}$/);
-  if (expectWebhook) await expect(receipt.getByTestId("receipt-webhook-event")).toHaveText((await deposit.getByTestId("paid-by-event").textContent())!);
-  else await expect(receipt.getByTestId("receipt-webhook")).toContainText("None reached this copy of the app");
-  console.log(`Receipt on screen: ${(await receipt.innerText()).replace(/\s+/g, " ")}`);
-  await page.screenshot({ path: `screenshots/receipt-${sandbox ? "sandbox" : "mock"}.png`, fullPage: true });
-  await receipt.getByTestId("receipt-close").click();
-  await expect(receipt).toHaveCount(0);
-
   // It stays paid and can't go twice, whoever asks.
   await page.reload();
   await expect(row(page, "florist", "deposit").getByTestId("item-status")).toHaveText("Paid");
