@@ -82,15 +82,29 @@ describe("the review", () => {
       next_payment: { contract_id: photographer.id, vendor: PHOTOGRAPHER.vendorName, kind: "deposit", amount: "1200.00", amount_text: "$1,200.00", due: "Fri, Dec 18, 2026" },
       overdue: [{ vendor: FLORIST.vendorName, amount_text: "$600.00" }],
     });
+    expect((review as { pay_first_said: string }).pay_first_said).toMatch(new RegExp(`^Pay first: the ${FLORIST.vendorName} deposit`));
     expect((review as { warnings: string[] }).warnings.join(" ")).toContain(`${CATERER.vendorName} balance ($10,460.00) and ${FLORIST.vendorName} balance ($1,740.00) land together`);
   });
 
-  it("says the same thing with AI switched off", () => {
+  it("shows the couple what to pay first in code's own words, before anything the model says", async () => {
+    const { plan } = wedding();
+    const shown: { title: string; detail?: string }[] = [];
+    const stop = timeline.subscribe((e) => {
+      if (e.kind === "agent.message") shown.push({ title: e.title, detail: e.detail });
+    });
+    await runScript(plan, [{ tool: "review_payments" }]);
+    stop();
+    const first = shown.find((m) => m.title === "Pay first")!.detail!;
+    expect(first.startsWith(`Pay first: the ${FLORIST.vendorName} deposit, $600.00, 28 days overdue since Fri, Oct 23, 2026. Overdue comes first.`)).toBe(true);
+    expect(first).toContain(`After that, next due is the ${PHOTOGRAPHER.vendorName} deposit, $1,200.00, due Fri, Dec 18, 2026.`);
+    expect(shown.findIndex((m) => m.title === "Pay first")).toBeLessThan(shown.findIndex((m) => m.title === "Cash check"));
+  });
+
+  it("with AI switched off, the script leaves the order to code and says it stops before paying", () => {
     const { plan } = wedding();
     const said = paymentAgent(plan, TODAY).mockScript!({ goal: GOAL }).map((s) => s.say).filter((s) => typeof s === "string").join(" ");
-    expect(said).toContain(`Next up is ${PHOTOGRAPHER.vendorName}: the deposit of $1,200.00, due Fri, Dec 18, 2026.`);
-    expect(said).toContain(`The ${FLORIST.vendorName} deposit is overdue, so it goes first.`);
-    expect(said.indexOf("Overdue:")).toBeLessThan(said.indexOf("Next up"));
+    expect(said).toContain(`I'll set up the ${FLORIST.vendorName} deposit and stop there.`);
+    expect(said).not.toContain(PHOTOGRAPHER.vendorName);
   });
 
   it("shows the couple every warning itself, whatever the model says", async () => {
