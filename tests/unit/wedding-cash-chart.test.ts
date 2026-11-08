@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cashPlan } from "@/lib/wedding/cash";
-import { chartMonths, chartTopCents } from "@/lib/wedding/cash-chart";
+import { chartChanges, chartMonths, chartTopCents } from "@/lib/wedding/cash-chart";
 import type { ItemStatus, TimelineItem } from "@/lib/wedding/types";
 
 const TODAY = "2026-11-20";
@@ -28,5 +28,18 @@ describe("the cash chart", () => {
 
   it("is empty with nothing to pay", () => {
     expect(chartMonths(cashPlan([], TODAY, 500_000))).toEqual([]);
+  });
+});
+
+describe("what a move did to the chart", () => {
+  it("names each month whose total changed, before and after", () => {
+    const a = item("a", 174_000, "2027-05-29");
+    const before = chartMonths(cashPlan([a, item("b", 240_000, "2027-06-05")], TODAY, 500_000));
+    const after = chartMonths(cashPlan([{ ...a, due: "2027-06-05" }, item("b", 240_000, "2027-06-05")], TODAY, 500_000));
+    expect(chartChanges(before, after)).toEqual([
+      { month: "2027-05", label: "May 2027", fromCents: 174_000, toCents: 0 },
+      { month: "2027-06", label: "June 2027", fromCents: 240_000, toCents: 414_000 },
+    ]);
+    expect(chartChanges(after, after)).toEqual([]);
   });
 });

@@ -11,6 +11,7 @@ import { formatCents } from "../../src/lib/wedding/cents";
 import { CATERER, FLORIST, PHOTOGRAPHER, VENUE } from "../../src/lib/wedding/samples";
 
 const TODAY = "2026-11-20";
+const month = (page: Page, m: string) => page.locator(`[data-testid="cash-chart-month"][data-month="${m}"]`);
 const row = (page: Page, role: string, kind: string) => page.locator(`[data-testid="timeline-item"][data-role="${role}"][data-kind="${kind}"]`);
 
 async function fiveContracts(page: Page) {
@@ -59,11 +60,19 @@ test("the agent shows a cash plan the contracts allow, and a date the vendor agr
 
   // Copying asks nothing of anyone. Only "they agreed" moves the date, and the clash clears.
   await expect(clash).toHaveCount(1);
+  const may = month(page, "2027-05");
+  const june = month(page, "2027-06");
+  await expect(may).toHaveAttribute("data-total-cents", "1580000");
+  await expect(may).toHaveAttribute("data-over", "true");
   await ask.getByTestId("move-approve").click();
   await expect(ask.getByTestId("move-done")).toHaveText("Moved to Sat, Jun 5, 2027. The contract said Sat, May 29, 2027.");
   await expect(clash).toHaveCount(0);
   await expect(row(page, "florist", "balance").getByTestId("item-due")).toHaveText("Sat, Jun 5, 2027");
   await expect(row(page, "florist", "balance").getByTestId("item-moved")).toHaveText("Contract says Sat, May 29, 2027");
+  // The chart moves the $1,740.00 bar from May into June, and says so.
+  await expect(may).toHaveAttribute("data-total-cents", "1406000");
+  await expect(june).toHaveAttribute("data-total-cents", "414000");
+  await expect(page.getByTestId("cash-chart-change")).toHaveText("Just changed: May 2027 $15,800.00 → $14,060.00, June 2027 $2,400.00 → $4,140.00.");
   // The rest of the plan still stands, and nothing was paid.
   await expect(payNow.getByTestId("move-pay")).toBeVisible();
   await expect(page.getByTestId("stat-paid")).toContainText("$0.00");
@@ -82,6 +91,11 @@ test("paying a balance early from the plan goes through the same approval and Pa
   const warning = page.getByTestId("cash-warning");
   await expect(warning).toHaveCount(1);
   await expect(warning).toContainText("May 2027 needs $15,800.00 across 3 payments, $800.00 over your $15,000.00 monthly budget.");
+  // The chart marks May over the line, by the same $800.
+  const may = month(page, "2027-05");
+  await expect(may).toHaveAttribute("data-over", "true");
+  await expect(may.getByTestId("cash-chart-over")).toHaveText("+$800");
+  await expect(page.getByTestId("cash-chart-summary")).toHaveText("Over budget: May 2027 by $800.00.");
 
   await page.getByTestId("ask-agent").click();
   const panel = page.getByTestId("agent-panel");
@@ -108,10 +122,17 @@ test("paying a balance early from the plan goes through the same approval and Pa
   // The warning clears on screen: May now fits.
   await expect(page.getByTestId("cash-warning")).toHaveCount(0);
   await expect(page.getByTestId("cash-clear")).toBeVisible();
+  // So does the chart's mark: the balance left May for today's month.
+  await expect(may).toHaveAttribute("data-total-cents", "1406000");
+  await expect(may).toHaveAttribute("data-over", "false");
+  await expect(page.getByTestId("cash-chart-over")).toHaveCount(0);
+  await expect(page.getByTestId("cash-chart-summary")).toHaveText("Every month fits your budget.");
+  await expect(month(page, "2026-11")).toHaveAttribute("data-total-cents", String(FLORIST.depositCents + FLORIST.balanceCents));
   if (!sandbox) {
     // Mock PayPal never leaves the page, so the plan card is still there to say so.
     await expect(move.getByTestId("move-done")).toHaveText("Paid early through PayPal.");
     await expect(plan.getByTestId("cash-plan-fits")).toHaveText("Every month now fits your $15,000.00 monthly budget.");
+    await expect(page.getByTestId("cash-chart-change")).toHaveText("Just changed: November 2026 $600.00 → $2,340.00, May 2027 $15,800.00 → $14,060.00.");
   } else {
     const order = await readOrder(orderId);
     console.log(`Cash plan pay early: order ${order.id} ${order.status}, ${order.purchase_units[0].amount.value} ${order.purchase_units[0].amount.currency_code} to ${order.purchase_units[0].payee.email_address}`);
