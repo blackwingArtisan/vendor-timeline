@@ -66,7 +66,7 @@ function mockSteps(planId: string, today: string, input: AgentInput): ScriptStep
   const steps: ScriptStep[] = [{ say: "Checking every confirmed payment first.", tool: "review_payments", as: "review" }];
   if (!target) return steps;
   const asked = dollarFigures(input.goal)[0];
-  const plan = view.cashFix?.moves.length ? "The cash plan below lists the moves your contracts allow, for you to approve one by one. " : "";
+  const plan = view.cashFix?.moves.length ? "The cash plan lists the moves your contracts allow, for you to approve one by one. " : "";
   const why = named && view.payFirst && named.id !== view.payFirst.id ? `You asked for the ${target.vendorName} ${target.kind}, so that one, not the ${view.payFirst.vendorName} ${view.payFirst.kind}. ` : "";
   steps.push({
     say: `${plan}${why}I'll set up the ${target.vendorName} ${target.kind} and stop there. Nothing moves until you approve it.`,

@@ -4,11 +4,12 @@
  * Bryntum Gantt: each vendor is a row with its deposit and balance bars under it. Reached only
  * through the next/dynamic in payment-chart.tsx, and only when the sponsor switch is on.
  *
- * cacheComponents hides routes with <Activity>, so leaving the page destroys this widget and it is
- * rebuilt from props on return. A drag therefore goes straight to the server, and the bars always
+ * cacheComponents hides routes with <Activity>, so leaving the page destroys this widget. A hidden
+ * page can still re-render, and Bryntum's React wrapper then reads its destroyed project, so the
+ * widget is only mounted while the page is shown and is built fresh from props on return. A drag therefore goes straight to the server, and the bars always
  * come from the server's timeline. Config sits outside the component so re-renders don't touch it.
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TaskModel } from "@bryntum/gantt";
 import { BryntumGantt, BryntumGanttProjectModel, type BryntumGanttProps } from "@bryntum/gantt-react";
 import "@bryntum/gantt/fontawesome/css/fontawesome.css";
@@ -80,6 +81,15 @@ function toTasks(items: TimelineItem[]) {
 
 export default function SponsorGantt({ view, onMove }: PaymentChartProps) {
   const projectRef = useRef<BryntumGanttProjectModel>(null);
+  // Effects run when the page is shown and clean up when it's hidden.
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(true));
+    return () => {
+      cancelAnimationFrame(frame);
+      setShown(false);
+    };
+  }, []);
   const [lastMove, setLastMove] = useState("Drag a bar to move a payment.");
   // A poll with the same dates must not reload the widget, or it would drop a drag in progress.
   const serialized = JSON.stringify(toTasks(view.items));
@@ -106,8 +116,12 @@ export default function SponsorGantt({ view, onMove }: PaymentChartProps) {
       <CardHeader title="Payment Gantt" description={<span data-testid="gantt-last-move">{lastMove}</span>} />
       <CardBody className="p-0">
         <div data-testid="gantt-host" style={{ height: HEADER_HEIGHT + rows * ROW_HEIGHT }}>
-          <BryntumGanttProjectModel ref={projectRef} autoSetConstraints tasks={tasks} />
-          <BryntumGantt {...GANTT_CONFIG} startDate={startDate} endDate={endDate} project={projectRef} onTaskDrop={onTaskDrop} />
+          {shown ? (
+            <>
+              <BryntumGanttProjectModel ref={projectRef} autoSetConstraints tasks={tasks} />
+              <BryntumGantt {...GANTT_CONFIG} startDate={startDate} endDate={endDate} project={projectRef} onTaskDrop={onTaskDrop} />
+            </>
+          ) : null}
         </div>
       </CardBody>
       <p className="border-t border-zinc-100 px-5 py-2 text-xs text-zinc-500" data-testid="sponsor-notice">

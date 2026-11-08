@@ -1,24 +1,26 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, CalendarClock, CalendarDays, CircleCheck, FileText, Send, Wallet } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
-import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
-import { Badge, Button, ButtonLink, Card, CardBody, CardHeader, EmptyState, Input, SkeletonCard, Stat, type Tone } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, EmptyState, Input, type Tone } from "@/components/ui";
 import { formatCents, sumCents } from "@/lib/wedding/cents";
-import { formatDay, formatMonth, localToday } from "@/lib/wedding/dates";
+import { formatDay, localToday } from "@/lib/wedding/dates";
 import { dayProblem, moveDayRange } from "@/lib/wedding/limits";
 import { payLabel } from "@/lib/wedding/timeline";
-import type { ItemStatus, TimelineItem, TimelineView } from "@/lib/wedding/types";
+import type { CashMove, ItemStatus, TimelineItem, TimelineView } from "@/lib/wedding/types";
 import { AgentPanel } from "./agent-panel";
 import { CashCard } from "./cash-card";
+import { CashPlanMoves } from "./cash-plan";
+import { PageLoading } from "./page-loading";
 import { PayApproval } from "./pay-approval";
 import { PayPalCheckout, StandInLine } from "./paypal-checkout";
 import { SamplePlanBanner } from "@/components/wedding/sample-plan-banner";
-import { PaymentChart } from "./payment-chart";
+import { PaymentChart, SPONSOR_UI } from "./payment-chart";
+import { AxisHeader, axisFor, VendorBar, type Axis } from "./vendor-bars";
 
 const STATUS: Record<ItemStatus, { label: string; tone: Tone; dot: string }> = {
   paid: { label: "Paid", tone: "success", dot: "bg-emerald-500" },
@@ -65,17 +67,9 @@ function PayPalProof({ item, standIn }: { item: TimelineItem; standIn: boolean }
 }
 
 /** The free way to move a date, so the public copy can do what the chart's drag does. */
-function MoveDate({ item, onMove }: { item: TimelineItem; onMove: (item: TimelineItem, due: string) => void }) {
-  const [open, setOpen] = useState(false);
+function MoveDateForm({ item, onMove, onClose }: { item: TimelineItem; onMove: (item: TimelineItem, due: string) => void; onClose: () => void }) {
   const [due, setDue] = useState(item.due);
   const [tried, setTried] = useState(false);
-  if (!open) {
-    return (
-      <button type="button" className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900" onClick={() => setOpen(true)} data-testid="move-date">
-        <CalendarDays className="size-3.5" /> Change date
-      </button>
-    );
-  }
   // From today to a year after the wedding: the same rule the server holds to.
   const range = moveDayRange(localToday(), item.weddingDay);
   const problem = dayProblem(due, "The new date", range);
@@ -83,25 +77,30 @@ function MoveDate({ item, onMove }: { item: TimelineItem; onMove: (item: Timelin
     <form
       // The app says what's wrong in its own words, rather than the browser's bubble.
       noValidate
-      className="flex flex-col items-end gap-1"
+      className="mt-2 flex flex-wrap items-center justify-end gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         setTried(true);
         if (problem) return;
         onMove(item, due);
-        setOpen(false);
+        onClose();
       }}
     >
-      <span className="flex items-center gap-1">
-        <Input type="date" min={range.from} max={range.to} aria-label={`New date for the ${item.vendorName} ${item.kind}`} aria-invalid={tried && !!problem} className="h-8 w-36 text-xs" value={due} onChange={(e) => setDue(e.target.value)} data-testid="move-date-input" />
-        <Button type="submit" size="sm" variant="secondary" data-testid="move-date-save">Save</Button>
-      </span>
-      {tried && problem ? <span className="max-w-56 text-right text-xs text-red-700" role="alert" data-testid="move-date-error">{problem}</span> : null}
+      {tried && problem ? <span className="text-xs text-red-700" role="alert" data-testid="move-date-error">{problem}</span> : null}
+      <span className="text-xs text-zinc-500">New date</span>
+      <Input type="date" min={range.from} max={range.to} aria-label={`New date for the ${item.vendorName} ${item.kind}`} aria-invalid={tried && !!problem} className="h-8 w-36 text-xs" value={due} onChange={(e) => setDue(e.target.value)} data-testid="move-date-input" />
+      <Button type="submit" size="sm" variant="secondary" data-testid="move-date-save">Save</Button>
+      <Button type="button" size="sm" variant="ghost" onClick={onClose}>Cancel</Button>
     </form>
   );
 }
 
-function Row({ item, view, onPay, onMove, busy, onDecided, panelRuns }: { item: TimelineItem; view: TimelineView; onPay: (item: TimelineItem) => void; onMove: (item: TimelineItem, due: string) => void; busy: boolean; onDecided: () => void; panelRuns: string[] }) {
+/**
+ * One payment, one line of the table: date, vendor, amount, its bar on the shared axis, status and
+ * actions. Approvals, checkout and PayPal's record open underneath it.
+ */
+function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { item: TimelineItem; view: TimelineView; axis: Axis | null; onPay: (item: TimelineItem) => void; onMove: (item: TimelineItem, due: string) => void; busy: boolean; onDecided: () => void; panelRuns: string[] }) {
+  const [moving, setMoving] = useState(false);
   const status = STATUS[item.status];
   const isNext = view.nextDue?.id === item.id;
   // The most urgent payment is tagged, overdue or not. One tag at most, beside its status.
@@ -112,76 +111,99 @@ function Row({ item, view, onPay, onMove, busy, onDecided, panelRuns }: { item: 
   const ownedByAgent = !!item.payment && panelRuns.includes(item.payment.runId);
   const approval = ownedByAgent ? null : item.approval;
   const when = whenLabel(item);
+  const cols = axis ? "xl:grid-cols-[8.75rem_minmax(0,12rem)_5.75rem_minmax(0,1fr)_9.5rem_11rem]" : "xl:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_9.5rem_11rem]";
   return (
-    <li className="relative pb-4 pl-7 last:pb-0" data-testid="timeline-item" data-role={item.vendorRole} data-kind={item.kind} data-status={item.status}>
-      <span className={`absolute left-0 top-5 size-3.5 rounded-full ring-4 ring-background ${status.dot}`} aria-hidden />
-      <div className={`rounded-xl border bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${item.status === "overdue" ? "border-red-200" : isNext || isFirst ? "border-brand-300" : "border-zinc-200/80"}`}>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto_10.5rem]">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-zinc-900" data-testid="item-due">{formatDay(item.due)}</p>
-            {/* On a phone the vendor's name gives way, never the deposit or balance. */}
-            <p className="flex min-w-0 text-sm text-zinc-600" data-testid="item-name">
-              <span className="truncate">{item.vendorName}</span>
-              <span className="shrink-0">
-                <span className="px-1 text-zinc-400">·</span>
-                {item.kind === "deposit" ? "Deposit" : "Balance"}
-              </span>
-            </p>
-            {item.movedFrom ? <p className="text-xs text-zinc-500" data-testid="item-moved">Contract says {formatDay(item.movedFrom)}</p> : null}
-          </div>
-          <div className="text-right">
-            <p className="font-mono text-base font-semibold tabular-nums text-zinc-900" data-testid="item-amount">{formatCents(item.cents)}</p>
-            {when ? <p className="text-xs text-zinc-500">{when}</p> : null}
-          </div>
-          <div className="col-span-2 flex flex-col gap-1.5 sm:col-span-1 sm:items-end">
-            <div className="flex flex-wrap gap-1 sm:justify-end">
-              {tag ? <span data-testid="item-tag"><Badge tone="brand">{tag}</Badge></span> : null}
-              {/* "Upcoming" says nothing a tag doesn't, so a tagged row shows the tag alone. */}
-              <span data-testid="item-status" className={tag && item.status === "upcoming" ? "sr-only" : undefined}><Badge tone={status.tone}>{status.label}</Badge></span>
-            </div>
-            {canPay ? (
+    <li className={`border-b border-zinc-100 px-4 py-1.5 last:border-b-0 ${isFirst ? "bg-brand-50/50" : item.status === "overdue" ? "bg-red-50/40" : ""}`} data-testid="timeline-item" data-role={item.vendorRole} data-kind={item.kind} data-status={item.status}>
+      <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 md:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_auto] ${cols}`}>
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-zinc-900">
+            <span className={`size-2 shrink-0 rounded-full ${status.dot}`} aria-hidden />
+            <span data-testid="item-due">{formatDay(item.due)}</span>
+          </p>
+          {when ? <p className="pl-3.5 text-xs text-zinc-500">{when}</p> : null}
+        </div>
+        <div className="order-3 col-span-2 min-w-0 md:order-none md:col-span-1">
+          {/* On a phone the vendor's name gives way, never the deposit or balance. */}
+          <p className="flex min-w-0 text-sm text-zinc-700" data-testid="item-name">
+            <span className="truncate">{item.vendorName}</span>
+            <span className="shrink-0">
+              <span className="px-1 text-zinc-400">·</span>
+              {item.kind === "deposit" ? "Deposit" : "Balance"}
+            </span>
+          </p>
+          {item.movedFrom ? <p className="text-xs text-zinc-500" data-testid="item-moved">Contract says {formatDay(item.movedFrom)}</p> : null}
+        </div>
+        <p className="text-right font-mono text-sm font-semibold tabular-nums text-zinc-900" data-testid="item-amount">{formatCents(item.cents)}</p>
+        {axis ? <div className="hidden xl:block"><VendorBar item={item} axis={axis} today={view.today} /></div> : null}
+        <div className="order-4 flex flex-wrap gap-1 md:order-none xl:justify-start">
+          {tag ? <span data-testid="item-tag"><Badge tone="brand">{tag}</Badge></span> : null}
+          {/* "Upcoming" says nothing a tag doesn't, so a tagged row shows the tag alone. */}
+          <span data-testid="item-status" className={tag && item.status === "upcoming" ? "sr-only" : undefined}><Badge tone={status.tone}>{status.label}</Badge></span>
+        </div>
+        <div className="order-5 flex items-center justify-end gap-1 md:order-none">
+          {canPay ? (
+            <>
+              <Button size="sm" variant="ghost" className="px-2" icon={<CalendarDays className="size-3.5" />} onClick={() => setMoving((m) => !m)} aria-label={`Change the date of the ${item.vendorName} ${item.kind}`} title="Change date" data-testid="move-date">
+                <span className="sr-only">Change date</span>
+              </Button>
               <Button size="sm" icon={<Send className="size-3.5" />} onClick={() => onPay(item)} loading={busy} disabled={busy} data-testid="pay-item">
                 {payLabel(item.vendorRole)}
               </Button>
-            ) : null}
-            {canPay ? <MoveDate key={item.due} item={item} onMove={onMove} /> : null}
-          </div>
+            </>
+          ) : null}
         </div>
-        {item.status === "awaiting_approval" && approval ? (
-          <PayApproval className="mt-3" item={item} approval={approval} cash={view.cash} sandbox={view.sandboxStandIn} onDecided={onDecided} />
-        ) : null}
-        {item.status === "awaiting_approval" && !approval ? <p className="mt-2 text-sm text-zinc-500">{item.approval ? "Waiting for your approval in the agent panel." : "Working with PayPal."}</p> : null}
-        {item.status === "awaiting_checkout" && !ownedByAgent ? <PayPalCheckout className="mt-3" item={item} sandbox={view.sandboxStandIn} onPaid={onDecided} /> : null}
-        {item.status === "awaiting_checkout" && ownedByAgent ? <p className="mt-2 text-sm text-zinc-500">Pay it from the agent panel above.</p> : null}
-        {item.payment?.state === "failed" ? (
-          <p className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="item-error">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {item.payment.error}
-          </p>
-        ) : null}
-        <PayPalProof item={item} standIn={view.sandboxStandIn} />
       </div>
+      {canPay && moving ? <MoveDateForm key={item.due} item={item} onMove={onMove} onClose={() => setMoving(false)} /> : null}
+      {item.status === "awaiting_approval" && approval ? (
+        <PayApproval className="mt-2" item={item} approval={approval} cash={view.cash} sandbox={view.sandboxStandIn} onDecided={onDecided} />
+      ) : null}
+      {item.status === "awaiting_approval" && !approval ? <p className="mt-1 text-xs text-zinc-500">{item.approval ? "Waiting for your approval in the agent panel." : "Working with PayPal."}</p> : null}
+      {item.status === "awaiting_checkout" && !ownedByAgent ? <PayPalCheckout className="mt-2" item={item} sandbox={view.sandboxStandIn} onPaid={onDecided} /> : null}
+      {item.status === "awaiting_checkout" && ownedByAgent ? <p className="mt-1 text-xs text-zinc-500">Pay it from the agent panel above.</p> : null}
+      {item.payment?.state === "failed" ? (
+        <p className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="item-error">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {item.payment.error}
+        </p>
+      ) : null}
+      <PayPalProof item={item} standIn={view.sandboxStandIn} />
     </li>
   );
 }
 
 function TodayMarker({ day }: { day: string }) {
   return (
-    <p className="relative mb-4 flex items-center pl-7 text-xs font-semibold text-brand" data-testid="today-marker">
-      <span className="absolute left-0 size-3.5 rounded-full bg-brand ring-4 ring-background" aria-hidden />
+    <li className="flex items-center gap-2 border-b border-zinc-100 bg-brand-50/30 px-4 py-1 text-xs font-semibold text-brand" data-testid="today-marker">
+      <span className="h-px w-4 bg-brand" aria-hidden />
       Today, {formatDay(day)}
-    </p>
+    </li>
   );
 }
 
-function monthsOf(items: TimelineItem[]) {
-  const months: { label: string; items: TimelineItem[] }[] = [];
-  for (const item of items) {
-    const label = formatMonth(item.due);
-    const current = months.at(-1);
-    if (current?.label === label) current.items.push(item);
-    else months.push({ label, items: [item] });
-  }
-  return months;
+function StatTile({ label, icon, value, hint, testId, className }: { label: string; icon: ReactNode; value: string; hint: string; testId: string; className?: string }) {
+  return (
+    <div className={`min-w-0 rounded-xl border border-zinc-200/80 bg-white px-3 py-2 ${className ?? ""}`} data-testid={testId}>
+      <p className="flex items-center justify-between text-xs text-zinc-500">
+        {label}
+        <span className="text-zinc-400">{icon}</span>
+      </p>
+      <p className="mt-0.5 text-lg font-semibold tracking-tight tabular-nums text-zinc-900">{value}</p>
+      <p className="truncate text-xs text-zinc-500" title={hint}>{hint}</p>
+    </div>
+  );
+}
+
+/** The last timeline this tab loaded, so coming back to the page shows it at once while it refreshes. */
+let lastView: TimelineView | null = null;
+
+function TimelineHeader() {
+  return (
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Your timeline</h1>
+      </div>
+      <ButtonLink href="/contracts" variant="secondary" size="sm">Add a contract</ButtonLink>
+    </div>
+  );
 }
 
 export function TimelineScreen() {
@@ -189,15 +211,24 @@ export function TimelineScreen() {
   const { toast } = useToast();
   // This tab's own steps plus this couple's webhooks (their plan channel). No one else's events.
   const { steps } = useTimeline({ includeGlobal: false });
-  const [view, setView] = useState<TimelineView | null>(null);
+  const [view, setView] = useState<TimelineView | null>(lastView);
   const [paying, setPaying] = useState<string | null>(null);
   const [loadingSamples, setLoadingSamples] = useState(false);
-  const [panelRuns, setPanelRuns] = useState<string[]>([]);
+  const [agentRun, setAgentRun] = useState<string | null>(null);
+  // Code's cash plan shows once the agent has given it. Moves the couple started stay on screen,
+  // with the payments they started, even after the plan moves on.
+  const [planned, setPlanned] = useState(false);
+  const [planStarted, setPlanStarted] = useState<CashMove[]>([]);
+  const [planRuns, setPlanRuns] = useState<string[]>([]);
+  const panelRuns = useMemo(() => [...(agentRun ? [agentRun] : []), ...planRuns], [agentRun, planRuns]);
   const [agentRunning, setAgentRunning] = useState(false);
   const [capturing, setCapturing] = useState(false);
 
   const load = useCallback(() => kitFetch<TimelineView>(`/api/timeline?today=${localToday()}`), [kitFetch]);
   const refresh = useCallback(() => load().then(setView), [load]);
+  useEffect(() => {
+    lastView = view;
+  }, [view]);
 
   useEffect(() => {
     load()
@@ -278,18 +309,20 @@ export function TimelineScreen() {
 
   const activity = useMemo(() => steps.map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
 
-  if (!view) return <SkeletonCard />;
+  if (!view) return <PageLoading title="Your timeline" doing="Reading your confirmed contracts and checking each payment with PayPal…" testId="timeline-loading" />;
 
   const { items, nextDue, overdue } = view;
   const overdueCents = sumCents(overdue.map((i) => i.cents));
   const unpaidCount = items.filter((i) => i.status !== "paid").length;
   const firstUpcoming = items.findIndex((i) => i.daysUntil >= 0);
   const todayBefore = firstUpcoming > 0 ? items[firstUpcoming].id : undefined;
+  const axis = SPONSOR_UI || !items.length ? null : axisFor(view);
+  const cols = axis ? "xl:grid-cols-[8.75rem_minmax(0,12rem)_5.75rem_minmax(0,1fr)_9.5rem_11rem]" : "xl:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_9.5rem_11rem]";
 
   return (
     <>
-      <PageHeader title="Your timeline" description="Every vendor's deposit and balance, by date." actions={<ButtonLink href="/contracts" variant="secondary">Add a contract</ButtonLink>} />
-      {view.samplePlan ? <SamplePlanBanner className="mb-6" /> : null}
+      <TimelineHeader />
+      {view.samplePlan ? <SamplePlanBanner className="mb-4" /> : null}
       {capturing ? <p className="mb-4 rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-900" data-testid="capturing">Back from PayPal. Capturing your payment and reading it back from PayPal…</p> : null}
       {items.length === 0 ? (
         <EmptyState
@@ -307,50 +340,59 @@ export function TimelineScreen() {
         />
       ) : (
         <>
-          <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-            <div data-testid="stat-next">
-              <Stat label="Due next" icon={<CalendarClock className="size-4" />} value={nextDue ? formatCents(nextDue.cents) : "Nothing"} hint={nextDue ? `${itemName(nextDue)}, ${formatDay(nextDue.due)}` : "No upcoming payments"} />
-            </div>
-            <div data-testid="stat-total">
-              <Stat label="Total due" icon={<Wallet className="size-4" />} value={formatCents(view.totalDueCents)} hint={unpaidCount === 1 ? "1 payment left" : `${unpaidCount} payments left`} />
-            </div>
-            <div data-testid="stat-overdue">
-              <Stat label="Overdue" icon={<AlertTriangle className="size-4" />} value={formatCents(overdueCents)} hint={overdue.length ? overdue.map(itemName).join(", ") : "Nothing overdue"} className={overdue.length ? "border-red-200 bg-red-50/40" : undefined} />
-            </div>
-            <div data-testid="stat-paid">
-              <Stat label="Paid" icon={<CircleCheck className="size-4" />} value={formatCents(view.paidCents)} hint={`of ${formatCents(view.contractedCents)} in contracts`} />
-            </div>
+          <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <StatTile testId="stat-next" label="Due next" icon={<CalendarClock className="size-3.5" />} value={nextDue ? formatCents(nextDue.cents) : "Nothing"} hint={nextDue ? `${itemName(nextDue)}, ${formatDay(nextDue.due)}` : "No upcoming payments"} />
+            <StatTile testId="stat-total" label="Total due" icon={<Wallet className="size-3.5" />} value={formatCents(view.totalDueCents)} hint={unpaidCount === 1 ? "1 payment left" : `${unpaidCount} payments left`} />
+            <StatTile testId="stat-overdue" label="Overdue" icon={<AlertTriangle className="size-3.5" />} value={formatCents(overdueCents)} hint={overdue.length ? overdue.map(itemName).join(", ") : "Nothing overdue"} className={overdue.length ? "border-red-200 bg-red-50/40" : undefined} />
+            <StatTile testId="stat-paid" label="Paid" icon={<CircleCheck className="size-3.5" />} value={formatCents(view.paidCents)} hint={`of ${formatCents(view.contractedCents)} in contracts`} />
           </div>
-          <div className="mb-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
-            <AgentPanel steps={steps} items={items} cash={view.cash} fix={view.cashFix} sandbox={view.sandboxStandIn} onRuns={setPanelRuns} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
-            <CashCard key={view.cash.monthlyBudgetCents} cash={view.cash} onChanged={() => void refresh().catch(() => undefined)} />
+          <div className="mb-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+            <AgentPanel steps={steps} items={items} cash={view.cash} sandbox={view.sandboxStandIn} onRun={setAgentRun} onPlanned={setPlanned} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
+            <div className="grid gap-4">
+              <CashCard key={view.cash.monthlyBudgetCents} cash={view.cash} onChanged={() => void refresh().catch(() => undefined)} />
+              {planned || planStarted.length ? (
+                <CashPlanMoves
+                  fix={view.cashFix}
+                  started={planStarted}
+                  items={items}
+                  cash={view.cash}
+                  sandbox={view.sandboxStandIn}
+                  onStarted={(m, paymentRun) => {
+                    setPlanStarted((moves) => [...moves.filter((s) => s.itemId !== m.itemId), m]);
+                    if (paymentRun) setPlanRuns((runs) => [...runs, paymentRun]);
+                  }}
+                  onDone={() => void refresh().catch(() => undefined)}
+                />
+              ) : null}
+            </div>
           </div>
           <PaymentChart view={view} onMove={move} />
-          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
-            <div className="relative" data-testid="vendor-timeline">
-              <span className="absolute bottom-3 left-[6px] top-3 w-px bg-zinc-200" aria-hidden />
-              {monthsOf(items).map((month) => (
-                <section key={month.label} className="mb-5 last:mb-0">
-                  {month.items[0].id === todayBefore ? <TodayMarker day={view.today} /> : null}
-                  <h2 className="relative mb-3 pl-7 text-xs font-semibold uppercase tracking-wider text-zinc-500">{month.label}</h2>
-                  <ol>
-                    {month.items.map((item, index) => (
-                      <Fragment key={item.id}>
-                        {index > 0 && item.id === todayBefore ? <TodayMarker day={view.today} /> : null}
-                        <Row item={item} view={view} onPay={pay} onMove={move} busy={paying === item.id} onDecided={() => void refresh().catch(() => undefined)} panelRuns={panelRuns} />
-                      </Fragment>
-                    ))}
-                  </ol>
-                </section>
-              ))}
+          <Card className="mb-4 overflow-hidden" data-testid="vendor-timeline">
+            <div className={`hidden items-end gap-x-3 border-b border-zinc-100 bg-zinc-50/60 px-4 py-2 text-xs font-medium text-zinc-500 md:grid md:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_auto] ${cols}`}>
+              <span>Due</span>
+              <span>Vendor</span>
+              <span className="text-right">Amount</span>
+              {axis ? <div className="hidden xl:block" data-testid="free-bars"><AxisHeader axis={axis} today={view.today} /></div> : null}
+              <span className="hidden xl:block">Status</span>
+              <span className="hidden xl:block" />
             </div>
-            <Card className="xl:sticky xl:top-6" data-testid="activity-panel">
-              <CardHeader title="What's happening" description="Each AI read, approval and PayPal call." />
-              <CardBody>
-                <ToolCallTimeline steps={activity} className="max-h-[620px]" emptyTitle="Nothing yet" emptyDescription="Pay a vendor to see each step here." />
-              </CardBody>
-            </Card>
-          </div>
+            <ol>
+              {items.map((item) => (
+                <Fragment key={item.id}>
+                  {item.id === todayBefore ? <TodayMarker day={view.today} /> : null}
+                  <Row item={item} view={view} axis={axis} onPay={pay} onMove={move} busy={paying === item.id} onDecided={() => void refresh().catch(() => undefined)} panelRuns={panelRuns} />
+                </Fragment>
+              ))}
+            </ol>
+          </Card>
+          <details className="group rounded-2xl border border-zinc-200/80 bg-white" data-testid="activity-panel">
+            <summary className="cursor-pointer px-5 py-3 text-sm font-semibold text-zinc-900">
+              What&apos;s happening <span className="font-normal text-zinc-500">: each AI read, approval and PayPal call ({activity.length} {activity.length === 1 ? "step" : "steps"})</span>
+            </summary>
+            <div className="border-t border-zinc-100 px-5 py-4">
+              <ToolCallTimeline steps={activity} className="max-h-[420px]" emptyTitle="Nothing yet" emptyDescription="Pay a vendor to see each step here." />
+            </div>
+          </details>
         </>
       )}
     </>

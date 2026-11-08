@@ -54,7 +54,7 @@ function AskVendor({ move, item, onDone }: { move: CashMove; item?: TimelineItem
   }
   return (
     <>
-      <Textarea readOnly aria-label={`Message to ${move.vendorName}`} className="mt-2 min-h-48 text-sm" value={move.message} data-testid="move-message" />
+      <Textarea readOnly aria-label={`Message to ${move.vendorName}`} className="mt-2 min-h-32 text-xs" value={move.message} data-testid="move-message" />
       <div className="mt-2 flex flex-wrap gap-2">
         <Button size="sm" variant="secondary" icon={<Copy className="size-3.5" />} onClick={() => void copy()} data-testid="move-copy">
           {copied ? "Copied" : "Copy message"}

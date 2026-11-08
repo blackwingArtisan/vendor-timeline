@@ -146,8 +146,8 @@ export function cashFix(items: TimelineItem[], today: string, monthlyBudgetCents
   const fits = after.warnings.length === 0;
   let summary: string;
   if (!moves.length) summary = `No move your contracts allow brings this within your ${budget} monthly budget.`;
-  else if (fits) summary = `${count(moves.length)} would fit every month in your ${budget} monthly budget: ${joined(moves.map(phrase))}. Approve each one below.`;
-  else summary = `No plan fits every month in your ${budget} monthly budget, but ${count(moves.length).toLowerCase()} your contracts allow bring it closer: ${joined(moves.map(phrase))}. Approve each one below.`;
+  else if (fits) summary = `${count(moves.length)} would fit every month in your ${budget} monthly budget: ${joined(moves.map(phrase))}. Approve each one in the cash plan.`;
+  else summary = `No plan fits every month in your ${budget} monthly budget, but ${count(moves.length).toLowerCase()} your contracts allow bring it closer: ${joined(moves.map(phrase))}. Approve each one in the cash plan.`;
   return { moves, fits, summary, stillOver: stillOverSentence(after) };
 }
 

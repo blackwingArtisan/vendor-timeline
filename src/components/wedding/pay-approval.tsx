@@ -28,7 +28,7 @@ export function PayApproval({ item, approval, cash, sandbox, onDecided, classNam
       className={className}
       approvalId={approval.id}
       summary={approval.summary}
-      reason="This is your money. Approve and pay opens PayPal's checkout, where you pay it yourself. Nothing moves before that."
+      reason="This is your money. You pay it yourself in PayPal's checkout, and nothing moves before that."
       amount={approval.amountValue ? { currency_code: "USD", value: approval.amountValue } : undefined}
       approveLabel="Approve and pay"
       onApproved={(response) => {
