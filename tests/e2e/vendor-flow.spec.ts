@@ -69,9 +69,9 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
 
   // The front door describes this product, and nothing from the starter kit is left to reach.
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Never lose a vendor to a missed deposit.");
-  await expect(page.getByTestId("landing-preview")).toContainText(PHOTOGRAPHER.vendorName);
-  await expect(page.getByTestId("landing-preview")).toContainText(formatCents(PHOTOGRAPHER.depositCents));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("About 13 vendors. Every one with its own payment dates.");
+  await expect(page.getByTestId("landing-cash")).toContainText(PHOTOGRAPHER.vendorName);
+  await expect(page.getByTestId("landing-cash")).toContainText(formatCents(PHOTOGRAPHER.balanceCents));
   await expect(page.locator("body")).not.toContainText("$80.00");
   await page.screenshot({ path: "screenshots/landing.png" });
   for (const path of REMOVED_KIT_PAGES) expect((await api.get(path)).status()).toBe(404);

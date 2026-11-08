@@ -6,9 +6,13 @@
 
 ![The agent stopped for approval, beside the cash check](docs/screenshot.png)
 
-## The problem
+## Why this matters
 
-A wedding means five or more vendors, each with its own contract, its own wording and its own deadlines. One says "25% to hold the date", another "the rest two weeks before your wedding", another buries the balance in a schedule. Couples track these in their heads or a spreadsheet, and a missed deposit can cost them the vendor. Worse, the sums in contracts aren't always right.
+The average US couple hires about 13 wedding vendors ([The Knot Real Weddings Study 2026](https://s3.us-east-1.amazonaws.com/theknot.com/xo-content/pdf/the-knot-real-weddings-study-data-read-out-2026.pdf), 10,474 couples married in 2025). Each contract sets its own deposit and balance dates: 30 days out for one, two weeks for another, the night of the wedding for a third ([WeddingWire forum, 2017](https://www.weddingwire.com/wedding-forums/how-did-you-handle-final-payments/c988afae4343599e.html); [2019](https://www.weddingwire.com/wedding-forums/final-vendor-payments-day-of-or-earlier/0832e50979444bda.html)). Couples track this in spreadsheets ([2016](https://www.weddingwire.com/wedding-forums/wedding-budget-and-spending-how-did-you-pay-your-vendors-deposits-and-regular-payments-or-a-lump-sum/33414fc59ed9ceb6.html)). Money is tight: 69% say their first budget was set too low, and 39% put wedding costs on a credit card ([The Knot, 2024](https://pros.weddingpro.com/report/2024-couples-finance-and-budget-report/)). Vendor Timeline reads the terms, warns when payments pile up, and pays each vendor through PayPal.
+
+On the sample wedding, the cash check finds that May 2027 needs $15,800 across three balances against a $5,000 monthly budget, and the cash plan suggests what the contracts allow: pay one balance early, and ask the florist for a date a week later.
+
+Forum posts are single couples' words: they show a problem comes up, not how often. The landing page lists each pain point with its sources (`src/lib/wedding/story.ts`).
 
 ## What it does
 
