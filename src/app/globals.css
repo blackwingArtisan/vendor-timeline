@@ -50,6 +50,14 @@
 
 html {
   color-scheme: light;
+  /* On a phone the header stays on top, so anything scrolled to lands below it, not under it. */
+  scroll-padding-top: 5rem;
+}
+
+@media (min-width: 64rem) {
+  html {
+    scroll-padding-top: 1rem;
+  }
 }
 
 body {

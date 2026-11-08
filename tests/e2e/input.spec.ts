@@ -14,7 +14,8 @@ const row = (page: Page, role: string, kind: string) => page.locator(`[data-test
 async function fiveContracts(page: Page) {
   await page.clock.setFixedTime(new Date(`${TODAY}T12:00:00`));
   await page.goto("/timeline");
-  await page.getByTestId("load-samples").click();
+  // A new visitor starts on the labelled sample plan, already confirmed.
+  await expect(page.getByTestId("sample-plan")).toContainText("Sample plan");
   await expect(page.getByTestId("timeline-item")).toHaveCount(10);
 }
 

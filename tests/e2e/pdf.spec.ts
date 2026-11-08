@@ -14,6 +14,10 @@ async function upload(page: Page, file: Parameters<Page["setInputFiles"]>[1]) {
 }
 
 test("a PDF contract goes in, gets read into terms and reaches the timeline", async ({ page }) => {
+  // On a plan of the couple's own, so this contract is the only one.
+  await page.goto("/timeline");
+  await page.getByTestId("start-own-plan").click();
+  await expect(page.getByText("Nothing confirmed yet")).toBeVisible();
   await upload(page, "public/sample-contracts/photographer.pdf");
   await expect(page.getByTestId("contract-text")).toHaveValue(/Quillfeather/, { timeout: 30_000 });
   await page.getByTestId("read-contract").click();

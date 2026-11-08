@@ -17,6 +17,7 @@ import { AgentPanel } from "./agent-panel";
 import { CashCard } from "./cash-card";
 import { PayApproval } from "./pay-approval";
 import { PayPalCheckout, StandInLine } from "./paypal-checkout";
+import { SamplePlanBanner } from "@/components/wedding/sample-plan-banner";
 import { PaymentChart } from "./payment-chart";
 
 const STATUS: Record<ItemStatus, { label: string; tone: Tone; dot: string }> = {
@@ -279,6 +280,7 @@ export function TimelineScreen() {
   return (
     <>
       <PageHeader title="Your timeline" description="Every vendor's deposit and balance, by date." actions={<ButtonLink href="/contracts" variant="secondary">Add a contract</ButtonLink>} />
+      {view.samplePlan ? <SamplePlanBanner className="mb-6" /> : null}
       {capturing ? <p className="mb-4 rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-900" data-testid="capturing">Back from PayPal. Capturing your payment and reading it back from PayPal…</p> : null}
       {items.length === 0 ? (
         <EmptyState
@@ -296,7 +298,7 @@ export function TimelineScreen() {
         />
       ) : (
         <>
-          <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <div data-testid="stat-next">
               <Stat label="Due next" icon={<CalendarClock className="size-4" />} value={nextDue ? formatCents(nextDue.cents) : "Nothing"} hint={nextDue ? `${itemName(nextDue)}, ${formatDay(nextDue.due)}` : "No upcoming payments"} />
             </div>

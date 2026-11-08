@@ -15,7 +15,8 @@ test("another app's sale on the same PayPal account never shows here", async ({ 
   test.setTimeout(300_000);
   await page.clock.setFixedTime(new Date(`${TODAY}T12:00:00`));
   await page.goto("/timeline");
-  await page.getByTestId("load-samples").click();
+  // A new visitor starts on the labelled sample plan, already confirmed.
+  await expect(page.getByTestId("sample-plan")).toContainText("Sample plan");
   await expect(page.getByTestId("timeline-item")).toHaveCount(10);
   const { paypal } = await (await page.request.get("/api/kit/status")).json();
 

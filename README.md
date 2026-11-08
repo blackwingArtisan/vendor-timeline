@@ -12,7 +12,8 @@ A wedding means five or more vendors, each with its own contract, its own wordin
 
 ## What it does
 
-- **Add contracts.** Paste the text, upload a `.txt` or `.pdf` file, try one of the five fictional samples or the sample PDF, or load all five at once from the timeline.
+- **Start on a sample plan.** A first visit opens a labelled "Sample plan" with the five fictional contracts already confirmed, so the timeline, cash check and agent work straight away. "Start your own plan" gives an empty plan of your own; the samples stay one click away.
+- **Add contracts.** Paste the text, upload a `.txt` or `.pdf` file, or try one of the five fictional samples or the sample PDF.
 - **AI reads the payment terms.** Vendor, total, deposit and date, balance and date, each with the exact contract sentence it came from.
 - **You check them.** Terms sit beside their source sentences. You confirm or edit. Anything missing or unclear is flagged and left blank, and nothing reaches the timeline unconfirmed.
 - **One timeline.** Every deposit and balance by date and as bars per vendor, what's due next, what's overdue and the total due. Dates can be moved, and the original stays on the row.
