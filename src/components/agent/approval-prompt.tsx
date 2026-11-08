@@ -8,6 +8,7 @@ import { Button } from "../ui/button";
 import { cn } from "../ui/cn";
 import { useKit } from "../kit/kit-provider";
 import { useToast } from "../toast";
+import { plainText } from "@/lib/plain-text";
 
 /**
  * The human-in-the-loop card. Posts the decision to /api/agent/approvals/:id; the waiting
@@ -54,8 +55,8 @@ export function ApprovalPrompt({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Approval needed</p>
-          <p className="mt-0.5 font-semibold text-zinc-900">{summary}</p>
-          {reason ? <p className="mt-0.5 text-sm text-zinc-600">{reason}</p> : null}
+          <p className="mt-0.5 font-semibold text-zinc-900">{plainText(summary)}</p>
+          {reason ? <p className="mt-0.5 text-sm text-zinc-600">{plainText(reason)}</p> : null}
         </div>
         {amount ? <MoneyBadge amount={amount} direction="neutral" size="lg" /> : null}
       </div>
