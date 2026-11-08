@@ -24,6 +24,7 @@ import { MoneyBadge } from "../money-badge";
 import { cn } from "../ui/cn";
 import { EmptyState } from "../ui/empty-state";
 import { ApprovalPrompt } from "./approval-prompt";
+import { plainText } from "@/lib/plain-text";
 
 const KIND_ICON = {
   run: Bot,
@@ -118,7 +119,7 @@ function CompactRow({ step }: { step: TimelineStep }) {
       </span>
       <span className="truncate">
         <span className="font-medium text-zinc-600">{step.title}</span>
-        {step.paypal ? <span className="ml-2 font-mono">{step.paypal.method} {step.paypal.path}</span> : step.detail ? <span className="ml-2">{step.detail.slice(0, 140)}</span> : null}
+        {step.paypal ? <span className="ml-2 font-mono">{step.paypal.method} {step.paypal.path}</span> : step.detail ? <span className="ml-2">{plainText(step.detail).slice(0, 140)}</span> : null}
       </span>
       <span className="ml-auto shrink-0 tabular-nums text-zinc-400">{time(step.updatedAt)}</span>
     </li>
@@ -147,7 +148,7 @@ function StepCard({ step, onApprovalDecided }: { step: TimelineStep; onApprovalD
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className={cn("min-w-0 font-semibold text-zinc-900 [overflow-wrap:anywhere]", isMessage ? "text-sm text-brand-800" : "text-[15px]")}>{step.title}</p>
+              <p className={cn("min-w-0 font-semibold text-zinc-900 [overflow-wrap:anywhere]", isMessage ? "text-sm text-brand-800" : "text-[15px]")}>{plainText(step.title)}</p>
               {status.label ? (
                 <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", status.className)}>
                   {status.icon}
@@ -168,7 +169,7 @@ function StepCard({ step, onApprovalDecided }: { step: TimelineStep; onApprovalD
             <span className="text-[11px] tabular-nums text-zinc-400">{time(step.updatedAt)}</span>
           </div>
         </div>
-        {step.detail ? <p className={cn("mt-1.5 whitespace-pre-wrap break-words text-sm", isMessage ? "text-zinc-800" : "text-zinc-600")}>{step.detail}</p> : null}
+        {step.detail ? <p className={cn("mt-1.5 whitespace-pre-wrap break-words text-sm", isMessage ? "text-zinc-800" : "text-zinc-600")}>{plainText(step.detail)}</p> : null}
         {step.error && step.status !== "denied" ? (
           <div className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
