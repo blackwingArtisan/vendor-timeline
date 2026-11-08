@@ -79,6 +79,9 @@ export function loadEnvFiles(cwd = process.cwd(), opts: { force?: boolean } = {}
   return files;
 }
 
+/** The shared sandbox config's business account (../../.env.shared), not this app's own. A sandbox test address, not a secret. */
+export const DEFAULT_SANDBOX_VENDOR_EMAIL = "sb-bupc253555929@business.example.com";
+
 export interface KitEnv {
   paypalMode: PayPalMode;
   paypalClientId?: string;
@@ -86,6 +89,11 @@ export interface KitEnv {
   paypalWebhookId?: string;
   sandboxBuyerEmail: string;
   sandboxSellerEmail: string;
+  /**
+   * A second sandbox business account, not the app's own, that stands in for some fictional
+   * vendors, so a payment visibly reaches a vendor's account. Empty means the app's own only.
+   */
+  sandboxVendorEmail: string;
   anthropicApiKey?: string;
   aiMode: AiMode;
   aiDailyCapUsd: number;
@@ -140,6 +148,7 @@ export function readKitEnv(env: NodeJS.ProcessEnv = process.env): KitEnv {
     paypalWebhookId: env.PAYPAL_WEBHOOK_ID?.trim() || undefined,
     sandboxBuyerEmail: env.PAYPAL_SANDBOX_BUYER_EMAIL?.trim() || "buyer@personal.example.com",
     sandboxSellerEmail: env.PAYPAL_SANDBOX_SELLER_EMAIL?.trim() || "seller@business.example.com",
+    sandboxVendorEmail: env.PAYPAL_SANDBOX_VENDOR_EMAIL?.trim() ?? DEFAULT_SANDBOX_VENDOR_EMAIL,
     anthropicApiKey: apiKey,
     aiMode,
     aiDailyCapUsd: cap,

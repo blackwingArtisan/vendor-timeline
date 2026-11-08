@@ -18,6 +18,26 @@ export async function payInCheckout(page: Page, box: Locator, sandbox: boolean, 
 }
 
 /**
+ * "Approve and pay" on an approval card: the one approval, then straight into checkout. In sandbox
+ * the browser lands on PayPal's own page; with mock PayPal the simulated checkout opens. Returns the
+ * PayPal order id.
+ */
+export async function approveAndPay(page: Page, prompt: Locator, sandbox: boolean, opts: { typingDelay?: number; beforePay?: () => Promise<void> } = {}): Promise<string> {
+  await expect(prompt.getByTestId("approve-button")).toHaveText("Approve and pay");
+  await prompt.getByTestId("approve-button").click();
+  if (!sandbox) {
+    const orderId = (await page.getByTestId("mock-order-id").textContent({ timeout: 60_000 }))!;
+    await page.getByTestId("mock-approve").click();
+    return orderId;
+  }
+  await page.waitForURL(/sandbox\.paypal\.com/, { timeout: 60_000 });
+  const orderId = new URL(page.url()).searchParams.get("token")!;
+  await payAsGuest(page, opts);
+  await page.waitForURL(/\/timeline/, { timeout: 120_000 });
+  return orderId;
+}
+
+/**
  * PayPal opens one of three screens: its card form; its login page, which links to the card form; or a
  * guest page that asks for an email first. Step through whichever it shows until the card form is up.
  * The sandbox login page sometimes never finishes loading its card link; a reload brings it back.

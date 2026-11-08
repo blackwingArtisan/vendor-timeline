@@ -14,7 +14,7 @@
  *     onApprove={async ({ orderId }) => { await kitFetch(`/api/paypal/orders/${orderId}/capture`, { method: "POST" }) }}
  *   />
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PayPalOneTimePaymentButton, PayPalProvider } from "@paypal/react-paypal-js/sdk-v6";
 import { CreditCard, FlaskConical, ShieldCheck, Wallet } from "lucide-react";
 import { Button } from "../ui/button";
@@ -31,6 +31,8 @@ export interface CheckoutButtonProps {
   amountLabel?: string;
   disabled?: boolean;
   label?: string;
+  /** Mock only: open the simulated checkout at once, as PayPal's page opens right after an approval. */
+  autoStart?: boolean;
 }
 
 const SANDBOX = "sandbox" as const; // never read from env: v6 picks the environment from this prop only
@@ -86,10 +88,18 @@ function TestCardButton({ createOrder, onApprove, onError, disabled }: CheckoutB
   );
 }
 
-function MockCheckoutButton({ createOrder, onApprove, onCancel, onError, amountLabel, disabled, label, buyerEmail }: CheckoutButtonProps & { buyerEmail: string }) {
+function MockCheckoutButton({ createOrder, onApprove, onCancel, onError, amountLabel, disabled, label, buyerEmail, autoStart }: CheckoutButtonProps & { buyerEmail: string }) {
   const { kitFetch } = useKit();
   const [orderId, setOrderId] = useState<string | null>(null);
   const [busy, setBusy] = useState<"create" | "approve" | null>(null);
+  const started = useRef(false);
+  useEffect(() => {
+    if (!autoStart || started.current) return;
+    started.current = true;
+    void start();
+    // Once, on the first render that asks for it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
 
   async function start() {
     setBusy("create");
@@ -171,7 +181,7 @@ function MockCheckoutButton({ createOrder, onApprove, onCancel, onError, amountL
           ) : null}
           <div className="flex justify-between">
             <span className="text-zinc-500">Order</span>
-            <span className="font-mono text-xs">{orderId}</span>
+            <span className="font-mono text-xs" data-testid="mock-order-id">{orderId}</span>
           </div>
         </div>
       </Modal>

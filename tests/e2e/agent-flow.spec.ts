@@ -6,8 +6,8 @@
  * Against the hosted copy (E2E_BASE_URL) a real PayPal webhook must be what marks the payment paid.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { payInCheckout } from "./pay-in-checkout";
-import { readCapture, readCaptureEvent, readOrder, sandboxSellerEmail } from "./paypal-reread";
+import { approveAndPay } from "./pay-in-checkout";
+import { readCapture, readCaptureEvent, readOrder, sandboxSellerEmail, sandboxVendorEmail } from "./paypal-reread";
 import { formatCents, sumCents } from "../../src/lib/wedding/cents";
 import { formatDay } from "../../src/lib/wedding/dates";
 import { CATERER, FLORIST, PHOTOGRAPHER, SAMPLES } from "../../src/lib/wedding/samples";
@@ -80,6 +80,11 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   await expect(prompt.getByTestId("approval-from")).toHaveText("Your PayPal, in PayPal's checkout");
   await expect(prompt.getByTestId("approval-to")).toHaveText(FLORIST.vendorName);
   await expect(prompt.getByTestId("approval-budget")).toContainText("monthly budget");
+  // In sandbox the florist is paid to a separate vendor test account, not the app's own, named here.
+  if (sandbox) {
+    await expect(prompt.getByTestId("stand-in")).toHaveAttribute("data-account", "vendor");
+    await expect(prompt.getByTestId("stand-in")).toContainText(`separate vendor test business account (${sandboxVendorEmail()}), standing in for ${FLORIST.vendorName}`);
+  } else await expect(prompt.getByTestId("stand-in")).toHaveCount(0);
   // Code, not the model, says what comes first, and its sentence leads the panel.
   const first = panel.getByTestId("agent-message").first();
   await expect(first).toHaveAttribute("data-from", "app");
@@ -108,12 +113,8 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   await expect(deposit.getByTestId("paypal-proof")).toHaveCount(0);
   await expect(page.getByTestId("stat-paid")).toContainText("$0.00");
 
-  // Yes: the couple pay it in PayPal's checkout, right from the agent panel.
-  await prompt.getByTestId("approve-button").click();
-  const box = panel.getByTestId("checkout-box");
-  await expect(box).toBeVisible({ timeout: 60_000 });
-  const orderId = (await box.getByTestId("checkout-order-id").textContent())!;
-  await payInCheckout(page, box, sandbox);
+  // Yes: one approval, and PayPal's checkout opens straight from the agent panel.
+  const orderId = await approveAndPay(page, prompt, sandbox);
 
   // Paid, and the status is PayPal's own record of the capture.
   await expect(deposit.getByTestId("item-status")).toHaveText("Paid", { timeout: 200_000 });
@@ -144,7 +145,9 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
     console.log(`PayPal re-read: order ${order.id} ${order.status}, payee ${order.purchase_units[0].payee.email_address}, capture ${capture.id} ${capture.status} ${capture.amount.value} ${capture.amount.currency_code}`);
     expect(order.status).toBe("COMPLETED");
     expect(order.purchase_units[0].amount).toMatchObject(term);
-    expect(order.purchase_units[0].payee.email_address?.toLowerCase()).toBe(sandboxSellerEmail().toLowerCase());
+    // Paid to the vendor's stand-in account, a different business account from the app's own.
+    expect(order.purchase_units[0].payee.email_address?.toLowerCase()).toBe(sandboxVendorEmail().toLowerCase());
+    expect(sandboxVendorEmail().toLowerCase()).not.toBe(sandboxSellerEmail().toLowerCase());
     expect(capture.status).toBe("COMPLETED");
     expect(capture.amount).toEqual(term);
     expect(capture.supplementary_data?.related_ids?.order_id).toBe(orderId);

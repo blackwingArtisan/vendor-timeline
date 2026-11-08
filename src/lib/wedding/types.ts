@@ -106,6 +106,12 @@ export interface PendingApproval {
 
 export type ItemStatus = "paid" | "sending" | "awaiting_checkout" | "awaiting_approval" | "overdue" | "due_today" | "upcoming";
 
+export interface SandboxPayee {
+  email: string;
+  /** True for the app's own business account, false for the separate vendor account. */
+  own: boolean;
+}
+
 export interface TimelineItem {
   id: string;
   contractId: string;
@@ -121,6 +127,8 @@ export interface TimelineItem {
   approval?: PendingApproval | null;
   /** The date in the contract, when the couple moved this one. */
   movedFrom?: string;
+  /** In sandbox, the test business account this item pays. */
+  sandboxPayee?: SandboxPayee;
   /** The wedding day the contract gives, if any. A payment can move to at most a year after it. */
   weddingDay?: string;
 }

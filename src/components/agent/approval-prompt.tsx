@@ -21,6 +21,8 @@ export function ApprovalPrompt({
   amount,
   details,
   onDecided,
+  onApproved,
+  approveLabel = "Approve",
   className,
 }: {
   approvalId: string;
@@ -29,6 +31,9 @@ export function ApprovalPrompt({
   amount?: Money;
   details?: ReactNode;
   onDecided?: (decision: "approved" | "denied") => void;
+  /** Gets the server's answer to an approval. Return true when it takes over (say, opening checkout). */
+  onApproved?: (response: unknown) => boolean | Promise<boolean>;
+  approveLabel?: string;
   className?: string;
 }) {
   const { kitFetch } = useKit();
@@ -38,9 +43,10 @@ export function ApprovalPrompt({
   async function decide(decision: "approved" | "denied") {
     setBusy(decision);
     try {
-      await kitFetch(`/api/agent/approvals/${approvalId}`, { json: { decision } });
+      const response = await kitFetch(`/api/agent/approvals/${approvalId}`, { json: { decision } });
+      const handled = decision === "approved" && onApproved ? await onApproved(response) : false;
       onDecided?.(decision);
-      toast({ title: decision === "approved" ? "Approved" : "Declined", description: summary, variant: decision === "approved" ? "success" : "warning" });
+      if (!handled) toast({ title: decision === "approved" ? "Approved" : "Declined", description: summary, variant: decision === "approved" ? "success" : "warning" });
     } catch (e) {
       toast({ title: "Could not record decision", description: (e as Error).message, variant: "error" });
       setBusy(null);
@@ -66,7 +72,7 @@ export function ApprovalPrompt({
           Decline
         </Button>
         <Button variant="success" size="sm" icon={<Check className="size-4" />} loading={busy === "approved"} disabled={!!busy} onClick={() => decide("approved")} data-testid="approve-button">
-          Approve
+          {approveLabel}
         </Button>
       </div>
     </div>
