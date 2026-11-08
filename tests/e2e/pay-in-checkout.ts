@@ -26,7 +26,10 @@ export async function approveAndPay(page: Page, prompt: Locator, sandbox: boolea
   await expect(prompt.getByTestId("approve-button")).toHaveText("Approve and pay");
   await prompt.getByTestId("approve-button").click();
   if (!sandbox) {
-    const orderId = (await page.getByTestId("mock-order-id").textContent({ timeout: 60_000 }))!;
+    // The simulated checkout can open a moment before its order id fills in.
+    const shown = page.getByTestId("mock-order-id");
+    await expect(shown).toHaveText(/\S/, { timeout: 60_000 });
+    const orderId = (await shown.textContent())!.trim();
     await page.getByTestId("mock-approve").click();
     return orderId;
   }

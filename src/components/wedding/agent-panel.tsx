@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bot, Send } from "lucide-react";
 import { PacedWait } from "@/components/wedding/paced-wait";
+import { CashPlanMoves } from "@/components/wedding/cash-plan";
 import { PayApproval } from "@/components/wedding/pay-approval";
 import { PayPalCheckout } from "@/components/wedding/paypal-checkout";
 import { usePaced, WaitStopped } from "@/components/wedding/use-paced";
@@ -11,8 +12,8 @@ import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, Input, type Tone } from "@/components/ui";
 import type { TimelineStep } from "@/lib/events/types";
 import { localToday } from "@/lib/wedding/dates";
-import type { CashPlan, TimelineItem } from "@/lib/wedding/types";
-import { APP_MESSAGE_TITLES } from "@/lib/wedding/urgency";
+import type { CashFix, CashMove, CashPlan, TimelineItem } from "@/lib/wedding/types";
+import { APP_MESSAGE_TITLES, CASH_PLAN_TITLE } from "@/lib/wedding/urgency";
 import { plainText } from "@/lib/plain-text";
 
 const DEFAULT_GOAL = "Tell me what's most urgent, warn me about any cash clashes, and set up that payment for my approval.";
@@ -26,8 +27,11 @@ const PHASE: Record<Exclude<Phase, "idle">, { label: string; tone: Tone }> = {
   failed: { label: "Stopped", tone: "danger" },
 };
 
-/** The agent names what's due and asks to pay. A person answers here, and only then can money move. */
-export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDecided }: { steps: TimelineStep[]; items: TimelineItem[]; cash: CashPlan; sandbox: boolean; onRun: (runId: string | null) => void; onRunning: (running: boolean) => void; onDecided: () => void }) {
+/**
+ * The agent names what's due, shows code's cash plan, and asks to pay. A person answers here, and
+ * only then can money move. `onRuns` tells the timeline which payments this panel shows.
+ */
+export function AgentPanel({ steps, items, cash, fix, sandbox, onRuns, onRunning, onDecided }: { steps: TimelineStep[]; items: TimelineItem[]; cash: CashPlan; fix: CashFix | null; sandbox: boolean; onRuns: (runIds: string[]) => void; onRunning: (running: boolean) => void; onDecided: () => void }) {
   const { kitFetch } = useKit();
   const { toast } = useToast();
   const [goal, setGoal] = useState(DEFAULT_GOAL);
@@ -35,6 +39,9 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
   const [starting, setStarting] = useState(false);
   const { paced, waitSeconds, stopWaiting } = usePaced();
   const [blocked, setBlocked] = useState<string | null>(null);
+  // Cash plan moves the couple started here, and the payments they started from them.
+  const [planStarted, setPlanStarted] = useState<CashMove[]>([]);
+  const [planRuns, setPlanRuns] = useState<string[]>([]);
 
   const runSteps = useMemo(() => steps.filter((s) => s.runId === runId), [steps, runId]);
   // What code said (pay first, then each warning) leads, and the model's explanation follows.
@@ -46,7 +53,10 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
   const running = !!runId && (!run || run.status === "running");
   const phase: Phase = !runId ? "idle" : pending ? "waiting" : running ? "working" : run?.status === "failed" ? "failed" : "finished";
 
+  const planned = said.some((m) => m.title === CASH_PLAN_TITLE) || planStarted.length > 0;
+
   useEffect(() => onRunning(running), [running, onRunning]);
+  useEffect(() => onRuns([...(runId ? [runId] : []), ...planRuns]), [runId, planRuns, onRuns]);
 
   async function ask() {
     setStarting(true);
@@ -54,7 +64,6 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
     try {
       const { run: started } = await paced(() => kitFetch<{ run: { id: string } }>("/api/agent/runs", { json: { agentId: "payments", goal, today: localToday() } }));
       setRunId(started.id);
-      onRun(started.id);
     } catch (e) {
       if (e instanceof ApiError && (e.status === 402 || e.status === 429)) setBlocked(`${e.message} The agent can't start, and no money has moved. You can still pay from the timeline.`);
       else if (!(e instanceof WaitStopped)) toast({ title: "The agent couldn't start", description: (e as Error).message, variant: "error" });
@@ -101,6 +110,21 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
           <PayApproval key={pending.approval.id} className="mt-3" item={pending} approval={pending.approval} cash={cash} sandbox={sandbox} onDecided={onDecided} />
         ) : null}
         {checkout ? <PayPalCheckout className="mt-3" item={checkout} sandbox={sandbox} onPaid={onDecided} /> : null}
+        {planned ? (
+          <CashPlanMoves
+            className="mt-3"
+            fix={fix}
+            started={planStarted}
+            items={items}
+            cash={cash}
+            sandbox={sandbox}
+            onStarted={(move, paymentRun) => {
+              setPlanStarted((moves) => [...moves.filter((m) => m.itemId !== move.itemId), move]);
+              if (paymentRun) setPlanRuns((runs) => [...runs, paymentRun]);
+            }}
+            onDone={onDecided}
+          />
+        ) : null}
       </CardBody>
     </Card>
   );
