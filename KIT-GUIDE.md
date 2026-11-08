@@ -233,7 +233,7 @@ Design system: `@/components/ui` (Button/ButtonLink, Card/CardHeader/CardBody/Ca
 
 `DEMO_TEST_CARD=1` is on in `render.yaml` because judges have no sandbox buyer login. It only works in sandbox mode. `/api/dev/sandbox/approve-order/:id` is then public, so never set it with live credentials.
 
-All entries share one sandbox app, and PayPal sends each app's webhook all of that app's events. `isOtherAppsEvent` in `webhook-handler.ts` drops an event that names an order, invoice or capture this app never touched, so one entry's payments stay out of another's ledger. In your own handlers, expect events only for objects this app created. Webhooks for payouts and disputes aren't filtered, because they name no order.
+All entries share one sandbox app, and PayPal sends each app's webhook all of that app's events. `isOtherAppsEvent` in `webhook-handler.ts` keeps an event only if it names an order, capture, authorization, refund, invoice, payout batch or dispute this app itself touched (its ledger), so one entry's payments stay out of another's ledger. An event that names nothing the app can check is dropped too. In your own handlers, expect events only for objects this app created. `routeWebhooks()` in `webhooks.ts` lets the app send a webhook's timeline events to one channel (this app: the couple's `plan:<id>` channel) instead of everyone.
 
 ### PayPal MCP for your dev tools
 

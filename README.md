@@ -70,7 +70,7 @@ Next.js route handlers (Node)
   └─ .data/       local JSON: contracts, ledger, audit log, AI spend (mock PayPal state in mock mode)
 ```
 
-Each browser gets its own plan through a cookie, so people trying the hosted copy don't see each other's contracts, approvals or budget.
+Each browser gets its own plan through a cookie, so people trying the hosted copy don't see each other's contracts, approvals, budget, audit entries or webhooks. Every hackathon entry shares one PayPal sandbox app, and PayPal sends each of them every entry's webhooks, so the app keeps only an event that names an order or capture it made itself, and shows it only to the couple whose payment it is.
 
 This app's copy of the kit adds two optional hooks to `defineTool`: `check` refuses a call inside the Guard before an approval exists, and `after` runs once the Guard has finished. The run itself stays open until a person decides.
 
