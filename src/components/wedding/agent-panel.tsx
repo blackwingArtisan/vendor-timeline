@@ -11,7 +11,7 @@ import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, Input, type Tone } from "@/components/ui";
 import type { TimelineStep } from "@/lib/events/types";
 import { localToday } from "@/lib/wedding/dates";
-import type { CashFix, CashPlan, TimelineItem } from "@/lib/wedding/types";
+import type { CashFix, CashPlan, TimelineItem, WalletView } from "@/lib/wedding/types";
 import { agentChain, firstSentences } from "@/lib/wedding/agent-chain";
 import { VENDOR_ORDER_TOOL } from "@/lib/wedding/tool-names";
 import { dollarsToCents, formatCents } from "@/lib/wedding/cents";
@@ -63,7 +63,7 @@ const REPLY_SENTENCES = 2;
  * only then can money move. `onRun` tells the timeline which payment this panel shows, and
  * `onPlanned` that code's cash plan is out, for the cash card to show its moves.
  */
-export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned, onRunning, onDecided }: { steps: TimelineStep[]; items: TimelineItem[]; cash: CashPlan; fix: CashFix | null; sandbox: boolean; onRun: (runId: string | null) => void; onPlanned: (planned: boolean) => void; onRunning: (running: boolean) => void; onDecided: () => void }) {
+export function AgentPanel({ steps, items, cash, fix, sandbox, wallet, onRun, onPlanned, onRunning, onDecided }: { steps: TimelineStep[]; items: TimelineItem[]; cash: CashPlan; fix: CashFix | null; sandbox: boolean; wallet?: WalletView; onRun: (runId: string | null) => void; onPlanned: (planned: boolean) => void; onRunning: (running: boolean) => void; onDecided: () => void }) {
   const { kitFetch } = useKit();
   const { toast } = useToast();
   const [goal, setGoal] = useState(DEFAULT_GOAL);
@@ -185,7 +185,7 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
           </p>
         ) : null}
         {pending?.approval ? (
-          <PayApproval key={pending.approval.id} className="mt-3" item={pending} approval={pending.approval} cash={cash} sandbox={sandbox} onDecided={onDecided} />
+          <PayApproval key={pending.approval.id} className="mt-3" item={pending} approval={pending.approval} cash={cash} sandbox={sandbox} wallet={wallet} onDecided={onDecided} />
         ) : null}
         {checkout ? <PayPalCheckout className="mt-3" item={checkout} sandbox={sandbox} onPaid={onDecided} /> : null}
       </CardBody>

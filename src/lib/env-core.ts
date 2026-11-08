@@ -102,6 +102,12 @@ export interface KitEnv {
   mockLatency: [number, number];
   /** DEMO_TEST_CARD=1: sandbox recordings pay with the test card instead of a buyer login. */
   demoTestCard: boolean;
+  /**
+   * The approval card offers "Save my PayPal" (Vault v3 through Orders v2), and later payments can be
+   * charged to it with one approval. On with mock PayPal; in sandbox only with PAYPAL_VAULT_SAVE=1,
+   * since PayPal asks the buyer to log in to save a wallet. PAYPAL_VAULT_SAVE=0 turns it off.
+   */
+  vaultSave: boolean;
   isProduction: boolean;
 }
 
@@ -155,6 +161,7 @@ export function readKitEnv(env: NodeJS.ProcessEnv = process.env): KitEnv {
     dataDir: path.resolve(/*turbopackIgnore: true*/ env.KIT_DATA_DIR?.trim() || ".data"),
     mockLatency: parseLatency(env.MOCK_PAYPAL_LATENCY_MS, [120, 420]),
     demoTestCard: env.DEMO_TEST_CARD === "1",
+    vaultSave: env.PAYPAL_VAULT_SAVE === "1" || (paypalMode === "mock" && env.PAYPAL_VAULT_SAVE !== "0"),
     isProduction: env.NODE_ENV === "production",
   };
 }

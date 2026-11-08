@@ -65,6 +65,27 @@ export interface Payment {
   webhook?: PaymentWebhook;
   /** What made this paid. "re-read" means PayPal's status arrived but no webhook could reach this copy. */
   paidBy?: "webhook" | "re-read";
+  /** How the couple chose to pay at their approval: PayPal's checkout, or their saved PayPal with no window. */
+  method?: "checkout" | "saved";
+  /** They asked PayPal to save their PayPal on this payment's checkout, for later payments. */
+  saveWallet?: boolean;
+}
+
+/** A couple's PayPal, saved by PayPal (Vault v3) on an approved checkout. Only PayPal's ids, never a credential. */
+export interface SavedPayPal {
+  /** PayPal's payment token id, the order's payment_source.paypal.attributes.vault.id. */
+  vaultId: string;
+  customerId?: string;
+  email?: string;
+  savedAt: string;
+  /** The order whose checkout saved it. */
+  fromOrderId: string;
+}
+
+/** What the approval card can offer: pay with the saved PayPal, or save it on this checkout. */
+export interface WalletView {
+  saved: { email?: string; savedAt: string } | null;
+  canSave: boolean;
 }
 
 export interface PaymentWebhook {
@@ -225,4 +246,5 @@ export interface TimelineView {
   sandboxStandIn: boolean;
   /** The labelled sample plan a new visitor starts with. */
   samplePlan?: boolean;
+  wallet?: WalletView;
 }

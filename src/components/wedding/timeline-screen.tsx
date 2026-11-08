@@ -61,6 +61,7 @@ function PayPalProof({ item, standIn }: { item: TimelineItem; standIn: boolean }
           Confirmed by PayPal webhook <span className="break-all font-mono" data-testid="paid-by-event">{p.webhook?.eventId}</span> for this capture
         </p>
       ) : null}
+      {p.method === "saved" ? <p className="mt-0.5" data-testid="paid-saved">Charged to your saved PayPal with one approval, no checkout window.</p> : null}
       {p.paidBy === "re-read" ? <p className="mt-0.5" data-testid="paid-by">Confirmed by re-reading the capture from PayPal. PayPal can&apos;t send webhooks to this copy of the app.</p> : null}
       {standIn ? <StandInLine item={item} className="mt-0.5 text-zinc-500" /> : null}
     </div>
@@ -162,7 +163,7 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
       </div>
       {canPay && moving ? <MoveDateForm key={item.due} item={item} onMove={onMove} onClose={() => setMoving(false)} /> : null}
       {item.status === "awaiting_approval" && approval ? (
-        <PayApproval className="mt-2" item={item} approval={approval} cash={view.cash} sandbox={view.sandboxStandIn} onDecided={onDecided} />
+        <PayApproval className="mt-2" item={item} approval={approval} cash={view.cash} sandbox={view.sandboxStandIn} wallet={view.wallet} onDecided={onDecided} />
       ) : null}
       {item.status === "awaiting_approval" && !approval ? <p className="mt-1 text-xs text-zinc-500">{item.approval ? "Waiting for your approval in the agent panel." : "Working with PayPal."}</p> : null}
       {item.status === "awaiting_checkout" && !ownedByAgent ? <PayPalCheckout className="mt-2" item={item} sandbox={view.sandboxStandIn} onPaid={onDecided} /> : null}
@@ -355,7 +356,7 @@ export function TimelineScreen() {
             <StatTile testId="stat-paid" label="Paid" icon={<CircleCheck className="size-3.5" />} value={formatCents(view.paidCents)} hint={`of ${formatCents(view.contractedCents)} in contracts`} />
           </div>
           <div className="mb-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-            <AgentPanel steps={steps} items={items} cash={view.cash} fix={view.cashFix} sandbox={view.sandboxStandIn} onRun={setAgentRun} onPlanned={setPlanned} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
+            <AgentPanel steps={steps} items={items} cash={view.cash} fix={view.cashFix} sandbox={view.sandboxStandIn} wallet={view.wallet} onRun={setAgentRun} onPlanned={setPlanned} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
             <div className="grid gap-4">
               <CashCard key={view.cash.monthlyBudgetCents} cash={view.cash} onChanged={() => void refresh().catch(() => undefined)} />
               {planned || planStarted.length ? (
