@@ -23,6 +23,7 @@ export function ApprovalPrompt({
   onDecided,
   onApproved,
   approveLabel = "Approve",
+  decisionExtra,
   className,
 }: {
   approvalId: string;
@@ -34,6 +35,8 @@ export function ApprovalPrompt({
   /** Gets the server's answer to an approval. Return true when it takes over (say, opening checkout). */
   onApproved?: (response: unknown) => boolean | Promise<boolean>;
   approveLabel?: string;
+  /** Sent along with an approval, e.g. how the couple chose to pay. */
+  decisionExtra?: Record<string, unknown>;
   className?: string;
 }) {
   const { kitFetch } = useKit();
@@ -43,7 +46,7 @@ export function ApprovalPrompt({
   async function decide(decision: "approved" | "denied") {
     setBusy(decision);
     try {
-      const response = await kitFetch(`/api/agent/approvals/${approvalId}`, { json: { decision } });
+      const response = await kitFetch(`/api/agent/approvals/${approvalId}`, { json: { decision, ...(decision === "approved" ? decisionExtra : {}) } });
       const handled = decision === "approved" && onApproved ? await onApproved(response) : false;
       onDecided?.(decision);
       if (!handled) toast({ title: decision === "approved" ? "Approved" : "Declined", description: summary, variant: decision === "approved" ? "success" : "warning" });
