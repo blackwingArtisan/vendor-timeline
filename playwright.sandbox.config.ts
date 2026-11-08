@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { sandboxBuyer } from "./tests/e2e/sandbox-buyer";
 
 /**
  * The vendor flow on the real PayPal sandbox (npm run test:e2e:sandbox). AI is mocked unless
@@ -8,10 +9,13 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const PORT = Number(process.env.E2E_PORT ?? 3200);
 const HOSTED = process.env.E2E_BASE_URL;
+// Saving a PayPal needs a PayPal login, so it's switched on only when the sandbox buyer's login is
+// there for save-paypal-sandbox.spec.ts to sign in with. Otherwise that test skips and says why.
+const VAULT_SAVE = "missing" in sandboxBuyer() ? "0" : "1";
 
 export default defineConfig({
   testDir: "tests/e2e",
-  testMatch: ["vendor-flow.spec.ts", "agent-flow.spec.ts", "own-events.spec.ts", "input.spec.ts", "sample-plan.spec.ts", "cash-plan.spec.ts", "story.spec.ts", "polish.spec.ts", "first-screen.spec.ts", "cash-chart.spec.ts", "guard-refusal.spec.ts"],
+  testMatch: ["vendor-flow.spec.ts", "agent-flow.spec.ts", "own-events.spec.ts", "input.spec.ts", "sample-plan.spec.ts", "cash-plan.spec.ts", "story.spec.ts", "polish.spec.ts", "first-screen.spec.ts", "cash-chart.spec.ts", "guard-refusal.spec.ts", "save-paypal-sandbox.spec.ts"],
   timeout: 300_000,
   expect: { timeout: 15_000 },
   workers: 1,
@@ -35,6 +39,7 @@ export default defineConfig({
       KIT_DATA_DIR: ".data-sandbox",
       AI_RATE_LIMIT_PER_MINUTE: "100",
       NEXT_DIST_DIR: ".next-e2e",
+      PAYPAL_VAULT_SAVE: VAULT_SAVE,
     },
   },
 });

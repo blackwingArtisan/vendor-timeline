@@ -12,8 +12,9 @@ import { timeline } from "@/lib/events/bus";
 
 import { resetEnvCache } from "@/lib/env";
 import { DEFAULT_SANDBOX_VENDOR_EMAIL } from "@/lib/env-core";
-import { captureCheckout, captureWebhook, checkoutAfterApproval, orderPayee, sandboxPayee, planChannel, planPayPalIds, webhookPlanChannel, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
+import { captureCheckout, captureWebhook, checkoutAfterApproval, choosePayMethod, walletView, orderPayee, sandboxPayee, planChannel, planPayPalIds, webhookPlanChannel, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
 import { readReceipt } from "@/lib/wedding/receipt";
+import { savedPayPal } from "@/lib/wedding/budget";
 import { BAND, CATERER, FLORIST, PHOTOGRAPHER, VENUE } from "@/lib/wedding/samples";
 import type { Contract } from "@/lib/wedding/types";
 
@@ -466,5 +467,89 @@ describe("the band's contract", () => {
     expect(contract.proposed.balanceDue.value).toBeNull();
     expect(contract.confirmed).toBeUndefined();
     expect((await viewTimeline(PLAN)).items.filter((i) => i.contractId === contract.id)).toEqual([]);
+  });
+});
+
+describe("saving the couple's PayPal for later payments", () => {
+  const paymentAt = (id: string, kind: "deposit" | "balance") => requireContract(id).payments[kind]!;
+
+  async function approve(planId: string, contractId: string, kind: "deposit" | "balance", choice: { method?: "checkout" | "saved"; save?: boolean }) {
+    const { contract: asked, finished } = requestPayment(planId, contractId, kind, "test");
+    const approval = await pending(asked.payments[kind]!.runId);
+    // Nothing exists at PayPal while the approval waits.
+    expect(paymentAt(contractId, kind).orderId).toBeUndefined();
+    choosePayMethod(planId, approval, choice);
+    getApprovals().decide(approval.id, "approved", "couple");
+    await finished;
+    return paymentAt(contractId, kind);
+  }
+
+  it("saves it on a checkout the couple asked to save, then charges it for exactly the next term with one approval and no checkout", async () => {
+    const contract = await confirmedContract();
+    const plan = contract.planId;
+    expect(walletView(plan)).toEqual({ saved: null, canSave: true });
+
+    // First payment: PayPal's checkout, asked to save the PayPal on success. PayPal asks for a login, not a guest card.
+    const first = await approve(plan, contract.id, "deposit", { method: "checkout", save: true });
+    expect(first).toMatchObject({ state: "awaiting_checkout", method: "checkout", saveWallet: true });
+    const asked = vendorOrder(requireContract(contract.id), "deposit", { cents: first.cents, payee: first.payee }, "https://app.example", { save: true });
+    expect(asked.payment_source?.paypal?.attributes?.vault).toEqual({ store_in_vault: "ON_SUCCESS", usage_type: "MERCHANT", customer_type: "CONSUMER" });
+    expect(asked.payment_source?.paypal?.experience_context?.landing_page).toBe("LOGIN");
+    expect((await getPayPal().orders.get(first.orderId!)).payment_source?.paypal?.attributes?.vault?.status).toBe("CREATED");
+    await getMockPayPal()!.simulateBuyerApproval(first.orderId!);
+    await captureCheckout(plan, contract.id, "deposit", first.orderId!);
+    const saved = savedPayPal(plan)!;
+    expect(saved).toMatchObject({ vaultId: expect.stringMatching(/\S/), fromOrderId: first.orderId });
+    expect(walletView(plan)).toMatchObject({ saved: { email: saved.email }, canSave: false });
+    // The view never carries the token.
+    expect(JSON.stringify(walletView(plan))).not.toContain(saved.vaultId);
+
+    // Later: the balance, charged to the saved PayPal. The order is the confirmed term to the same payee.
+    const second = await approve(plan, contract.id, "balance", { method: "saved" });
+    expect(second).toMatchObject({ method: "saved", state: "sending", orderStatus: "COMPLETED", captureStatus: "COMPLETED" });
+    expect(second.checkoutUrl).toBeUndefined();
+    const order = await getPayPal().orders.get(second.orderId!);
+    expect(order.purchase_units?.[0]?.amount).toMatchObject({ currency_code: "USD", value: (PHOTOGRAPHER.balanceCents / 100).toFixed(2) });
+    expect(order.purchase_units?.[0]?.payee?.email_address).toBe(second.payee);
+    expect(order.payment_source?.paypal?.attributes?.vault).toMatchObject({ id: saved.vaultId, status: "VAULTED" });
+
+    // Still not paid: only the capture's webhook, with PayPal's status agreeing, makes it paid.
+    expect(paymentAt(contract.id, "balance").state).toBe("sending");
+    const event: WebhookEventEnvelope<string, Capture> = {
+      id: `WH-VAULT-${n++}`,
+      event_type: "PAYMENT.CAPTURE.COMPLETED",
+      event_version: "1.0",
+      create_time: "2026-11-02T03:05:57.307Z",
+      resource_type: "capture",
+      summary: "Payment completed",
+      links: [],
+      resource: { id: second.captureId!, status: "COMPLETED", amount: { currency_code: "USD", value: (PHOTOGRAPHER.balanceCents / 100).toFixed(2) }, final_capture: true, supplementary_data: { related_ids: { order_id: second.orderId } }, links: [], create_time: "", update_time: "" },
+    };
+    expect(await captureWebhook(event)).toBe(true);
+    expect(paymentAt(contract.id, "balance")).toMatchObject({ state: "paid", paidBy: "webhook", webhook: { eventId: event.id } });
+  });
+
+  it("won't charge a saved PayPal the plan doesn't have, and a checkout not asked to save saves nothing", async () => {
+    const contract = await confirmedContract();
+    const { contract: asked } = requestPayment(contract.planId, contract.id, "deposit", "test");
+    const approval = await pending(asked.payments.deposit!.runId);
+    expect(() => choosePayMethod(contract.planId, approval, { method: "saved" })).toThrow("no saved PayPal");
+    getApprovals().decide(approval.id, "denied", "couple");
+
+    const other = await confirmedContract();
+    const plain = await approvedPayment(other);
+    expect(plain.saveWallet).toBeFalsy();
+    await getMockPayPal()!.simulateBuyerApproval(plain.orderId!);
+    await captureCheckout(other.planId, other.id, "deposit", plain.orderId!);
+    expect(savedPayPal(other.planId)).toBeUndefined();
+  });
+
+  it("charges only the confirmed term: an order on a saved PayPal still refuses any other amount", async () => {
+    const contract = await confirmedContract();
+    const payee = orderPayee(PHOTOGRAPHER.payeeEmail!);
+    expect(() => vendorOrder(contract, "deposit", { cents: PHOTOGRAPHER.depositCents + 1, payee }, "https://app.example", { vaultId: "TOKEN-1" })).toThrow("confirmed deposit");
+    const body = vendorOrder(contract, "deposit", { cents: PHOTOGRAPHER.depositCents, payee }, "https://app.example", { vaultId: "TOKEN-1" });
+    expect(body.payment_source).toEqual({ paypal: { vault_id: "TOKEN-1" } });
+    expect(body.purchase_units[0].amount.value).toBe((PHOTOGRAPHER.depositCents / 100).toFixed(2));
   });
 });

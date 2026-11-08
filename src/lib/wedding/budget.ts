@@ -7,12 +7,15 @@ import { collection } from "@/lib/store/collection";
 import { DEFAULT_MONTHLY_BUDGET_CENTS } from "./cash";
 import { listContracts } from "./contracts";
 import { loadSampleWedding } from "./demo";
+import type { SavedPayPal } from "./types";
 
 export interface PlanRecord {
   id: string;
   monthlyBudgetCents?: number;
   /** True while the plan holds the five fictional sample contracts. */
   sample?: boolean;
+  /** The couple's PayPal as PayPal saved it, for later payments with no checkout window. */
+  savedPayPal?: SavedPayPal;
 }
 
 const plans = () => collection<PlanRecord>("plans");
@@ -22,6 +25,10 @@ export const monthlyBudget = (planId: string) => plans().get(planId)?.monthlyBud
 export const setMonthlyBudget = (planId: string, monthlyBudgetCents: number) => plans().upsert({ ...plans().get(planId), id: planId, monthlyBudgetCents });
 
 export const isSamplePlan = (planId: string) => !!plans().get(planId)?.sample;
+
+export const savedPayPal = (planId: string): SavedPayPal | undefined => plans().get(planId)?.savedPayPal;
+
+export const setSavedPayPal = (planId: string, saved: SavedPayPal | undefined) => plans().upsert({ ...plans().get(planId), id: planId, savedPayPal: saved });
 
 export const markSamplePlan = (planId: string, sample: boolean) => plans().upsert({ ...plans().get(planId), id: planId, sample });
 

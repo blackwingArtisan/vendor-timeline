@@ -22,14 +22,14 @@ import { moneyFromMinor } from "@/lib/money";
 import { getPayPal } from "@/lib/paypal";
 import type { Capture, CreateOrderRequest, Order, PurchaseUnit, WebhookEventEnvelope } from "@/lib/paypal/types";
 import { singleton } from "@/lib/singleton";
-import { isSamplePlan, monthlyBudget } from "./budget";
+import { isSamplePlan, monthlyBudget, savedPayPal, setSavedPayPal } from "./budget";
 import { centsToDollars, dollarsToCents, formatCents } from "./cents";
 import { contractWithPayPalId, findContract, listContracts, requireContract, requirePlanContract, saveContract } from "./contracts";
 import { utcToday } from "./dates";
 import { PAID_TO_VENDOR_ACCOUNT } from "./samples";
 import { appOrigin, isPublicOrigin } from "./origin";
 import { buildTimeline, captureState, itemId } from "./timeline";
-import type { Contract, ItemKind, Payment, PendingApproval, SandboxPayee, TimelineItem, TimelineView } from "./types";
+import type { Contract, ItemKind, Payment, PendingApproval, SandboxPayee, TimelineItem, TimelineView, WalletView } from "./types";
 
 const RECHECK_MS = 2500;
 /** PayPal's webhook took about 15 seconds in the sandbox. A re-read stands on its own after this. */
@@ -90,21 +90,34 @@ function requireTermAmount(contract: Contract, kind: ItemKind, requestedCents: n
  * The only order this app asks PayPal for: one confirmed term, in US dollars, payable to that
  * contract's payee. Anything else is refused here, before PayPal hears of it.
  */
-export function vendorOrder(contract: Contract, kind: ItemKind, ask: { cents: number; payee: string }, origin = appOrigin()): CreateOrderRequest {
+/**
+ * How the couple pay it. `save`: PayPal's checkout, and PayPal saves their PayPal on success (Vault
+ * v3 through Orders v2), which needs a PayPal login rather than a guest card. `vaultId`: charged to
+ * the PayPal they saved, with no checkout window; the approval in the app is the only step.
+ */
+export interface PayHow {
+  save?: boolean;
+  vaultId?: string;
+}
+
+export function vendorOrder(contract: Contract, kind: ItemKind, ask: { cents: number; payee: string }, origin = appOrigin(), how: PayHow = {}): CreateOrderRequest {
   const terms = contract.confirmed;
   if (!terms) throw new HttpError(409, "Confirm this contract before paying it.", "conflict");
   requireTermAmount(contract, kind, ask.cents);
   const payee = orderPayee(terms.payeeEmail);
   if (ask.payee.trim().toLowerCase() !== payee.toLowerCase()) throw new HttpError(422, `${ask.payee} isn't who this contract pays. Nothing was sent.`, "rule");
   const id = itemId(contract.id, kind);
+  const purchase_units: CreateOrderRequest["purchase_units"] = [{ reference_id: id, custom_id: id, description: `Wedding ${kind} for ${terms.vendorName}`.slice(0, 127), amount: { currency_code: "USD", value: centsToDollars(ask.cents) }, payee: { email_address: payee } }];
+  if (how.vaultId) return { intent: "CAPTURE", purchase_units, payment_source: { paypal: { vault_id: how.vaultId } } };
   return {
     intent: "CAPTURE",
-    purchase_units: [{ reference_id: id, custom_id: id, description: `Wedding ${kind} for ${terms.vendorName}`.slice(0, 127), amount: { currency_code: "USD", value: centsToDollars(ask.cents) }, payee: { email_address: payee } }],
+    purchase_units,
     payment_source: {
       paypal: {
+        ...(how.save ? { attributes: { vault: { store_in_vault: "ON_SUCCESS" as const, usage_type: "MERCHANT" as const, customer_type: "CONSUMER" as const } } } : {}),
         experience_context: {
           brand_name: terms.vendorName.slice(0, 127),
-          landing_page: "GUEST_CHECKOUT",
+          landing_page: how.save ? "LOGIN" : "GUEST_CHECKOUT",
           user_action: "PAY_NOW",
           shipping_preference: "NO_SHIPPING",
           return_url: `${origin}/timeline?checkout=${encodeURIComponent(id)}`,
@@ -183,7 +196,8 @@ export function vendorOrderTool(planId: string) {
       // Read again after the wait for a person: what goes to PayPal is the term, not the request.
       const contract = requireContract(i.contract_id);
       const payment = contract.payments[i.kind]!;
-      const body = vendorOrder(contract, i.kind, { cents: payment.cents, payee: payment.payee });
+      if (payment.method === "saved") return chargeSavedPayPal(planId, contract, i.kind);
+      const body = vendorOrder(contract, i.kind, { cents: payment.cents, payee: payment.payee }, appOrigin(), { save: payment.saveWallet && getEnv().vaultSave });
       // Fixed for each attempt, so PayPal itself refuses a second order for the same payment.
       const order = await getPayPal().orders.create(body, { requestId: `vt-${contract.id}-${i.kind}-${payment.attempt}` });
       const checkoutUrl = order.links?.find((l) => l.rel === "payer-action" || l.rel === "approve")?.href;
@@ -192,6 +206,58 @@ export function vendorOrderTool(planId: string) {
     },
     after: (i, outcome, ctx) => settlePayment(i.contract_id, i.kind, ctx.runId, outcome),
   });
+}
+
+/**
+ * One approval, no checkout window: PayPal charges the couple's saved PayPal for exactly the
+ * confirmed term. PayPal captures it as it creates the order; the capture is then read back and
+ * waits for its webhook like any other, so "Paid" still comes only from PayPal.
+ */
+async function chargeSavedPayPal(planId: string, contract: Contract, kind: ItemKind) {
+  const payment = contract.payments[kind]!;
+  const saved = savedPayPal(planId);
+  if (!saved) throw new HttpError(409, "There's no saved PayPal for this plan any more, so nothing was sent. Pay it in PayPal's checkout instead.", "conflict");
+  const body = vendorOrder(contract, kind, { cents: payment.cents, payee: payment.payee }, appOrigin(), { vaultId: saved.vaultId });
+  const order = await getPayPal().orders.create(body, { requestId: `vt-${contract.id}-${kind}-${payment.attempt}` });
+  const capture = order.purchase_units?.[0]?.payments?.captures?.[0];
+  patchPayment(contract.id, kind, {
+    state: capture ? "sending" : "failed",
+    orderId: order.id,
+    orderStatus: order.status,
+    captureId: capture?.id,
+    captureStatus: capture?.status,
+    error: capture ? undefined : `PayPal reports the order ${order.status} with no capture, so nothing was taken.`,
+  });
+  await syncPayment(contract.id, kind).catch(() => undefined);
+  return { order_id: order.id, status: order.status, capture_id: capture?.id, note: "A person approved this, and PayPal charged their saved PayPal. The timeline follows PayPal's capture until its webhook confirms it." };
+}
+
+/**
+ * The couple's choice on the approval card, saved on the payment before they approve it: their
+ * saved PayPal, or PayPal's checkout (and whether PayPal should save their PayPal there).
+ */
+export function choosePayMethod(planId: string, approval: Approval, choice: { method?: "checkout" | "saved"; save?: boolean }) {
+  if (approval.tool !== VENDOR_ORDER_TOOL) return;
+  const { contract_id: contractId, kind } = (approval.input ?? {}) as { contract_id?: string; kind?: ItemKind };
+  if (!contractId || (kind !== "deposit" && kind !== "balance")) return;
+  const payment = requirePlanContract(planId, contractId).payments[kind];
+  if (payment?.state !== "awaiting_approval") return;
+  const method = choice.method ?? "checkout";
+  if (method === "saved" && !savedPayPal(planId)) throw new HttpError(409, "There's no saved PayPal for this plan yet, so nothing was sent.", "conflict");
+  if (choice.save && !getEnv().vaultSave) throw new HttpError(409, "Saving your PayPal isn't switched on here. Pay in PayPal's checkout.", "conflict");
+  patchPayment(contractId, kind, { method, saveWallet: method === "checkout" && !!choice.save });
+}
+
+/** After a checkout the couple asked to save: keep the token PayPal made, never anything else. */
+function rememberSavedPayPal(planId: string, payment: Payment, order: Order) {
+  const vault = order.payment_source?.paypal?.attributes?.vault;
+  if (!payment.saveWallet) return;
+  if (vault?.status !== "VAULTED" || !vault.id) {
+    // Paid, but not saved: say what PayPal returned, so the next payment's checkout isn't a surprise.
+    timeline.emit({ kind: "paypal", status: "info", title: "PayPal didn't save your PayPal", detail: `Order ${order.id} was paid, and PayPal returned vault status ${vault?.status ?? "none"}. The next payment opens PayPal's checkout as usual.` });
+    return;
+  }
+  setSavedPayPal(planId, { vaultId: vault.id, customerId: vault.customer?.id, email: order.payment_source?.paypal?.email_address, savedAt: new Date().toISOString(), fromOrderId: order.id });
 }
 
 async function send(planId: string, contractId: string, kind: ItemKind, runId: string, channel: string) {
@@ -249,6 +315,7 @@ export async function captureCheckout(planId: string, contractId: string, kind: 
     if (order.status !== "APPROVED" && order.status !== "COMPLETED") throw new HttpError(409, "PayPal hasn't had your approval for this payment yet, so nothing was taken. Finish paying in PayPal's checkout, or pay from the timeline to open it again.", "conflict");
     const captured: Order = order.status === "COMPLETED" ? order : await getPayPal().orders.capture(orderId, { requestId: `vt-capture-${contractId}-${kind}-${payment.attempt}` });
     const capture = captured.purchase_units?.[0]?.payments?.captures?.[0];
+    rememberSavedPayPal(planId, payment, captured);
     patchPayment(contractId, kind, {
       state: capture ? "sending" : "failed",
       orderStatus: captured.status,
@@ -355,7 +422,7 @@ export async function captureWebhook(event: WebhookEventEnvelope<string, Capture
  * for the order, and hand back PayPal's checkout address so the browser can go straight there.
  * With mock PayPal there is no real page, so only the order id comes back.
  */
-export async function checkoutAfterApproval(approval: Approval, waitMs = 30_000): Promise<{ orderId?: string; checkoutUrl?: string; error?: string }> {
+export async function checkoutAfterApproval(approval: Approval, waitMs = 30_000): Promise<{ orderId?: string; checkoutUrl?: string; error?: string; saved?: boolean }> {
   if (approval.tool !== VENDOR_ORDER_TOOL || approval.state !== "approved") return {};
   const { contract_id: contractId, kind } = (approval.input ?? {}) as { contract_id?: string; kind?: ItemKind };
   if (!contractId || (kind !== "deposit" && kind !== "balance")) return {};
@@ -363,7 +430,11 @@ export async function checkoutAfterApproval(approval: Approval, waitMs = 30_000)
     const payment = findContract(contractId)?.payments[kind];
     if (!payment) return {};
     if (payment.state === "failed") return { error: payment.error };
-    if (payment.orderId && payment.state !== "awaiting_approval") return { orderId: payment.orderId, checkoutUrl: getEnv().paypalMode === "sandbox" && payment.state === "awaiting_checkout" ? payment.checkoutUrl : undefined };
+    if (payment.orderId && payment.state !== "awaiting_approval") {
+      // Charged to the saved PayPal: there is no checkout to open.
+      if (payment.method === "saved") return { orderId: payment.orderId, saved: true };
+      return { orderId: payment.orderId, checkoutUrl: getEnv().paypalMode === "sandbox" && payment.state === "awaiting_checkout" ? payment.checkoutUrl : undefined };
+    }
   }
   return {};
 }
@@ -406,6 +477,12 @@ function recoverLostApprovals(planId: string) {
   }
 }
 
+/** What the approval card may offer. Only the email PayPal returned is shown; the token stays here. */
+export function walletView(planId: string): WalletView {
+  const saved = savedPayPal(planId);
+  return { saved: saved ? { email: saved.email, savedAt: saved.savedAt } : null, canSave: getEnv().vaultSave && !saved };
+}
+
 export async function viewTimeline(planId: string, today = utcToday()): Promise<TimelineView> {
   recoverLostApprovals(planId);
   await syncOpenPayments(planId);
@@ -413,5 +490,5 @@ export async function viewTimeline(planId: string, today = utcToday()): Promise<
   const byId = new Map(listContracts(planId).map((c) => [c.id, c]));
   const items = view.items.map((item) => ({ ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(byId.get(item.contractId)?.confirmed?.payeeEmail ?? "") }));
   const same = (item: TimelineItem | null) => items.find((i) => i.id === item?.id) ?? null;
-  return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId) };
+  return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId), wallet: walletView(planId) };
 }
