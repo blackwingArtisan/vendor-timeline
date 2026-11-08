@@ -79,6 +79,11 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   await expect(prompt.getByTestId("approval-from")).toHaveText("Your PayPal, in PayPal's checkout");
   await expect(prompt.getByTestId("approval-to")).toHaveText(FLORIST.vendorName);
   await expect(prompt.getByTestId("approval-budget")).toContainText("monthly budget");
+  // Code, not the model, says what comes first, and its sentence leads the panel.
+  const first = panel.getByTestId("agent-message").first();
+  await expect(first).toHaveAttribute("data-from", "app");
+  await expect(first).toContainText(`Pay first: the ${FLORIST.vendorName} deposit, ${formatCents(FLORIST.depositCents)}`);
+  await expect(first).toContainText("Overdue comes first.");
   const said = await panel.getByTestId("agent-messages").innerText();
   console.log(`Agent said: ${said}`);
   expect(said).toContain(FLORIST.vendorName);

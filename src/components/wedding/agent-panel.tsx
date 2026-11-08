@@ -12,6 +12,7 @@ import { Badge, Button, Card, CardBody, CardHeader, Input, type Tone } from "@/c
 import type { TimelineStep } from "@/lib/events/types";
 import { localToday } from "@/lib/wedding/dates";
 import type { CashPlan, TimelineItem } from "@/lib/wedding/types";
+import { APP_MESSAGE_TITLES } from "@/lib/wedding/urgency";
 import { plainText } from "@/lib/plain-text";
 
 const DEFAULT_GOAL = "Tell me what's most urgent, warn me about any cash clashes, and set up that payment for my approval.";
@@ -36,7 +37,9 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
   const [blocked, setBlocked] = useState<string | null>(null);
 
   const runSteps = useMemo(() => steps.filter((s) => s.runId === runId), [steps, runId]);
-  const messages = runSteps.filter((s) => s.kind === "agent.message");
+  // What code said (pay first, then each warning) leads, and the model's explanation follows.
+  const said = runSteps.filter((s) => s.kind === "agent.message");
+  const messages = [...said.filter((m) => APP_MESSAGE_TITLES.includes(m.title)), ...said.filter((m) => !APP_MESSAGE_TITLES.includes(m.title))];
   const run = runSteps.find((s) => s.kind === "run");
   const pending = items.find((i) => runId && i.payment?.runId === runId && i.approval);
   const checkout = items.find((i) => runId && i.payment?.runId === runId && i.status === "awaiting_checkout");
@@ -85,7 +88,7 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
         {messages.length ? (
           <ul className="mt-3 space-y-1.5 text-sm text-zinc-700" data-testid="agent-messages">
             {messages.map((m) => (
-              <li key={m.stepId} className="whitespace-pre-line" data-testid="agent-message">{plainText(m.detail)}</li>
+              <li key={m.stepId} className={APP_MESSAGE_TITLES.includes(m.title) ? "whitespace-pre-line font-medium text-zinc-900" : "whitespace-pre-line"} data-testid="agent-message" data-from={APP_MESSAGE_TITLES.includes(m.title) ? "app" : "agent"}>{plainText(m.detail)}</li>
             ))}
           </ul>
         ) : null}
