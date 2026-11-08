@@ -45,7 +45,7 @@ export async function approveAndPay(page: Page, prompt: Locator, sandbox: boolea
  * guest page that asks for an email first. Step through whichever it shows until the card form is up.
  * The sandbox login page sometimes never finishes loading its card link; a reload brings it back.
  */
-export async function openCardForm(page: Page) {
+async function openCardForm(page: Page) {
   const card = page.locator("#cardNumber");
   const cardLink = page.getByRole("button", { name: "Pay with Debit or Credit Card" });
   const guestEmail = page.getByRole("button", { name: "Continue to Payment" });
