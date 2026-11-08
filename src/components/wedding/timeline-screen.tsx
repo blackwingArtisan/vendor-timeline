@@ -347,7 +347,7 @@ export function TimelineScreen() {
             <StatTile testId="stat-paid" label="Paid" icon={<CircleCheck className="size-3.5" />} value={formatCents(view.paidCents)} hint={`of ${formatCents(view.contractedCents)} in contracts`} />
           </div>
           <div className="mb-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-            <AgentPanel steps={steps} items={items} cash={view.cash} sandbox={view.sandboxStandIn} onRun={setAgentRun} onPlanned={setPlanned} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
+            <AgentPanel steps={steps} items={items} cash={view.cash} fix={view.cashFix} sandbox={view.sandboxStandIn} onRun={setAgentRun} onPlanned={setPlanned} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
             <div className="grid gap-4">
               <CashCard key={view.cash.monthlyBudgetCents} cash={view.cash} onChanged={() => void refresh().catch(() => undefined)} />
               {planned || planStarted.length ? (
