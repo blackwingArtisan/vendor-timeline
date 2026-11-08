@@ -48,11 +48,13 @@ export function PayPalCheckout({ item, sandbox, onPaid, className }: { item: Tim
   return (
     <div className={`rounded-xl border border-sky-200 bg-sky-50/60 p-4 text-sm text-zinc-700 ${className ?? ""}`} data-testid="checkout-box">
       <p className="font-semibold text-zinc-900">Approved. Pay {amount} to {item.vendorName} in PayPal&apos;s checkout.</p>
-      <dl className="mt-2 grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1 text-sm">
+      <dl className="mt-2 grid grid-cols-[7.5rem_1fr] gap-x-2 gap-y-1 text-sm">
         <dt className="text-zinc-500">From</dt>
         <dd className="font-medium text-zinc-900">Your PayPal account or card, in PayPal&apos;s checkout</dd>
         <dt className="text-zinc-500">To</dt>
-        <dd className="break-all font-medium text-zinc-900" data-testid="checkout-payee">{payment.payee}</dd>
+        <dd className="font-medium text-zinc-900" data-testid="checkout-to">{item.vendorName}</dd>
+        <dt className="text-zinc-500">PayPal account</dt>
+        <dd className="break-all text-zinc-900" data-testid="checkout-payee">{payment.payee}</dd>
         <dt className="text-zinc-500">Order</dt>
         <dd className="break-all font-mono text-xs text-zinc-900" data-testid="checkout-order-id">{orderId}</dd>
       </dl>

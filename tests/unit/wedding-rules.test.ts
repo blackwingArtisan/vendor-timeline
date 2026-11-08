@@ -92,3 +92,15 @@ describe("calendar days", () => {
     expect(sentenceNamesDay(sentence, day)).toBe(expected);
   });
 });
+
+describe("amounts in a money box", () => {
+  it("read like every other amount, with thousands separators and no dollar sign", async () => {
+    const { amountText } = await import("@/lib/wedding/cents");
+    const { readAmount } = await import("@/lib/wedding/limits");
+    expect(amountText(480_000)).toBe("4,800.00");
+    expect(amountText(1_046_000)).toBe("10,460.00");
+    expect(amountText(50)).toBe("0.50");
+    // And what the box shows reads back as the same cents.
+    expect(readAmount(amountText(1_046_000), "Total").cents).toBe(1_046_000);
+  });
+});
