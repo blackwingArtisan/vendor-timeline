@@ -7,7 +7,7 @@ import { startStep } from "../events/bus";
 import { formatMoney, sumMoney, type Money } from "../money";
 import type { PayPalApi } from "./api";
 import { ingestPayPalResource } from "./ledger";
-import { runWithCallMeta, type CallMeta } from "./meta";
+import { noteCall, runWithCallMeta, type CallMeta } from "./meta";
 import { OPERATIONS, operationPath, type OperationKey, type OperationSpec } from "./operations";
 
 function amountFrom(value: unknown): Money | undefined {
@@ -107,6 +107,7 @@ export function instrument(impl: PayPalApi): PayPalApi {
         const t0 = performance.now();
         try {
           const result = await runWithCallMeta(meta, () => target[method](...args));
+          noteCall({ operation: op, ...meta });
           ingestPayPalResource(result, requestBody);
           const refresh = REFRESH_AFTER[op];
           if (refresh && id) await refresh(impl, id).then((r) => ingestPayPalResource(r), () => undefined);
@@ -121,6 +122,7 @@ export function instrument(impl: PayPalApi): PayPalApi {
           return result;
         } catch (error) {
           const e = error as { status?: number; debugId?: string };
+          noteCall({ operation: op, ...meta, httpStatus: e.status ?? meta.httpStatus, debugId: e.debugId ?? meta.debugId });
           step.fail(error, {
             paypal: { operation: op, method: spec.method, path, mode: impl.mode, httpStatus: e.status ?? meta.httpStatus, debugId: e.debugId ?? meta.debugId, requestId: meta.requestId, durationMs: Math.round(performance.now() - t0) },
             data: { request: requestBody },

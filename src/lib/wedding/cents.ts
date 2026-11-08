@@ -56,9 +56,14 @@ export function sumCents(values: number[]): number {
 const DOLLARS = /\$\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d{1,2})?|\b(\d{1,3}(?:,\d{3})+|\d+)(\.\d{1,2})?\s*(?:dollars|usd)\b/gi;
 const PERCENT = /(\d+(?:\.\d+)?)\s*(?:%|percent\b)/gi;
 
+/** Every dollar figure written in a piece of text, in cents, with where it was written. */
+export function dollarMatches(text: string): { cents: number; start: number; end: number }[] {
+  return [...text.matchAll(DOLLARS)].map((m) => ({ cents: dollarsToCents(`${(m[1] ?? m[3]).replace(/,/g, "")}${m[2] ?? m[4] ?? ""}`), start: m.index, end: m.index + m[0].length }));
+}
+
 /** Every dollar figure written in a piece of text, in cents. */
 export function dollarFigures(text: string): number[] {
-  return [...text.matchAll(DOLLARS)].map((m) => dollarsToCents(`${(m[1] ?? m[3]).replace(/,/g, "")}${m[2] ?? m[4] ?? ""}`));
+  return dollarMatches(text).map((m) => m.cents);
 }
 
 export function percentFigures(text: string): number[] {

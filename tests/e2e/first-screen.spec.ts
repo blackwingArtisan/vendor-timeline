@@ -35,7 +35,7 @@ test("stats, the agent's approval and the cash chart fit the first screen", asyn
   console.log(`Page height before the agent: ${before}px, ${(before / FOLD).toFixed(2)} screens`);
   // The sponsor's Gantt, when switched on, is an extra card of its own below the table.
   const gantt = (await page.getByTestId("sponsor-gantt").count()) ? (await page.getByTestId("sponsor-gantt").boundingBox())!.height + 24 : 0;
-  expect(before - gantt).toBeLessThanOrEqual(FOLD * 1.75);
+  expect(before - gantt).toBeLessThanOrEqual(FOLD * 1.6);
 
   expect(await bottomOf(page, "stat-paid")).toBeLessThanOrEqual(FOLD);
   expect(await bottomOf(page, "cash-chart")).toBeLessThanOrEqual(FOLD);

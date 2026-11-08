@@ -171,11 +171,13 @@ describe("code limits on a payment", () => {
     expect(getAuditLog().list().filter((e) => e.runId === runId).map((e) => e.action)).toEqual(["tool.requested", "tool.denied"]);
   });
 
-  it("refuses the mock script that asks for too much from the goal", async () => {
+  it("refuses a goal that asks for too much, in code before any agent decides", async () => {
     const { plan, photographer } = wedding();
     const run = startAgentRun(paymentAgent(plan, TODAY), { goal: "Pay the photographer $9,000.00 now." }, { channel: "test" });
+    expect(run.mode).toBe("precheck");
     await settled(run);
-    expect(run.summary).toContain("$9,000.00 is more than the confirmed deposit of $1,200.00");
+    expect(run.summary).toContain("deposit is confirmed at $1,200.00, and only that exact amount can be paid");
+    expect(getAuditLog().list().filter((e) => e.runId === run.id).map((e) => e.action)).toContain("tool.denied");
     expect(requireContract(photographer.id).payments.deposit).toBeUndefined();
     expect(getApprovals().list({ runId: run.id })).toEqual([]);
   }, 20_000);
