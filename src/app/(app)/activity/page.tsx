@@ -10,6 +10,24 @@ import { formatMoney } from "@/lib/money";
 import { localToday } from "@/lib/wedding/dates";
 import type { TimelineItem, TimelineView } from "@/lib/wedding/types";
 
+/** Plain words for the log's own names. The raw name stays on hover, for anyone checking the chain. */
+const ACTIONS: Record<string, string> = {
+  "tool.requested": "Asked for",
+  "tool.denied": "Refused by the app",
+  "tool.failed": "Failed",
+  "tool.replayed": "Repeated, not run again",
+  "tool.executed": "Done",
+  "approval.requested": "Waiting for your approval",
+  "approval.approved": "You approved",
+  "approval.denied": "You declined",
+  "approval.expired": "Approval ran out",
+};
+const TOOLS: Record<string, string> = {
+  create_vendor_order: "Pay a vendor",
+  review_payments: "Read your payments",
+};
+const actorName = (actor: string) => (actor === "couple" || actor === "you" ? "You" : actor.startsWith("agent:") ? "Payment agent" : actor === "system" ? "The app" : actor);
+
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 
 function Table({ head, children }: { head: string[]; children: ReactNode }) {
@@ -84,15 +102,15 @@ export default function ActivityPage() {
         />
         <CardBody>
           {audit?.entries.length ? (
-            <Table head={["#", "Time", "Action", "Tool", "Amount", "Actor", "Reason"]}>
+            <Table head={["#", "Time", "What happened", "Step", "Amount", "Who", "Why"]}>
               {[...audit.entries].reverse().map((e) => (
                 <tr key={e.seq} data-testid="audit-row">
                   <td className="px-2 py-2 tabular-nums">{e.seq}</td>
                   <td className="whitespace-nowrap px-2 py-2">{when(e.ts)}</td>
-                  <td className="whitespace-nowrap px-2 py-2 font-medium text-zinc-900">{e.action}</td>
-                  <td className="whitespace-nowrap px-2 py-2 font-mono text-xs">{e.tool}</td>
+                  <td className="whitespace-nowrap px-2 py-2 font-medium text-zinc-900" title={e.action} data-testid="audit-action">{ACTIONS[e.action] ?? e.action}</td>
+                  <td className="whitespace-nowrap px-2 py-2" title={e.tool} data-testid="audit-tool">{(e.tool && TOOLS[e.tool]) || e.tool}</td>
                   <td className="whitespace-nowrap px-2 py-2 tabular-nums">{e.amount ? formatMoney(e.amount) : ""}</td>
-                  <td className="px-2 py-2">{e.actor}</td>
+                  <td className="px-2 py-2" title={e.actor}>{actorName(e.actor)}</td>
                   <td className="px-2 py-2">{e.reason}</td>
                 </tr>
               ))}

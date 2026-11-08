@@ -104,6 +104,9 @@ function MoveDate({ item, onMove }: { item: TimelineItem; onMove: (item: Timelin
 function Row({ item, view, onPay, onMove, busy, onDecided, panelRuns }: { item: TimelineItem; view: TimelineView; onPay: (item: TimelineItem) => void; onMove: (item: TimelineItem, due: string) => void; busy: boolean; onDecided: () => void; panelRuns: string[] }) {
   const status = STATUS[item.status];
   const isNext = view.nextDue?.id === item.id;
+  // The most urgent payment is tagged, overdue or not. One tag at most, beside its status.
+  const isFirst = view.payFirst?.id === item.id;
+  const tag = isFirst ? "Pay first" : isNext ? "Due next" : null;
   const canPay = item.status === "overdue" || item.status === "due_today" || item.status === "upcoming";
   // The agent's panel shows the approval for its own run and its cash plan, up where the couple are reading.
   const ownedByAgent = !!item.payment && panelRuns.includes(item.payment.runId);
@@ -112,12 +115,17 @@ function Row({ item, view, onPay, onMove, busy, onDecided, panelRuns }: { item: 
   return (
     <li className="relative pb-4 pl-7 last:pb-0" data-testid="timeline-item" data-role={item.vendorRole} data-kind={item.kind} data-status={item.status}>
       <span className={`absolute left-0 top-5 size-3.5 rounded-full ring-4 ring-background ${status.dot}`} aria-hidden />
-      <div className={`rounded-xl border bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${item.status === "overdue" ? "border-red-200" : isNext ? "border-brand-300" : "border-zinc-200/80"}`}>
+      <div className={`rounded-xl border bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${item.status === "overdue" ? "border-red-200" : isNext || isFirst ? "border-brand-300" : "border-zinc-200/80"}`}>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto_10.5rem]">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-zinc-900" data-testid="item-due">{formatDay(item.due)}</p>
-            <p className="truncate text-sm text-zinc-600">
-              {item.vendorName} <span className="text-zinc-400">·</span> {item.kind === "deposit" ? "Deposit" : "Balance"}
+            {/* On a phone the vendor's name gives way, never the deposit or balance. */}
+            <p className="flex min-w-0 text-sm text-zinc-600" data-testid="item-name">
+              <span className="truncate">{item.vendorName}</span>
+              <span className="shrink-0">
+                <span className="px-1 text-zinc-400">·</span>
+                {item.kind === "deposit" ? "Deposit" : "Balance"}
+              </span>
             </p>
             {item.movedFrom ? <p className="text-xs text-zinc-500" data-testid="item-moved">Contract says {formatDay(item.movedFrom)}</p> : null}
           </div>
@@ -127,8 +135,9 @@ function Row({ item, view, onPay, onMove, busy, onDecided, panelRuns }: { item: 
           </div>
           <div className="col-span-2 flex flex-col gap-1.5 sm:col-span-1 sm:items-end">
             <div className="flex flex-wrap gap-1 sm:justify-end">
-              {isNext ? <Badge tone="brand">Due next</Badge> : null}
-              <span data-testid="item-status"><Badge tone={status.tone}>{status.label}</Badge></span>
+              {tag ? <span data-testid="item-tag"><Badge tone="brand">{tag}</Badge></span> : null}
+              {/* "Upcoming" says nothing a tag doesn't, so a tagged row shows the tag alone. */}
+              <span data-testid="item-status" className={tag && item.status === "upcoming" ? "sr-only" : undefined}><Badge tone={status.tone}>{status.label}</Badge></span>
             </div>
             {canPay ? (
               <Button size="sm" icon={<Send className="size-3.5" />} onClick={() => onPay(item)} loading={busy} disabled={busy} data-testid="pay-item">

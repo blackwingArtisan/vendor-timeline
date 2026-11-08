@@ -20,6 +20,8 @@ export function assertCents(value: number, label: string) {
 }
 
 export const formatCents = (cents: number) => usd.format(cents / 100);
+/** An amount for a money box: "4,800.00", the way every other amount reads, without the "$" the box shows. */
+export const amountText = (cents: number) => formatCents(cents).replace("$", "");
 export const centsToDollars = (cents: number) => fromMinor(cents, CURRENCY);
 export const dollarsToCents = (value: string) => toMinor(value, CURRENCY);
 
