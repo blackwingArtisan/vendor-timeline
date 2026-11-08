@@ -90,6 +90,13 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   await expect(first).toHaveAttribute("data-from", "app");
   await expect(first).toContainText(`Pay first: the ${FLORIST.vendorName} deposit, ${formatCents(FLORIST.depositCents)}`);
   await expect(first).toContainText("Overdue comes first.");
+  // What the agent did, as a chain code writes from the run, ending where it waits.
+  await expect(panel.getByTestId("agent-chain-step")).toHaveText(["Read 5 contracts", "3 cash clashes", "Plan with 2 moves", "Florist deposit ready", "Waiting for you"]);
+  // The model's own reply is cut to two sentences; the numbers sit behind "Details".
+  const reply = (await panel.getByTestId("agent-reply").innerText()).trim();
+  console.log(`Agent reply on show: ${reply}`);
+  expect(reply.split(/(?<=[.!?])\s+(?=["'(A-Z0-9$])/).length).toBeLessThanOrEqual(2);
+  await expect(panel.getByTestId("agent-details")).not.toHaveAttribute("open");
   // The cash plan is code's too, and comes after the warnings, before anything the model wrote.
   const appSaid = panel.locator('[data-testid="agent-message"][data-from="app"]');
   await expect(appSaid.last()).toContainText("Cash plan: No plan fits every month in your $5,000.00 monthly budget");

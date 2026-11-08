@@ -34,7 +34,8 @@ import type { Contract, ItemKind, Payment, PendingApproval, SandboxPayee, Timeli
 const RECHECK_MS = 2500;
 /** PayPal's webhook took about 15 seconds in the sandbox. A re-read stands on its own after this. */
 export const WEBHOOK_WAIT_MS = 60_000;
-export const VENDOR_ORDER_TOOL = "create_vendor_order";
+import { VENDOR_ORDER_TOOL } from "./tool-names";
+export { VENDOR_ORDER_TOOL };
 
 /** Payments running in this process. A pending approval dies with the process. */
 const activePayments = () => singleton("wedding:active-payments", () => new Set<string>());
