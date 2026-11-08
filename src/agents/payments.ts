@@ -15,7 +15,6 @@ import { listContracts } from "@/lib/wedding/contracts";
 import { formatDay } from "@/lib/wedding/dates";
 import { VENDOR_ORDER_TOOL, vendorOrderTool, viewTimeline } from "@/lib/wedding/pay";
 import { buildTimeline } from "@/lib/wedding/timeline";
-import { askedMismatch, namedIn } from "@/lib/wedding/asked-payment";
 import { cashPlanSentence } from "@/lib/wedding/cash-moves";
 import { CASH_CHECK_TITLE, CASH_PLAN_TITLE, PAY_FIRST_TITLE, payFirstSentence } from "@/lib/wedding/urgency";
 import type { TimelineItem, TimelineView } from "@/lib/wedding/types";
@@ -50,6 +49,14 @@ function reviewFacts(view: TimelineView) {
   };
 }
 
+/** The payment a goal names by vendor, role or "deposit"/"balance", if it names exactly one. */
+function namedIn(goal: string, items: TimelineItem[]): TimelineItem | undefined {
+  const text = goal.toLowerCase();
+  const byVendor = items.filter((i) => text.includes(i.vendorRole) || text.includes(i.vendorName.toLowerCase()));
+  const byKind = byVendor.filter((i) => text.includes(i.kind));
+  return byKind.length === 1 ? byKind[0] : byVendor.length >= 1 ? byVendor.find((i) => i.status !== "paid") : undefined;
+}
+
 /** AI mock mode. Urgent first, unless the goal names a payment. A dollar figure in the goal is asked for as is, so a run can ask for too much. */
 function mockSteps(planId: string, today: string, input: AgentInput): ScriptStep[] {
   const view = buildTimeline(listContracts(planId), today, monthlyBudget(planId));
@@ -69,29 +76,6 @@ function mockSteps(planId: string, today: string, input: AgentInput): ScriptStep
   });
   steps.push({ say: (r) => (r.order?.error ? `That payment didn't go: ${r.order.error.reason}` : "You approved it. Pay it in PayPal's checkout from the timeline, and it shows as paid once PayPal confirms the capture.") });
   return steps;
-}
-
-/**
- * Before any model runs: a request that names a vendor and an amount that isn't its confirmed term
- * goes to the Guard as asked, by code. The Guard refuses it, the panel shows its refusal card, and
- * no model gets the chance to word it differently, or not to ask at all.
- */
-function guardPrecheck(planId: string, today: string, input: AgentInput): ScriptStep[] | null {
-  const view = buildTimeline(listContracts(planId), today, monthlyBudget(planId));
-  const mismatch = askedMismatch(input.goal, view.items);
-  if (!mismatch) return null;
-  const { item, askedCents } = mismatch;
-  return [
-    { tool: "review_payments", as: "review" },
-    { tool: VENDOR_ORDER_TOOL, input: { contract_id: item.contractId, kind: item.kind, amount: centsToDollars(askedCents) }, as: "order", pauseMs: 300 },
-    {
-      say: (r) =>
-        r.order?.error
-          ? `I haven't sent anything: the ${item.vendorName} ${item.kind} is confirmed at ${formatCents(item.cents)}, and only that exact amount can be paid.`
-          : `The ${item.vendorName} ${item.kind} is set up for your approval.`,
-      pauseMs: 0,
-    },
-  ];
 }
 
 export function paymentAgent(planId: string, today: string) {
@@ -123,6 +107,5 @@ export function paymentAgent(planId: string, today: string) {
     effort: "low",
     maxTurns: 5,
     mockScript: (input) => mockSteps(planId, today, input),
-    precheck: (input) => guardPrecheck(planId, today, input),
   });
 }

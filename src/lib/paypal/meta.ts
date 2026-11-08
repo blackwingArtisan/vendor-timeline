@@ -23,21 +23,3 @@ export function recordCallMeta(patch: CallMeta) {
   const current = store.getStore();
   if (current) Object.assign(current, patch);
 }
-
-/** One PayPal call as made, for code that must show PayPal's own debug_id for each (a receipt). */
-export interface CollectedCall extends CallMeta {
-  operation: string;
-}
-
-const collectors = singleton("paypal:collect", () => new AsyncLocalStorage<CollectedCall[]>());
-
-/** Runs `fn` and returns, with its result, every instrumented PayPal call it made, in order. */
-export async function collectCalls<T>(fn: () => Promise<T>): Promise<{ result: T; calls: CollectedCall[] }> {
-  const calls: CollectedCall[] = [];
-  const result = await collectors.run(calls, fn);
-  return { result, calls };
-}
-
-export function noteCall(call: CollectedCall) {
-  collectors.getStore()?.push(call);
-}

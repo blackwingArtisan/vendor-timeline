@@ -39,7 +39,7 @@ export function CashChart({ cash, className }: { cash: CashPlan; className?: str
       <figcaption className="sr-only">
         Each month&apos;s payments against your {formatCents(budget)} monthly budget: {months.map((m) => `${m.label} ${formatCents(m.totalCents)}${m.overByCents ? `, ${formatCents(m.overByCents)} over` : ""}`).join("; ")}.
       </figcaption>
-      <div className="relative h-28" aria-hidden>
+      <div className="relative h-32" aria-hidden>
         <div className="absolute inset-x-0 z-10 border-t border-dashed border-zinc-500" style={{ bottom: pct(budget, top) }} data-testid="cash-chart-budget">
           <span className="absolute -top-4 left-0 bg-white px-1 text-[10px] font-medium text-zinc-600">Budget {short(budget)}</span>
         </div>

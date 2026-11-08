@@ -8,7 +8,7 @@ import { isAiLive } from "../ai/client";
 import { modelLabel, resolveModel, FEATURE_DEFAULTS } from "../ai/config";
 import { getPayPal } from "../paypal";
 import { singleton } from "../singleton";
-import type { AgentDefinition, AgentInput, ScriptStep } from "./define";
+import type { AgentDefinition, AgentInput } from "./define";
 import { Guard } from "./guard";
 import { runClaudeAgent } from "./loop";
 import { runScriptedAgent } from "./scripted";
@@ -19,8 +19,7 @@ export interface AgentRun {
   agentName: string;
   channel: string;
   goal: string;
-  /** "precheck": code answered before any model ran (see AgentDefinition.precheck). */
-  mode: "claude" | "scripted" | "precheck";
+  mode: "claude" | "scripted";
   status: "running" | "completed" | "failed";
   startedAt: string;
   finishedAt?: string;
@@ -52,24 +51,20 @@ export function startAgentRun(def: AgentDefinition, input: AgentInput, opts: { c
     startedAt: new Date().toISOString(),
     costUsd: 0,
   };
-  const precheck = def.precheck?.(input) ?? null;
-  if (precheck) run.mode = "precheck";
   runs.set(run.id, run);
-  void runAgentToCompletion(def, input, run, precheck);
+  void runAgentToCompletion(def, input, run);
   return run;
 }
 
-export async function runAgentToCompletion(def: AgentDefinition, input: AgentInput, run: AgentRun, precheck: ScriptStep[] | null = null): Promise<AgentRun> {
+export async function runAgentToCompletion(def: AgentDefinition, input: AgentInput, run: AgentRun): Promise<AgentRun> {
   return withContext({ channel: run.channel, runId: run.id, actor: `agent:${def.id}` }, async () => {
     const stepId = `run:${run.id}`;
-    const engine = run.mode === "claude" ? modelLabel(resolveModel(def.model, FEATURE_DEFAULTS.agent.role)) : run.mode === "precheck" ? "checked in code, no model needed" : "simulated (AI mock mode)";
+    const engine = run.mode === "claude" ? modelLabel(resolveModel(def.model, FEATURE_DEFAULTS.agent.role)) : "simulated (AI mock mode)";
     timeline.emit({ kind: "run", status: "running", stepId, title: `${def.name} started`, subtitle: engine, detail: input.goal });
     const guard = new Guard({ paypal: getPayPal(), policy: def.policy });
     try {
       let result;
-      if (run.mode === "precheck" && precheck) {
-        result = await runScriptedAgent({ runId: run.id, channel: run.channel, def, input, guard, script: precheck, title: def.name });
-      } else if (run.mode === "claude") {
+      if (run.mode === "claude") {
         result = await runClaudeAgent({ runId: run.id, channel: run.channel, def, input, guard });
       } else {
         if (!def.mockScript) throw new Error(`${def.name} has no mockScript and AI is in mock mode (set ANTHROPIC_API_KEY).`);

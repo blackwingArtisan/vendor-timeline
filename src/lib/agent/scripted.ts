@@ -11,7 +11,7 @@ import type { AgentRunResult } from "./loop";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function runScriptedAgent(opts: { runId: string; channel: string; def: AgentDefinition; input: AgentInput; guard: Guard; script: ScriptStep[]; pauseMs?: number; title?: string }): Promise<AgentRunResult> {
+export async function runScriptedAgent(opts: { runId: string; channel: string; def: AgentDefinition; input: AgentInput; guard: Guard; script: ScriptStep[]; pauseMs?: number }): Promise<AgentRunResult> {
   const { def, guard, runId, channel } = opts;
   const actor = `agent:${def.id}`;
   const tools = new Map(def.tools().map((t) => [t.name, t]));
@@ -26,7 +26,7 @@ export async function runScriptedAgent(opts: { runId: string; channel: string; d
     const say = typeof step.say === "function" ? step.say(results) : step.say;
     if (say) {
       lastSay = say;
-      timeline.emit({ kind: "agent.message", status: "info", title: opts.title ?? `${def.name} (simulated)`, detail: say });
+      timeline.emit({ kind: "agent.message", status: "info", title: `${def.name} (simulated)`, detail: say });
     }
     await sleep(step.pauseMs ?? basePause);
     if (!step.tool) continue;

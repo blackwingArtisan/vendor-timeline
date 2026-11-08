@@ -47,12 +47,6 @@ export interface AgentDefinition {
   maxTurns?: number;
   /** Used when there is no ANTHROPIC_API_KEY, so the demo still runs end to end. */
   mockScript?: (input: AgentInput) => ScriptStep[];
-  /**
-   * Runs in code before any model. When it returns steps, they run through the same tools, Guard
-   * and timeline in place of the model, in every AI mode, so a rule the code can check isn't left
-   * to a model's choice of words. Return null to let the model (or mockScript) run as usual.
-   */
-  precheck?: (input: AgentInput) => ScriptStep[] | null;
   /** Optional, sandbox only, READ-ONLY tools via Anthropic's MCP connector (bypasses the guard, so never allow writes). */
   remoteMcp?: () => RemoteMcpConfig | null;
 }
