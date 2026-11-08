@@ -37,12 +37,33 @@ export interface RouteOptions {
   mockOnly?: boolean;
 }
 
+/** Zod's own wording ("Too big: expected string...") is for developers. Our schemas say it plainly. */
+const ZOD_WORDING = /^(Invalid|Expected|Too (big|small)|Required|Unrecognized|Number must|String must)/;
+
+function plainIssue(error: ZodError): string {
+  const message = error.issues[0]?.message;
+  return message && !ZOD_WORDING.test(message) ? message : "Something in that request wasn't right, so nothing changed. Check it and try again.";
+}
+
+/** What a person sees when PayPal refuses something. PayPal's own words stay in paypalMessage for developers. */
+export function plainPayPalMessage(error: PayPalApiError): string {
+  const code = error.issue ?? error.paypalName;
+  const ref = error.debugId ? ` PayPal reference: ${error.debugId}.` : "";
+  if (code === "ORDER_NOT_APPROVED" || code === "PAYER_ACTION_REQUIRED") return "PayPal hasn't had your approval for this payment yet, so nothing was taken. Finish paying in PayPal's checkout.";
+  if (code === "INSTRUMENT_DECLINED") return "PayPal declined that card or account, so nothing was taken. Try another way to pay in PayPal's checkout.";
+  if (code === "ORDER_ALREADY_CAPTURED" || code === "DUPLICATE_INVOICE_ID") return "This payment has already gone through. Refresh the page to see it.";
+  if (code === "PAYEE_ACCOUNT_RESTRICTED" || code === "PAYEE_ACCOUNT_INVALID" || code === "PAYEE_NOT_ENABLED_FOR_CARD_PROCESSING") return `PayPal can't send money to that vendor's account right now, so nothing was taken. Check the vendor's PayPal email.${ref}`;
+  if (error.status === 401 || error.status === 403) return `PayPal didn't accept this app's sign-in, so nothing was paid.${ref}`;
+  return `PayPal couldn't do that just now, so nothing was paid. Try again in a minute.${ref}`;
+}
+
 export function errorResponse(error: unknown): Response {
   if (error instanceof PayPalApiError) {
-    return Response.json({ error: { type: "paypal", ...error.toJSON() } }, { status: error.status >= 400 && error.status < 600 ? error.status : 502 });
+    const body = { type: "paypal", ...error.toJSON(), message: plainPayPalMessage(error), paypalMessage: error.message };
+    return Response.json({ error: body }, { status: error.status >= 400 && error.status < 600 ? error.status : 502 });
   }
-  if (error instanceof PayPalNetworkError) return Response.json({ error: { type: "paypal_network", message: error.message } }, { status: 502 });
-  if (error instanceof ZodError) return Response.json({ error: { type: "validation", message: "Invalid request", issues: error.issues } }, { status: 400 });
+  if (error instanceof PayPalNetworkError) return Response.json({ error: { type: "paypal_network", message: "PayPal didn't answer, so nothing was paid. Try again in a minute." } }, { status: 502 });
+  if (error instanceof ZodError) return Response.json({ error: { type: "validation", message: plainIssue(error), issues: error.issues } }, { status: 400 });
   if (error instanceof RateLimitedError) {
     return Response.json({ error: { type: "rate_limited", message: error.message, retryAfterSeconds: error.retryAfterSeconds } }, { status: 429, headers: { "Retry-After": String(error.retryAfterSeconds) } });
   }
@@ -81,7 +102,7 @@ export async function readJson<S extends z.ZodType>(req: Request, schema: S): Pr
     try {
       raw = JSON.parse(text);
     } catch {
-      throw new HttpError(400, "Body must be JSON", "invalid_json");
+      throw new HttpError(400, "That request couldn't be read, so nothing changed. Try again.", "invalid_json");
     }
   }
   return schema.parse(raw);

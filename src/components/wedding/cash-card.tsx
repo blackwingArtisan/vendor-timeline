@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { AlertTriangle, CircleCheck } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
-import { useToast } from "@/components/toast";
 import { Button, Card, CardBody, CardHeader, Field, MoneyInput } from "@/components/ui";
-import { centsToDollars, formatCents, parseDollars } from "@/lib/wedding/cents";
+import { centsToDollars, formatCents } from "@/lib/wedding/cents";
+import { MAX_BUDGET_CENTS, readAmount } from "@/lib/wedding/limits";
 import { formatDay } from "@/lib/wedding/dates";
 import type { CashMonth, CashPayment, CashPlan, CashWarning } from "@/lib/wedding/types";
 
@@ -57,19 +57,20 @@ function monthLines(m: CashMonth): [string, number][] {
 /** Everything here is worked out by code, so it stays right with AI switched off. */
 export function CashCard({ cash, onChanged }: { cash: CashPlan; onChanged: () => void }) {
   const { kitFetch } = useKit();
-  const { toast } = useToast();
   const [budget, setBudget] = useState(centsToDollars(cash.monthlyBudgetCents));
   const [saving, setSaving] = useState(false);
+  /** Why the budget wasn't saved. Stays until the box changes. */
+  const [problem, setProblem] = useState<string | null>(null);
 
   async function save() {
-    const monthlyBudgetCents = parseDollars(budget);
-    if (!monthlyBudgetCents) return toast({ title: "Enter a monthly budget", description: "For example 5,000.00", variant: "error" });
+    const read = readAmount(budget, "Monthly budget", MAX_BUDGET_CENTS);
+    if (read.error !== undefined) return setProblem(read.error);
     setSaving(true);
     try {
-      await kitFetch("/api/timeline/budget", { json: { monthlyBudgetCents } });
+      await kitFetch("/api/timeline/budget", { json: { monthlyBudgetCents: read.cents } });
       onChanged();
     } catch (e) {
-      toast({ title: "Could not save your budget", description: (e as Error).message, variant: "error" });
+      setProblem((e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -87,12 +88,23 @@ export function CashCard({ cash, onChanged }: { cash: CashPlan; onChanged: () =>
           }}
         >
           <Field label="Monthly budget" htmlFor="monthly-budget" className="flex-1">
-            <MoneyInput id="monthly-budget" value={budget} onChange={(e) => setBudget(e.target.value)} data-testid="monthly-budget" />
+            <MoneyInput id="monthly-budget" value={budget} onChange={(e) => {
+                setBudget(e.target.value);
+                setProblem(null);
+              }}
+              aria-invalid={!!problem}
+              data-testid="monthly-budget"
+            />
           </Field>
           <Button type="submit" variant="secondary" loading={saving} disabled={saving} data-testid="save-budget">
             Save
           </Button>
         </form>
+        {problem ? (
+          <p role="alert" className="-mt-1 mb-3 text-sm text-red-700" data-testid="budget-problem">
+            {problem}
+          </p>
+        ) : null}
         {cash.warnings.length ? (
           <ul className="space-y-2">
             {cash.warnings.map((w) => (

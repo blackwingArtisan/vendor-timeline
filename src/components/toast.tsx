@@ -17,15 +17,22 @@ const ToastContext = createContext<{ toast: (t: Omit<Toast, "id" | "variant"> & 
 const ICON = { success: CheckCircle2, error: XCircle, info: Info, warning: AlertTriangle };
 const TONE = { success: "text-emerald-600", error: "text-red-600", info: "text-brand", warning: "text-amber-600" };
 
-/** toast({ title: "Captured $45.00", description: "Capture 3K9...", variant: "success" }) */
+/**
+ * toast({ title: "Captured $45.00", description: "Capture 3K9...", variant: "success" })
+ * An error stays until the person dismisses it, so it can't vanish before it is read.
+ * The same message twice shows once.
+ */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
   const toast = useCallback(
     ({ durationMs = 4500, variant = "info", ...t }: Omit<Toast, "id" | "variant"> & { variant?: Variant; durationMs?: number }) => {
       const id = Date.now() + Math.random();
-      setToasts((prev) => [...prev.slice(-3), { ...t, variant, id }]);
-      setTimeout(() => dismiss(id), durationMs);
+      setToasts((prev) => {
+        const rest = prev.filter((x) => !(x.title === t.title && x.description === t.description));
+        return [...rest.slice(-3), { ...t, variant, id }];
+      });
+      if (variant !== "error") setTimeout(() => dismiss(id), durationMs);
     },
     [dismiss],
   );
@@ -37,7 +44,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => {
           const Icon = ICON[t.variant];
           return (
-            <div key={t.id} className="pointer-events-auto flex animate-slide-up items-start gap-3 rounded-xl border border-zinc-200 bg-white p-3.5 shadow-lg" role="status">
+            <div key={t.id} className="pointer-events-auto flex animate-slide-up items-start gap-3 rounded-xl border border-zinc-200 bg-white p-3.5 shadow-lg" role={t.variant === "error" ? "alert" : "status"} data-testid={`toast-${t.variant}`}>
               <Icon className={cn("mt-0.5 size-5 shrink-0", TONE[t.variant])} />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-zinc-900">{t.title}</p>

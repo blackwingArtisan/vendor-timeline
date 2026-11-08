@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { readJson, route } from "@/lib/http";
 import { addContract, listContracts } from "@/lib/wedding/contracts";
+import { MAX_CONTRACT_CHARS } from "@/lib/wedding/limits";
 import { currentPlanId } from "@/lib/wedding/plan";
 
-/** Long enough for a real contract, short enough to keep each AI read cheap. */
-const MAX_CHARS = 20_000;
-const Body = z.object({ text: z.string().trim().min(40, "That is too short to be a contract.").max(MAX_CHARS, "That contract is too long."), fileName: z.string().max(200).optional() });
+const Body = z.object({
+  text: z.string({ error: "Paste or upload a contract first." }).trim().min(40, "That is too short to be a contract.").max(MAX_CONTRACT_CHARS, `That contract is too long. The most the app reads is ${MAX_CONTRACT_CHARS.toLocaleString("en-US")} characters, so paste just the payment terms.`),
+  fileName: z.string().max(200, "That file name is too long.").optional(),
+});
 
 export const GET = route(async () => ({ contracts: listContracts(await currentPlanId()) }));
 

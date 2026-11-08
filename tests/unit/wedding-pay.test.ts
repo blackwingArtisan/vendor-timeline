@@ -68,6 +68,15 @@ describe("confirming", () => {
     expect(contract.confirmed!.balanceCents).toBe(PHOTOGRAPHER.balanceCents);
   });
 
+  it("refuses a huge or zero amount and a date years away, before saving anything", async () => {
+    const contract = await addContract(`plan_test${n++}`, { text });
+    const terms = { vendorName: "V", vendorRole: "photographer" as const, payeeEmail: "a@example.com", totalCents: 480_000, depositCents: 120_000, depositDue: PHOTOGRAPHER.depositDue, balanceDue: PHOTOGRAPHER.balanceDue };
+    expect(() => confirmContract(contract.planId, contract.id, { ...terms, totalCents: 99_999_999_900 })).toThrow("Total is too large. The most it can be is $1,000,000.00.");
+    expect(() => confirmContract(contract.planId, contract.id, { ...terms, depositCents: 0 })).toThrow("Deposit must be more than $0.00.");
+    expect(() => confirmContract(contract.planId, contract.id, { ...terms, balanceDue: "2999-12-31" })).toThrow(/^The balance date must be from/);
+    expect(requireContract(contract.id).confirmed).toBeUndefined();
+  });
+
   it("refuses a deposit above the total and a missing balance date", async () => {
     const contract = await addContract(PLAN, { text: "x".repeat(50) });
     const input = { vendorName: "V", vendorRole: "other" as const, payeeEmail: "a@example.com", totalCents: 100, depositCents: 200, depositDue: "2027-01-01", balanceDue: "2027-02-01" };
@@ -115,7 +124,7 @@ describe("paying", () => {
     expect(order.purchase_units![0]).toMatchObject({ amount: { currency_code: "USD", value: "1200.00" }, payee: { email_address: PHOTOGRAPHER.payeeEmail } });
 
     // Not paid until the couple pay in PayPal's checkout.
-    await expect(captureCheckout(contract.planId, contract.id, "deposit", ordered.orderId!)).rejects.toThrow(/nothing to capture/);
+    await expect(captureCheckout(contract.planId, contract.id, "deposit", ordered.orderId!)).rejects.toThrow(/hasn.t had your approval for this payment yet, so nothing was taken/);
     expect(paymentOf(contract.id).state).toBe("awaiting_checkout");
 
     const captured = await payInCheckout(contract);
@@ -347,23 +356,30 @@ describe("capture webhooks", () => {
 describe("moving a payment date", () => {
   it("saves the new date, keeps the contract's date and leaves the amount alone", async () => {
     const contract = await confirmedContract();
-    const moved = moveDueDate(contract.planId, contract.id, "deposit", "2026-12-28");
+    const moved = moveDueDate(contract.planId, contract.id, "deposit", "2026-12-28", "2026-11-20");
     expect(moved.confirmed).toMatchObject({ depositDue: "2026-12-28", depositCents: PHOTOGRAPHER.depositCents });
     const view = await viewTimeline(contract.planId, "2026-11-20");
     expect(view.items[0]).toMatchObject({ due: "2026-12-28", movedFrom: PHOTOGRAPHER.depositDue, cents: PHOTOGRAPHER.depositCents });
-    expect(moveDueDate(contract.planId, contract.id, "deposit", "2027-01-02").movedFrom?.deposit).toBe(PHOTOGRAPHER.depositDue);
-    expect(moveDueDate(contract.planId, contract.id, "deposit", PHOTOGRAPHER.depositDue).movedFrom?.deposit).toBeUndefined();
+    expect(moveDueDate(contract.planId, contract.id, "deposit", "2027-01-02", "2026-11-20").movedFrom?.deposit).toBe(PHOTOGRAPHER.depositDue);
+    expect(moveDueDate(contract.planId, contract.id, "deposit", PHOTOGRAPHER.depositDue, "2026-11-20").movedFrom?.deposit).toBeUndefined();
+  });
+
+  it("refuses a date in the past or years away, in plain words", async () => {
+    const contract = await confirmedContract();
+    expect(() => moveDueDate(contract.planId, contract.id, "deposit", "2999-12-31", "2026-11-20")).toThrow(/^The new date must be from Fri, Nov 20, 2026 to /);
+    expect(() => moveDueDate(contract.planId, contract.id, "deposit", "1999-01-01", "2026-11-20")).toThrow(/^The new date must be from/);
+    expect(requireContract(contract.id).confirmed!.depositDue).toBe(PHOTOGRAPHER.depositDue);
   });
 
   it("refuses a bad date, another couple's contract and a payment already on its way", async () => {
     const contract = await confirmedContract();
-    expect(() => moveDueDate(contract.planId, contract.id, "deposit", "2027-02-30")).toThrow(/real date/);
-    expect(() => moveDueDate("plan_someone", contract.id, "deposit", "2027-01-01")).toThrow(/not found/);
+    expect(() => moveDueDate(contract.planId, contract.id, "deposit", "2027-02-30", "2026-11-20")).toThrow(/real date/);
+    expect(() => moveDueDate("plan_someone", contract.id, "deposit", "2027-01-01", "2026-11-20")).toThrow(/not found/);
     const { contract: asked, finished } = requestPayment(contract.planId, contract.id, "deposit", "test");
-    expect(() => moveDueDate(contract.planId, contract.id, "deposit", "2027-01-01")).toThrow(/can't move/);
+    expect(() => moveDueDate(contract.planId, contract.id, "deposit", "2027-01-01", "2026-11-20")).toThrow(/can't move/);
     getApprovals().decide((await pending(asked.payments.deposit!.runId)).id, "denied", "couple");
     await finished;
-    expect(moveDueDate(contract.planId, contract.id, "deposit", "2027-01-01").confirmed!.depositDue).toBe("2027-01-01");
+    expect(moveDueDate(contract.planId, contract.id, "deposit", "2027-01-01", "2026-11-20").confirmed!.depositDue).toBe("2027-01-01");
   });
 });
 

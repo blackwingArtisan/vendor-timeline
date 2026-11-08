@@ -15,22 +15,18 @@ import { listContracts } from "@/lib/wedding/contracts";
 import { formatDay } from "@/lib/wedding/dates";
 import { VENDOR_ORDER_TOOL, vendorOrderTool, viewTimeline } from "@/lib/wedding/pay";
 import { buildTimeline } from "@/lib/wedding/timeline";
+import { CASH_CHECK_TITLE, PAY_FIRST_TITLE, payFirstSentence } from "@/lib/wedding/urgency";
 import type { TimelineItem, TimelineView } from "@/lib/wedding/types";
 
 export const PAYMENT_AGENT_ID = "payments";
 
 const SYSTEM = `You help a couple keep up with their wedding vendor payments.
 
-Call review_payments first. It returns every figure you may use, already worked out by the app's code. Never add, subtract or work out a figure yourself. Quote amounts and dates exactly as it gives them.
+Call review_payments first, before you write anything. It returns every figure you may use, already worked out by the app's code. Never add, subtract or work out a figure yourself. Quote amounts and dates exactly as it gives them.
 
-Then tell the couple, in plain words:
-- anything overdue, most overdue first
-- the next payment due: vendor, what it is, amount and date
-- what the warnings mean for them, in one short sentence. The app has already shown them each warning word for word, so don't repeat the list. Don't suggest moving a payment date unless they ask, because the vendor would have to agree.
+As soon as you call it, the app shows the couple its own sentence on what to pay first and why (pay_first_said), and each cash warning word for word. Don't repeat those, and never put a different payment first. Then, in one or two short sentences of plain text, say what the warnings mean for them. Don't suggest moving a payment date unless they ask, because the vendor would have to agree. Write plain sentences: no Markdown, no bold, no lists, no headings.
 
-Write all of that before you call any other tool.
-
-If they asked to pay something, or to set up the next payment, call create_vendor_order. Urgent comes first: unless they named a different payment, pay pay_first from review_payments, which is the most overdue payment, or the next one due when nothing is overdue. If you pay anything other than pay_first, say why in one line first. Pass the contract_id and kind from review_payments. If they named an amount, pass that amount. Otherwise pass the amount from review_payments. Once a person approves, the couple pay it themselves in PayPal's own checkout. The app refuses anything that doesn't match the confirmed contract, and a person must approve what it accepts. You can't approve a payment, and there is no other way to pay. If a call is refused, tell them why in one sentence and stop.`;
+If they asked to pay something, or to set up the next payment, call create_vendor_order. Unless they named a different payment, pay pay_first from review_payments. If you pay anything other than pay_first, say why in one line first. Pass the contract_id and kind from review_payments. If they named an amount, pass that amount. Otherwise pass the amount from review_payments. Once a person approves, the couple pay it themselves in PayPal's own checkout. The app refuses anything that doesn't match the confirmed contract, and a person must approve what it accepts. You can't approve a payment, and there is no other way to pay. If a call is refused, tell them why in one sentence and stop.`;
 
 function paymentFacts(item: TimelineItem) {
   return { contract_id: item.contractId, kind: item.kind, vendor: item.vendorName, amount: centsToDollars(item.cents), amount_text: formatCents(item.cents), due: formatDay(item.due), days_until: item.daysUntil, status: item.status };
@@ -41,6 +37,7 @@ function reviewFacts(view: TimelineView) {
     today: formatDay(view.today),
     monthly_budget: formatCents(view.cash.monthlyBudgetCents),
     pay_first: view.payFirst ? paymentFacts(view.payFirst) : null,
+    pay_first_said: payFirstSentence(view),
     next_payment: view.nextDue ? paymentFacts(view.nextDue) : null,
     overdue: view.overdue.map(paymentFacts),
     warnings: view.cash.warnings.map((w) => w.message),
@@ -48,8 +45,6 @@ function reviewFacts(view: TimelineView) {
     unpaid_payments: view.items.filter((i) => i.status !== "paid").map(paymentFacts),
   };
 }
-
-const say = (next: TimelineItem | null) => (next ? `Next up is ${next.vendorName}: the ${next.kind} of ${formatCents(next.cents)}, due ${formatDay(next.due)}.` : "Nothing else is due right now.");
 
 /** The payment a goal names by vendor, role or "deposit"/"balance", if it names exactly one. */
 function namedIn(goal: string, items: TimelineItem[]): TimelineItem | undefined {
@@ -64,17 +59,13 @@ function mockSteps(planId: string, today: string, input: AgentInput): ScriptStep
   const view = buildTimeline(listContracts(planId), today, monthlyBudget(planId));
   const named = namedIn(input.goal, view.items.filter((i) => i.status !== "paid"));
   const target = named ?? view.payFirst;
-  const overdue = view.overdue.map((i) => `${i.vendorName} ${i.kind} (${formatCents(i.cents)}, due ${formatDay(i.due)})`).join(" and ");
-  const steps: ScriptStep[] = [
-    { say: "Checking every confirmed payment first.", tool: "review_payments", as: "review" },
-    ...(overdue ? [{ say: `Overdue: ${overdue}.`, pauseMs: 300 }] : []),
-    { say: say(view.nextDue), pauseMs: 300 },
-  ];
+  // review_payments itself shows what to pay first, so the script only explains a different choice.
+  const steps: ScriptStep[] = [{ say: "Checking every confirmed payment first.", tool: "review_payments", as: "review" }];
   if (!target) return steps;
   const asked = dollarFigures(input.goal)[0];
-  const why = target.status === "overdue" ? `The ${target.vendorName} ${target.kind} is overdue, so it goes first.` : named && view.payFirst && named.id !== view.payFirst.id ? `You asked for the ${target.vendorName} ${target.kind}, so that one, not the ${view.payFirst.vendorName} ${view.payFirst.kind}.` : "Nothing is overdue, so the next one due goes first.";
+  const why = named && view.payFirst && named.id !== view.payFirst.id ? `You asked for the ${target.vendorName} ${target.kind}, so that one, not the ${view.payFirst.vendorName} ${view.payFirst.kind}. ` : "";
   steps.push({
-    say: `${why} I'll set it up and stop there. Nothing moves until you approve it.`,
+    say: `${why}I'll set up the ${target.vendorName} ${target.kind} and stop there. Nothing moves until you approve it.`,
     tool: VENDOR_ORDER_TOOL,
     input: { contract_id: target.contractId, kind: target.kind, amount: centsToDollars(asked ?? target.cents) },
     as: "order",
@@ -93,8 +84,10 @@ export function paymentAgent(planId: string, today: string) {
     title: () => "Review every payment",
     execute: async () => {
       const view = await viewTimeline(planId, today);
+      // Code says what comes first, so the model's own words can't reorder it.
+      timeline.emit({ kind: "agent.message", status: "info", title: PAY_FIRST_TITLE, detail: payFirstSentence(view) });
       // Written by code, so the warnings reach the couple whatever the model chooses to say.
-      for (const warning of view.cash.warnings) timeline.emit({ kind: "agent.message", status: "info", title: "Cash check", detail: `Heads up: ${warning.message}` });
+      for (const warning of view.cash.warnings) timeline.emit({ kind: "agent.message", status: "info", title: CASH_CHECK_TITLE, detail: `Heads up: ${warning.message}` });
       return reviewFacts(view);
     },
   });

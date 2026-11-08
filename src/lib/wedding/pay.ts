@@ -222,7 +222,7 @@ const capturing = () => singleton("wedding:capturing", () => new Set<string>());
 export async function captureCheckout(planId: string, contractId: string, kind: ItemKind, orderId: string): Promise<Contract> {
   const contract = requirePlanContract(planId, contractId);
   const payment = contract.payments[kind];
-  if (!payment?.orderId || payment.orderId !== orderId) throw new HttpError(409, "That PayPal checkout isn't for this payment.", "conflict");
+  if (!payment?.orderId || payment.orderId !== orderId) throw new HttpError(409, "That PayPal checkout isn't for this payment, so nothing was taken.", "conflict");
   const key = itemId(contractId, kind);
   if (payment.state !== "awaiting_checkout" || capturing().has(key)) return contract;
   capturing().add(key);
@@ -234,7 +234,7 @@ export async function captureCheckout(planId: string, contractId: string, kind: 
       patchPayment(contractId, kind, { state: "failed", orderStatus: order.status, error: `PayPal's order doesn't match this payment: ${mismatch}. Nothing was captured.` });
       throw new HttpError(422, `PayPal's order doesn't match this payment: ${mismatch}.`, "rule");
     }
-    if (order.status !== "APPROVED" && order.status !== "COMPLETED") throw new HttpError(409, `PayPal says this checkout is ${order.status}, so there is nothing to capture yet.`, "conflict");
+    if (order.status !== "APPROVED" && order.status !== "COMPLETED") throw new HttpError(409, "PayPal hasn't had your approval for this payment yet, so nothing was taken. Finish paying in PayPal's checkout, or pay from the timeline to open it again.", "conflict");
     const captured: Order = order.status === "COMPLETED" ? order : await getPayPal().orders.capture(orderId, { requestId: `vt-capture-${contractId}-${kind}-${payment.attempt}` });
     const capture = captured.purchase_units?.[0]?.payments?.captures?.[0];
     patchPayment(contractId, kind, {

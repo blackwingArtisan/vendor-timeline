@@ -8,8 +8,9 @@ import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, ButtonLink, Card, CardBody, CardFooter, CardHeader, EmptyState, Input, MoneyInput, Select, SkeletonCard } from "@/components/ui";
-import { balanceCents, centsToDollars, formatCents, parseDollars } from "@/lib/wedding/cents";
-import { formatDay, isCalendarDay } from "@/lib/wedding/dates";
+import { balanceCents, centsToDollars, formatCents } from "@/lib/wedding/cents";
+import { formatDay, localToday } from "@/lib/wedding/dates";
+import { contractDayRange, dayProblem, readAmount } from "@/lib/wedding/limits";
 import { VENDOR_ROLES, type Contract, type ProposedTerm } from "@/lib/wedding/types";
 
 function Term({ name, label, term, byHand, children }: { name: string; label: string; term: Pick<ProposedTerm<unknown>, "sentence" | "basis" | "flags">; byHand?: boolean; children: ReactNode }) {
@@ -39,6 +40,16 @@ function Term({ name, label, term, byHand, children }: { name: string; label: st
   );
 }
 
+/** A plain reason under a box, shown once the box has something in it. */
+function Problem({ name, children }: { name: string; children: string | null }) {
+  if (!children) return null;
+  return (
+    <p role="alert" className="mt-1.5 flex items-start gap-1.5 text-sm text-red-700" data-testid={`problem-${name}`}>
+      <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {children}
+    </p>
+  );
+}
+
 function ReviewForm({ contract }: { contract: Contract }) {
   const { kitFetch } = useKit();
   const { toast } = useToast();
@@ -53,17 +64,29 @@ function ReviewForm({ contract }: { contract: Contract }) {
   const [balanceDue, setBalanceDue] = useState(p.balanceDue.value ?? "");
   const [busy, setBusy] = useState(false);
 
-  const totalCents = parseDollars(total);
-  const depositCents = parseDollars(deposit);
-  const amountsFit = totalCents !== null && totalCents > 0 && depositCents !== null && depositCents > 0 && depositCents <= totalCents;
+  // Each box is checked as it's typed, in the same words the server would use to refuse it.
+  const totalRead = readAmount(total, "Total");
+  const depositRead = readAmount(deposit, "Deposit");
+  const totalCents = totalRead.cents ?? null;
+  const depositCents = depositRead.cents ?? null;
+  const depositTooBig = totalCents !== null && depositCents !== null && depositCents > totalCents;
+  const amountsFit = totalCents !== null && depositCents !== null && !depositTooBig;
   const balance = amountsFit ? balanceCents(totalCents, depositCents) : null;
+  const range = contractDayRange(localToday(), p.eventDate.value);
+  const problems = {
+    total: total.trim() ? (totalRead.error ?? null) : null,
+    deposit: deposit.trim() ? (depositRead.error ?? (depositTooBig ? `The deposit can't be more than the total of ${formatCents(totalCents!)}.` : null)) : null,
+    depositDue: depositDue ? dayProblem(depositDue, "The deposit date", range) : null,
+    balanceDue: balance !== 0 && balanceDue ? dayProblem(balanceDue, "The balance date", range) : null,
+  };
+  const problemCount = Object.values(problems).filter(Boolean).length;
 
   const missing = [
     vendorName.trim() ? null : "the vendor's name",
     /^\S+@\S+\.\S+$/.test(payeeEmail.trim()) ? null : "an email to pay",
     amountsFit ? null : "a total and a deposit no bigger than it",
-    isCalendarDay(depositDue) ? null : "the deposit date",
-    balance === 0 || isCalendarDay(balanceDue) ? null : "the balance date",
+    depositDue && !problems.depositDue ? null : "the deposit date",
+    balance === 0 || (balanceDue && !problems.balanceDue) ? null : "the balance date",
   ].filter((m): m is string => !!m);
 
   async function confirm() {
@@ -79,7 +102,8 @@ function ReviewForm({ contract }: { contract: Contract }) {
     }
   }
 
-  const flagged = [p.vendorName, p.payeeEmail, p.totalCents, p.depositCents, p.depositDue, p.balanceCents, p.balanceDue].filter((t) => t.flags.length).length;
+  // A term needs a look if the reader flagged it or the box now holds something the app would refuse.
+  const flagged = [p.vendorName, p.payeeEmail, p.totalCents, p.depositCents, p.depositDue, p.balanceCents, p.balanceDue].filter((t) => t.flags.length).length + problemCount;
   // No AI read this one, so there's nothing to check it against. Only the empty boxes remain.
   const byHand = !!contract.read.skipped;
 
@@ -88,7 +112,7 @@ function ReviewForm({ contract }: { contract: Contract }) {
       <CardHeader
         title={byHand ? "Enter each term from your contract" : "Check each term against the contract"}
         description="Your confirmed numbers are the only ones that reach the timeline."
-        action={byHand ? null : flagged ? <Badge tone="warning" dot>{flagged === 1 ? "1 term needs a look" : `${flagged} terms need a look`}</Badge> : <Badge tone="success">Nothing flagged</Badge>}
+        action={byHand ? (problemCount ? <Badge tone="warning" dot>{problemCount === 1 ? "1 term needs a look" : `${problemCount} terms need a look`}</Badge> : null) : flagged ? <Badge tone="warning" dot>{flagged === 1 ? "1 term needs a look" : `${flagged} terms need a look`}</Badge> : <Badge tone="success">Nothing flagged</Badge>}
       />
       <Term byHand={byHand} name="vendor" label="Vendor" term={p.vendorName}>
         <div className="grid gap-2 sm:grid-cols-[1fr_11rem]">
@@ -104,13 +128,16 @@ function ReviewForm({ contract }: { contract: Contract }) {
         <Input aria-label="PayPal email to pay" type="email" value={payeeEmail} onChange={(e) => setPayeeEmail(e.target.value)} placeholder="Ask the vendor" />
       </Term>
       <Term byHand={byHand} name="total" label="Total" term={p.totalCents}>
-        <MoneyInput aria-label="Total" value={total} onChange={(e) => setTotal(e.target.value)} />
+        <MoneyInput aria-label="Total" value={total} onChange={(e) => setTotal(e.target.value)} aria-invalid={!!problems.total} />
+        <Problem name="total">{problems.total}</Problem>
       </Term>
       <Term byHand={byHand} name="deposit" label="Deposit" term={p.depositCents}>
-        <MoneyInput aria-label="Deposit" value={deposit} onChange={(e) => setDeposit(e.target.value)} />
+        <MoneyInput aria-label="Deposit" value={deposit} onChange={(e) => setDeposit(e.target.value)} aria-invalid={!!problems.deposit} />
+        <Problem name="deposit">{problems.deposit}</Problem>
       </Term>
       <Term byHand={byHand} name="deposit-due" label="Deposit due" term={p.depositDue}>
-        <Input aria-label="Deposit due" type="date" value={depositDue} onChange={(e) => setDepositDue(e.target.value)} />
+        <Input aria-label="Deposit due" type="date" min={range.from} max={range.to} value={depositDue} onChange={(e) => setDepositDue(e.target.value)} aria-invalid={!!problems.depositDue} />
+        <Problem name="deposit-due">{problems.depositDue}</Problem>
       </Term>
       <Term byHand={byHand} name="balance" label="Balance" term={{ ...p.balanceCents, basis: "Total minus deposit, worked out by the app" }}>
         <p className="flex h-10 items-center font-mono text-lg font-semibold tabular-nums text-zinc-900" data-testid="balance-value">
@@ -119,14 +146,15 @@ function ReviewForm({ contract }: { contract: Contract }) {
       </Term>
       {balance === 0 ? null : (
         <Term byHand={byHand} name="balance-due" label="Balance due" term={p.balanceDue}>
-          <Input aria-label="Balance due" type="date" value={balanceDue} onChange={(e) => setBalanceDue(e.target.value)} />
+          <Input aria-label="Balance due" type="date" min={range.from} max={range.to} value={balanceDue} onChange={(e) => setBalanceDue(e.target.value)} aria-invalid={!!problems.balanceDue} />
+          <Problem name="balance-due">{problems.balanceDue}</Problem>
         </Term>
       )}
       <CardFooter className="justify-between">
         <p className="text-sm text-zinc-500" data-testid="still-needed">
           {missing.length ? `Still needed: ${missing.join(", ")}.` : "Ready when you are."}
         </p>
-        <Button onClick={confirm} loading={busy} disabled={missing.length > 0} data-testid="confirm-terms">
+        <Button onClick={confirm} loading={busy} disabled={missing.length > 0 || problemCount > 0} data-testid="confirm-terms">
           Confirm these terms
         </Button>
       </CardFooter>
