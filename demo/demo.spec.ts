@@ -1,16 +1,19 @@
 /**
  * DEMO VIDEO (npm run demo:record). Tells the product's story in a real browser and saves a .webm
- * to videos/. The cut video stays under 100 s: waits the edit removes (PayPal's page loading, the
- * webhook on its way) are printed as raw-recording times to cut. No pinned clock: every date on
+ * to videos/, with its edit list beside it (.cuts.json): the waits to cut (PayPal's page loading, the
+ * webhook on its way) and every moment a spinner, skeleton or page load was on screen.
+ * `npm run demo:mp4` applies the cuts, so the video has none of those frames and stays under 100 s.
+ * PayPal's checkout is on camera for at most 8 s. No pinned clock: every date on
  * screen is the recording date.
  *
  *   Local check, mock AI and mock PayPal:  DEMO_PORT=3730 npm run demo:record
  *   On the hosted site, where PayPal's webhook lands on camera:
- *     DEMO_BASE_URL=https://vendor-timeline.onrender.com npx playwright test -c playwright.demo.config.ts
+ *     DEMO_BASE_URL=https://vendor-timeline.onrender.com npm run demo:record
+ *   Then the cut MP4 (newest recording and its .cuts.json): npm run demo:mp4
  */
 import { expect, test, type Page } from "@playwright/test";
-import { caption, DemoClock, highlight, titleCard } from "./captions";
-import { payAsGuest } from "../tests/e2e/pay-in-checkout";
+import { caption, DemoClock, highlight, mark, titleCard } from "./captions";
+import { openCardForm, payAsGuest } from "../tests/e2e/pay-in-checkout";
 import { formatCents } from "../src/lib/wedding/cents";
 import { CATERER, CATERER_STATED_BALANCE_CENTS, FLORIST, SAMPLE_PDF } from "../src/lib/wedding/samples";
 
@@ -25,12 +28,14 @@ const scrollTo = async (page: Page, target: ReturnType<Page["getByTestId"]>) => 
 test("demo", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const clock = new DemoClock(100);
+  await clock.watchBusy(page);
   const status = await (await page.request.get("/api/kit/status")).json();
   const sandbox = status.paypal.mode === "sandbox";
 
   // Scene 1: the case, from research, and the sample wedding's real cash warning.
   await page.goto("/");
-  await titleCard(page, "Wedding Vendor Timeline", "Every vendor payment on one timeline, paid through PayPal", 2200);
+  clock.sync();
+  await titleCard(page, "13 vendors. 13 payment dates. One timeline.", "Wedding Vendor Timeline, paid through PayPal", 3800);
   await highlight(page, page.getByTestId("landing-headline-figure"), 1800);
   await caption(page, "About 13 vendors per couple (The Knot 2026), each with its own contract and payment dates.", { ms: 3400 });
   await highlight(page, page.getByTestId("landing-cash-warning"), 1800);
@@ -52,8 +57,12 @@ test("demo", async ({ page, context }) => {
   await page.getByTestId("read-contract").click();
   await clock.cut("contract read", () => page.waitForURL(/\/contracts\/ctr_/, { timeout: 90_000 }), 1500);
   await expect(page.getByTestId("confirm-terms")).toBeEnabled();
-  await highlight(page, page.getByTestId("source-deposit"), 1800);
-  await caption(page, "Claude reads the payment terms. Each amount and date sits beside the sentence it came from.", { ms: 3200 });
+  // The review screen holds for about 7 s, with the contract's own sentence lit up.
+  const source = page.getByTestId("source-deposit");
+  await mark(source, 7000);
+  await highlight(page, source, 7000);
+  await caption(page, "Claude reads the payment terms. Each amount and date sits beside the sentence it came from.", { ms: 3600 });
+  await caption(page, "Nothing reaches the timeline until you confirm it.", { ms: 2500 });
   await page.getByTestId("confirm-terms").click();
   await page.waitForURL(/\/timeline/);
   clock.check("pdf");
@@ -68,8 +77,9 @@ test("demo", async ({ page, context }) => {
   const flag = page.getByTestId("flag-balance");
   await expect(flag).toContainText(formatCents(CATERER_STATED_BALANCE_CENTS));
   await flag.scrollIntoViewIfNeeded();
-  await highlight(page, flag, 2000);
-  await caption(page, `The contract says the balance is ${formatCents(CATERER_STATED_BALANCE_CENTS)}. Its own total minus deposit is ${formatCents(CATERER.balanceCents)}, so code flags it.`, { ms: 3800 });
+  // The mismatch flag gets 4 s.
+  await highlight(page, flag, 4000);
+  await caption(page, `The contract says the balance is ${formatCents(CATERER_STATED_BALANCE_CENTS)}. Its own total minus deposit is ${formatCents(CATERER.balanceCents)}, so code flags it.`, { ms: 3100 });
   await page.getByTestId("confirm-terms").click();
   await page.waitForURL(/\/timeline/);
 
@@ -125,12 +135,23 @@ test("demo", async ({ page, context }) => {
   await caption(page, "Nothing moves without you. One approval, then pay it yourself in PayPal.", { ms: 2400 });
   await prompt.getByTestId("approve-button").click();
   if (sandbox) {
-    await clock.cut("PayPal page loading", () => page.waitForURL(/sandbox\.paypal\.com/, { timeout: 60_000 }));
-    await caption(page, "PayPal's own checkout, for exactly the confirmed amount (sandbox).", { ms: 2500, wait: false });
+    // PayPal's page loading and its spinners are cut; its checkout, with the amount, stays on screen briefly.
+    const paypalFrom = clock.raw;
+    // Straight to PayPal's card form, which shows the amount at the top.
+    await clock.cut("PayPal page loading", async () => {
+      await page.waitForURL(/sandbox\.paypal\.com/, { timeout: 60_000 });
+      await openCardForm(page);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(400);
+    });
+    await caption(page, `PayPal's own checkout, for exactly the confirmed ${formatCents(FLORIST.depositCents)} (sandbox).`, { ms: 3200 });
     await clock.cut("PayPal checkout", async () => {
       await payAsGuest(page, { typingDelay: 0 });
       await page.waitForURL(/\/timeline/, { timeout: 120_000 });
-    }, CHECKOUT_ON_CAMERA_MS);
+    });
+    const shown = clock.onCamera(paypalFrom, clock.raw);
+    console.log(`[demo] PayPal checkout on camera ${shown.toFixed(1)}s`);
+    expect(shown).toBeLessThanOrEqual(CHECKOUT_ON_CAMERA_MS / 1000);
   } else {
     await expect(page.getByTestId("mock-order-id")).toHaveText(/\S/, { timeout: 60_000 });
     await caption(page, "PayPal's checkout, for exactly the confirmed amount.", { ms: 2200 });
@@ -153,10 +174,13 @@ test("demo", async ({ page, context }) => {
   await caption(page, "Its receipt, read back from PayPal: order, capture, webhook event and PayPal's debug_id.", { ms: 3000 });
   clock.check("paid");
 
-  await titleCard(page, "Wedding Vendor Timeline", "Claude reads the contracts. Code does the sums. You approve. PayPal pays.", 2600);
+  await titleCard(page, "How PayPal pays each vendor", "Create order → the couple approve in PayPal's checkout → capture → PAYMENT.CAPTURE.COMPLETED webhook", 3200, { stay: true });
+  clock.end();
   clock.check("end");
+  const edit = clock.writeCuts("test-results/demo/cuts.json");
   const after = await (await page.request.get("/api/kit/status")).json();
   console.log(`[demo] PayPal ${after.paypal.mode}, AI ${after.ai.mode}, AI spend today: ${JSON.stringify(after.ai.budget)}`);
   console.log(`[demo] Paid: ${await deposit.getByTestId("paypal-proof").innerText()}`);
-  console.log(`[demo] Cut video ${clock.seconds}s, raw ${Math.round(clock.raw)}s. Cuts: ${JSON.stringify(clock.cuts.map((c) => `${c.label} ${c.from.toFixed(1)}-${c.to.toFixed(1)}`))}`);
+  console.log(`[demo] Cut video ${edit.videoSeconds.toFixed(1)}s, raw ${Math.round(clock.raw)}s. Cuts: ${JSON.stringify(edit.cuts.map((c) => `${c.label} ${c.from.toFixed(1)}-${c.to.toFixed(1)}`))}`);
+  expect(edit.videoSeconds).toBeLessThanOrEqual(100);
 });

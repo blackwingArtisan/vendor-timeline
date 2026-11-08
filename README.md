@@ -1,5 +1,10 @@
 # Wedding Vendor Timeline
 
+**How PayPal is central.**
+1. **Create order:** every payment is a PayPal Orders v2 order the server creates for exactly the confirmed contract term, to that vendor, only after one approval in the app. The Guard refuses anything else before PayPal hears of it.
+2. **Capture:** the couple pay in PayPal's own checkout, and the server captures that order and reads the capture back from PayPal.
+3. **Webhook:** PayPal's `PAYMENT.CAPTURE.COMPLETED` webhook for that capture marks the item Paid, once PayPal's own status agrees (if PayPal's webhook can't arrive, the capture re-read is used, and the item says so). Each paid item's Receipt re-reads the order and capture, with PayPal's `debug_id`s.
+
 > For couples juggling wedding vendors: Claude reads each vendor contract, you confirm every deposit and balance on one timeline, and you pay each vendor from your own PayPal, most urgent first.
 
 **Live demo:** https://vendor-timeline.onrender.com · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
