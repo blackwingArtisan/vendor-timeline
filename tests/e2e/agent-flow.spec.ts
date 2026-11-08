@@ -93,7 +93,8 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   // The cash plan is code's too, and comes after the warnings, before anything the model wrote.
   const appSaid = panel.locator('[data-testid="agent-message"][data-from="app"]');
   await expect(appSaid.last()).toContainText("Cash plan: No plan fits every month in your $5,000.00 monthly budget");
-  await expect(panel.getByTestId("cash-move")).toHaveCount(2);
+  await expect(page.getByTestId("cash-plan").getByTestId("cash-move")).toHaveCount(2);
+  await panel.getByTestId("agent-details").locator("summary").click();
   const said = await panel.getByTestId("agent-messages").innerText();
   console.log(`Agent said: ${said}`);
   expect(said).toContain(FLORIST.vendorName);

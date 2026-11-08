@@ -92,7 +92,7 @@ test("demo", async ({ page, context }) => {
   clock.check("agent");
 
   // Scene 5: the cash plan resolves a clash on screen. A vendor agrees to a later date.
-  const ask = panel.locator('[data-testid="cash-move"][data-kind="ask_vendor"]').first();
+  const ask = page.locator('[data-testid="cash-move"][data-kind="ask_vendor"]').first();
   await scrollTo(page, ask);
   await highlight(page, ask.getByTestId("move-message"), 1600);
   await caption(page, "Asking a vendor for a later date? The message is drafted by code. Copy it and send it.", { ms: 3000 });

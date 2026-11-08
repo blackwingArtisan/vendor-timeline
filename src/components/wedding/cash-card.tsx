@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { AlertTriangle, CircleCheck } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
-import { Button, Card, CardBody, CardHeader, Field, MoneyInput } from "@/components/ui";
+import { Button, Card, CardBody, CardHeader, MoneyInput } from "@/components/ui";
+import { CashChart } from "./cash-chart";
 import { amountText, formatCents } from "@/lib/wedding/cents";
 import { MAX_BUDGET_CENTS, readAmount } from "@/lib/wedding/limits";
 import { formatDay } from "@/lib/wedding/dates";
@@ -78,25 +79,25 @@ export function CashCard({ cash, onChanged }: { cash: CashPlan; onChanged: () =>
 
   return (
     <Card data-testid="cash-card">
-      <CardHeader title="Cash check" description="Each payment on the day it leaves, against your monthly budget. Worked out by code." />
-      <CardBody>
+      <CardHeader className="py-3!" title="Cash check" description="Each month against your budget, worked out by code." />
+      <CardBody className="py-3!">
+        <CashChart cash={cash} className="mb-3" />
         <form
-          className="mb-3 flex items-end gap-2"
+          className="mb-3 flex items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             void save();
           }}
         >
-          <Field label="Monthly budget" htmlFor="monthly-budget" className="flex-1">
-            <MoneyInput id="monthly-budget" value={budget} onChange={(e) => {
-                setBudget(e.target.value);
-                setProblem(null);
-              }}
-              aria-invalid={!!problem}
-              data-testid="monthly-budget"
-            />
-          </Field>
-          <Button type="submit" variant="secondary" loading={saving} disabled={saving} data-testid="save-budget">
+          <label htmlFor="monthly-budget" className="shrink-0 text-sm font-medium text-zinc-700">Monthly budget</label>
+          <MoneyInput id="monthly-budget" className="min-w-0 flex-1" value={budget} onChange={(e) => {
+              setBudget(e.target.value);
+              setProblem(null);
+            }}
+            aria-invalid={!!problem}
+            data-testid="monthly-budget"
+          />
+          <Button type="submit" size="sm" variant="secondary" loading={saving} disabled={saving} data-testid="save-budget">
             Save
           </Button>
         </form>
@@ -106,14 +107,14 @@ export function CashCard({ cash, onChanged }: { cash: CashPlan; onChanged: () =>
           </p>
         ) : null}
         {cash.warnings.length ? (
-          <ul className="space-y-2">
+          <ul className="space-y-1.5">
             {cash.warnings.map((w) => (
-              <li key={`${w.kind}-${w.from}`} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="cash-warning" data-kind={w.kind}>
+              <li key={`${w.kind}-${w.from}`} className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-900" data-testid="cash-warning" data-kind={w.kind}>
                 <p className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" /> <span className="min-w-0">{w.message}</span>
+                  <AlertTriangle className="mt-px size-3.5 shrink-0" /> <span className="min-w-0">{w.message}</span>
                 </p>
-                <details className="mt-1 pl-6" data-testid="cash-sums">
-                  <summary className="cursor-pointer text-xs font-medium underline underline-offset-2">Show the sums</summary>
+                <details className="pl-5" data-testid="cash-sums">
+                  <summary className="cursor-pointer font-medium underline underline-offset-2">Show the sums</summary>
                   <Sums payments={w.payments} lines={warningLines(w, cash.monthlyBudgetCents)} />
                 </details>
               </li>

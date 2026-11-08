@@ -28,7 +28,7 @@ describe("the cash plan", () => {
     const fix = view.cashFix!;
     expect(fix.fits).toBe(true);
     expect(fix.moves.map(brief)).toEqual([`pay_now ${PHOTOGRAPHER.vendorName} balance ${TODAY}`, `pay_now ${FLORIST.vendorName} balance ${TODAY}`]);
-    expect(fix.summary).toBe(`Two moves would fit every month in your $12,000.00 monthly budget: pay the ${PHOTOGRAPHER.vendorName} balance ($3,600.00) now and pay the ${FLORIST.vendorName} balance ($1,740.00) now. Approve each one below.`);
+    expect(fix.summary).toBe(`Two moves would fit every month in your $12,000.00 monthly budget: pay the ${PHOTOGRAPHER.vendorName} balance ($3,600.00) now and pay the ${FLORIST.vendorName} balance ($1,740.00) now. Approve each one in the cash plan.`);
     expect(fix.stillOver).toBeNull();
     // Code's own check agrees: with both made, no warning is left.
     expect(cashPlan(withMoves(view.items, fix.moves), TODAY, 1_200_000).warnings).toEqual([]);

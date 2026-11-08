@@ -10,7 +10,7 @@ import { SamplePlanBanner } from "@/components/wedding/sample-plan-banner";
 import { usePaced, WaitStopped } from "@/components/wedding/use-paced";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
-import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, SkeletonText, Textarea } from "@/components/ui";
+import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Textarea } from "@/components/ui";
 import { formatCents } from "@/lib/wedding/cents";
 import { MAX_CONTRACT_CHARS } from "@/lib/wedding/limits";
 import { SAMPLE_PDF, SAMPLES, sampleUrl, type SampleFacts } from "@/lib/wedding/samples";
@@ -198,7 +198,7 @@ export function ContractsScreen() {
           {contracts ? <span hidden data-testid="contracts-loaded" /> : null}
           <CardBody>
             {!contracts ? (
-              <SkeletonText lines={3} className="py-2" />
+              <p className="py-2 text-sm text-zinc-500">Opening your contracts…</p>
             ) : contracts.length ? (
               <ul className="-my-1 divide-y divide-zinc-100" data-testid="contract-list">
                 {contracts.map((c) => (

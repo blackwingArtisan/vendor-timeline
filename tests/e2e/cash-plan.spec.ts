@@ -28,7 +28,7 @@ test("the agent shows a cash plan the contracts allow, and a date the vendor agr
 
   await page.getByTestId("ask-agent").click();
   const panel = page.getByTestId("agent-panel");
-  const plan = panel.getByTestId("cash-plan");
+  const plan = page.getByTestId("cash-plan");
   await expect(plan).toBeVisible({ timeout: 90_000 });
   // Honest about what can't fit: two balances are each bigger than the whole $5,000 month.
   // The plan is the app's own message, marked as the app's, not the model's.
@@ -85,8 +85,8 @@ test("paying a balance early from the plan goes through the same approval and Pa
 
   await page.getByTestId("ask-agent").click();
   const panel = page.getByTestId("agent-panel");
-  const plan = panel.getByTestId("cash-plan");
-  await expect(panel.locator('[data-testid="agent-message"][data-from="app"]').filter({ hasText: "Cash plan:" })).toHaveText(`Cash plan: One move would fit every month in your $15,000.00 monthly budget: pay the ${FLORIST.vendorName} balance ($1,740.00) now. Approve each one below.`, { timeout: 90_000 });
+  const plan = page.getByTestId("cash-plan");
+  await expect(panel.locator('[data-testid="agent-message"][data-from="app"]').filter({ hasText: "Cash plan:" })).toHaveText(`Cash plan: One move would fit every month in your $15,000.00 monthly budget: pay the ${FLORIST.vendorName} balance ($1,740.00) now. Approve each one in the cash plan.`, { timeout: 90_000 });
   await expect(plan.getByTestId("cash-plan-still-over")).toHaveCount(0);
   const move = plan.getByTestId("cash-move");
   await expect(move).toHaveCount(1);

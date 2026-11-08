@@ -7,7 +7,8 @@ import { CircleAlert, Quote } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
-import { Badge, Button, ButtonLink, Card, CardBody, CardFooter, CardHeader, EmptyState, Input, MoneyInput, Select, SkeletonCard } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, CardBody, CardFooter, CardHeader, EmptyState, Input, MoneyInput, Select } from "@/components/ui";
+import { PageLoading } from "./page-loading";
 import { amountText, balanceCents, formatCents } from "@/lib/wedding/cents";
 import { formatDay, localToday } from "@/lib/wedding/dates";
 import { contractDayRange, dayProblem, readAmount } from "@/lib/wedding/limits";
@@ -200,7 +201,7 @@ export function ReviewScreen() {
   }, [id, kitFetch]);
 
   if (error) return <EmptyState title="Contract not found" description={error} action={<ButtonLink href="/contracts" size="sm">Back to contracts</ButtonLink>} />;
-  if (!contract) return <SkeletonCard />;
+  if (!contract) return <PageLoading title="Contract terms" doing="Opening the terms read from this contract…" />;
 
   const name = contract.confirmed?.vendorName ?? contract.proposed.vendorName.value ?? "This contract";
   const { read } = contract;
