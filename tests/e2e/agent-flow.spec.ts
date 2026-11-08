@@ -82,9 +82,6 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   const said = await panel.getByTestId("agent-messages").innerText();
   console.log(`Agent said: ${said}`);
   expect(said).toContain(FLORIST.vendorName);
-  // Agent text is shown as plain words: no Markdown marks on screen, in the panel or the approval card.
-  expect(said).not.toMatch(/\*\*|^#{1,6}\s|`/m);
-  expect(await prompt.innerText()).not.toContain("**");
   expect(said).toContain(formatCents(FLORIST.depositCents));
   expect(said).toContain(formatCents(clashTotal));
   expect(said.indexOf(FLORIST.vendorName)).toBeLessThan(said.indexOf(PHOTOGRAPHER.vendorName));

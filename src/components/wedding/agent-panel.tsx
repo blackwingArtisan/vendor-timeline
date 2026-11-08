@@ -12,7 +12,6 @@ import { Badge, Button, Card, CardBody, CardHeader, Input, type Tone } from "@/c
 import type { TimelineStep } from "@/lib/events/types";
 import { localToday } from "@/lib/wedding/dates";
 import type { CashPlan, TimelineItem } from "@/lib/wedding/types";
-import { plainText } from "@/lib/plain-text";
 
 const DEFAULT_GOAL = "Tell me what's most urgent, warn me about any cash clashes, and set up that payment for my approval.";
 
@@ -85,7 +84,7 @@ export function AgentPanel({ steps, items, cash, sandbox, onRun, onRunning, onDe
         {messages.length ? (
           <ul className="mt-3 space-y-1.5 text-sm text-zinc-700" data-testid="agent-messages">
             {messages.map((m) => (
-              <li key={m.stepId} className="whitespace-pre-line" data-testid="agent-message">{plainText(m.detail)}</li>
+              <li key={m.stepId} className="whitespace-pre-line" data-testid="agent-message">{m.detail}</li>
             ))}
           </ul>
         ) : null}
