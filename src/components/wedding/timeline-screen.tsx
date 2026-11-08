@@ -177,7 +177,8 @@ function monthsOf(items: TimelineItem[]) {
 export function TimelineScreen() {
   const { kitFetch } = useKit();
   const { toast } = useToast();
-  const { steps } = useTimeline();
+  // This tab's own steps plus this couple's webhooks (their plan channel). No one else's events.
+  const { steps } = useTimeline({ includeGlobal: false });
   const [view, setView] = useState<TimelineView | null>(null);
   const [paying, setPaying] = useState<string | null>(null);
   const [loadingSamples, setLoadingSamples] = useState(false);
@@ -265,7 +266,7 @@ export function TimelineScreen() {
     [kitFetch, refresh, toast],
   );
 
-  const activity = useMemo(() => steps.filter((s) => s.channel !== "global" || s.kind === "webhook").map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
+  const activity = useMemo(() => steps.map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
 
   if (!view) return <SkeletonCard />;
 
@@ -332,7 +333,7 @@ export function TimelineScreen() {
                 </section>
               ))}
             </div>
-            <Card className="xl:sticky xl:top-6">
+            <Card className="xl:sticky xl:top-6" data-testid="activity-panel">
               <CardHeader title="What's happening" description="Each AI read, approval and PayPal call." />
               <CardBody>
                 <ToolCallTimeline steps={activity} className="max-h-[620px]" emptyTitle="Nothing yet" emptyDescription="Pay a vendor to see each step here." />

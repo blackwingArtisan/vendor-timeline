@@ -110,3 +110,25 @@ export async function readCaptureEvent(captureId: string, tries = 60): Promise<C
   }
   return undefined;
 }
+
+/**
+ * What another hackathon entry on the same sandbox app does: a card sale made straight on PayPal
+ * with the shared credentials, never through this app. It completes at once, and PayPal sends its
+ * PAYMENT.CAPTURE.COMPLETED webhook to every webhook on the app, this one's included.
+ */
+export async function otherAppsSale(value: string): Promise<{ orderId: string; captureId: string }> {
+  const res = await fetch(`${API}/v2/checkout/orders`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json", "PayPal-Request-Id": `other-app-${Date.now()}-${Math.random().toString(36).slice(2)}` },
+    body: JSON.stringify({
+      intent: "CAPTURE",
+      purchase_units: [{ amount: { currency_code: "USD", value }, description: "Single-origin beans x2 (another app's sale)" }],
+      payment_source: { card: { number: "4111111111111111", expiry: "2030-12", security_code: "123", name: "Other App Buyer", billing_address: { address_line_1: "1 Main St", admin_area_2: "San Jose", admin_area_1: "CA", postal_code: "95131", country_code: "US" } } },
+    }),
+  });
+  const order = (await res.json()) as OrderRead;
+  if (!res.ok) throw new Error(`Other app's order failed: ${res.status} ${JSON.stringify(order).slice(0, 300)}`);
+  const captureId = order.purchase_units[0].payments?.captures?.[0]?.id;
+  if (order.status !== "COMPLETED" || !captureId) throw new Error(`Other app's card sale didn't complete: ${order.status}`);
+  return { orderId: order.id, captureId };
+}

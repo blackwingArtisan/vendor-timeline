@@ -220,6 +220,10 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   expect(audit.integrity.ok).toBe(true);
   await page.goto("/activity");
   await expect(page.getByTestId("audit-row").first()).toBeVisible();
+  // The couple's ledger is their own payment and nothing else: this order and its capture.
+  const ledger = (await (await api.get("/api/paypal/ledger")).json()).entries as { paypalId: string }[];
+  expect(ledger.map((e) => e.paypalId).sort()).toEqual([orderId, captureId].sort());
+  if (!sandbox || HOSTED) await expect(page.getByTestId("webhook-row")).toContainText(captureId);
 
   if (sandbox) {
     // Straight from PayPal: the couple's order, paid to the app's sandbox business account, for exactly the confirmed term.
