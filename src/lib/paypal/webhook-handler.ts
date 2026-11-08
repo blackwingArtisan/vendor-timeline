@@ -9,7 +9,7 @@ import { singleton } from "../singleton";
 import { getEnv } from "../env";
 import { getPayPal } from "./index";
 import { ingestPayPalResource, ledger } from "./ledger";
-import { dispatchWebhook, invoiceFromEvent, parseWebhookEvent, type AnyWebhookEvent } from "./webhooks";
+import { dispatchWebhook, invoiceFromEvent, parseWebhookEvent, webhookChannel, type AnyWebhookEvent } from "./webhooks";
 import "./handlers";
 
 const seen = singleton("paypal:webhook-seen", () => new Map<string, number>());
@@ -22,16 +22,19 @@ function amountOf(event: AnyWebhookEvent) {
 
 /**
  * Sandbox entries share one PayPal app, and PayPal sends every webhook all of that app's events.
- * True only for an event that names an order, invoice, capture or payout batch this app has never
- * touched, so one entry's payments stay out of another's ledger. Disputes and the rest pass through.
+ * An event counts here only if it names an order, capture, authorization, refund, invoice, payout
+ * batch or dispute this app itself made or touched (its ledger). Anything else, including an event
+ * that names nothing this app can check, is another app's, so one entry's money stays out of another's.
  */
 export function isOtherAppsEvent(event: AnyWebhookEvent) {
   const r = event.resource as {
     id?: string;
     links?: { rel: string; href: string }[];
-    supplementary_data?: { related_ids?: { order_id?: string } };
+    supplementary_data?: { related_ids?: { order_id?: string; authorization_id?: string; capture_id?: string } };
     payout_batch_id?: string;
     batch_header?: { payout_batch_id?: string };
+    dispute_id?: string;
+    disputed_transactions?: { seller_transaction_id?: string }[];
   };
   const batchId = r.payout_batch_id ?? r.batch_header?.payout_batch_id;
   if (batchId) return !ledger.get("payout", batchId);
@@ -39,10 +42,21 @@ export function isOtherAppsEvent(event: AnyWebhookEvent) {
   if (orderId) return !ledger.get("order", orderId);
   if (event.event_type.startsWith("INVOICING.INVOICE.")) {
     const invoiceId = invoiceFromEvent(event)?.id;
-    return !!invoiceId && !ledger.get("invoice", invoiceId);
+    return !invoiceId || !ledger.get("invoice", invoiceId);
   }
-  const capturedBy = r.links?.find((l) => l.rel === "up" && l.href.includes("/captures/"))?.href.split("/").pop();
-  return !!capturedBy && !ledger.get("capture", capturedBy);
+  const related = r.supplementary_data?.related_ids;
+  const upId = r.links?.find((l) => l.rel === "up")?.href.split("/").pop();
+  const known = [
+    r.id && ledger.get("capture", r.id),
+    r.id && ledger.get("authorization", r.id),
+    r.id && ledger.get("refund", r.id),
+    r.dispute_id && ledger.get("dispute", r.dispute_id),
+    related?.authorization_id && ledger.get("authorization", related.authorization_id),
+    related?.capture_id && ledger.get("capture", related.capture_id),
+    upId && (ledger.get("capture", upId) ?? ledger.get("authorization", upId) ?? ledger.get("order", upId)),
+    ...(r.disputed_transactions ?? []).map((t) => t.seller_transaction_id && ledger.get("capture", t.seller_transaction_id)),
+  ];
+  return !known.some(Boolean);
 }
 
 export async function processWebhookEvent(event: AnyWebhookEvent, opts: { replay?: boolean } = {}) {
@@ -52,7 +66,8 @@ export async function processWebhookEvent(event: AnyWebhookEvent, opts: { replay
   if (seen.size > 5000) seen.delete(seen.keys().next().value!);
 
   ingestPayPalResource(event.resource);
-  return withContext({ channel: "global", actor: "webhook" }, async () => {
+  const channel = webhookChannel(event);
+  return withContext({ channel, actor: "webhook" }, async () => {
     const result = await dispatchWebhook(event);
     timeline.emit({
       kind: "webhook",

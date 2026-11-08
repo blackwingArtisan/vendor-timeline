@@ -141,6 +141,19 @@ export async function dispatchWebhook(event: AnyWebhookEvent): Promise<{ handled
 // Mirrors PayPal's signed string: transmissionId|transmissionTime|webhookId|crc32(rawBody),
 // but signed with a local HMAC instead of PayPal's RSA cert.
 
+type ChannelFor = (event: AnyWebhookEvent) => string | undefined;
+const router = singleton("paypal:webhook-channel", () => ({ resolve: undefined as ChannelFor | undefined }));
+
+/**
+ * Lets the app send a webhook's timeline events to the one couple (or account) it belongs to,
+ * instead of every visitor. Without it, or when it returns nothing, they go to "global".
+ */
+export function routeWebhooks(resolve: ChannelFor) {
+  router.resolve = resolve;
+}
+
+export const webhookChannel = (event: AnyWebhookEvent) => router.resolve?.(event) ?? "global";
+
 export const MOCK_WEBHOOK_ID = "WH-MOCK-KIT";
 export const MOCK_AUTH_ALGO = "HMACSHA256-KITMOCK";
 const mockSecret = () => process.env.MOCK_WEBHOOK_SECRET || "kit-mock-webhook-secret";

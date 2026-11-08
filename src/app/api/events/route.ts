@@ -1,14 +1,18 @@
 import { connection, type NextRequest } from "next/server";
 import { timeline } from "@/lib/events/bus";
 import type { TimelineEvent } from "@/lib/events/types";
+import { planChannel } from "@/lib/wedding/pay";
+import { currentPlanId } from "@/lib/wedding/plan";
 
 /**
- * Server-Sent Events stream of timeline events. ?channels=<session>,global
+ * Server-Sent Events stream of timeline events. ?channels=<session>,global, plus this couple's own plan channel
  * Sends the buffered history first (event: snapshot), then live events (event: timeline).
  */
 export async function GET(req: NextRequest) {
   await connection();
-  const channels = (req.nextUrl.searchParams.get("channels") ?? "global").split(",").filter(Boolean);
+  // A couple's own channel comes from their cookie, never from the query, so no one can listen to another plan.
+  const asked = (req.nextUrl.searchParams.get("channels") ?? "global").split(",").filter((c) => c && !c.startsWith("plan:"));
+  const channels = [...asked, planChannel(await currentPlanId())];
   const runId = req.nextUrl.searchParams.get("runId") ?? undefined;
   const encoder = new TextEncoder();
   const matches = (e: TimelineEvent) => channels.includes(e.channel) && (!runId || e.runId === runId);

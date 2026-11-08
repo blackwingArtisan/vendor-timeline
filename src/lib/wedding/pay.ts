@@ -286,6 +286,35 @@ function paymentForPayPalId(id: string | undefined) {
   return found ? { contract, kind: found[0] as ItemKind, payment: found[1] } : null;
 }
 
+/** The timeline channel one couple's browser listens on. See /api/events. */
+export const planChannel = (planId: string) => `plan:${planId}`;
+
+/** A webhook naming one of a couple's payments goes to that couple only. */
+export function webhookPlanChannel(event: { resource: unknown }): string | undefined {
+  const r = event.resource as { id?: string; supplementary_data?: { related_ids?: { order_id?: string } } } | null;
+  const found = paymentForPayPalId(r?.id) ?? paymentForPayPalId(r?.supplementary_data?.related_ids?.order_id);
+  return found ? planChannel(found.contract.planId) : undefined;
+}
+
+/** Every PayPal order and capture id that belongs to this couple's payments. */
+export function planPayPalIds(planId: string): Set<string> {
+  const ids = new Set<string>();
+  for (const c of listContracts(planId)) for (const p of Object.values(c.payments)) for (const id of [p.orderId, p.captureId]) if (id) ids.add(id);
+  return ids;
+}
+
+/** Every agent or payment run that touched this couple's contracts, found from the audit entries. */
+export function planRunIds(planId: string, entries: { runId?: string; input?: unknown }[]): Set<string> {
+  const contracts = new Set(listContracts(planId).map((c) => c.id));
+  const runs = new Set<string>();
+  for (const c of listContracts(planId)) for (const p of Object.values(c.payments)) runs.add(p.runId);
+  for (const e of entries) {
+    const contractId = (e.input as { contract_id?: string } | null)?.contract_id;
+    if (e.runId && contractId && contracts.has(contractId)) runs.add(e.runId);
+  }
+  return runs;
+}
+
 /**
  * A capture webhook, already verified by signature. It counts only for this app's own payment, and
  * only if its order, capture and amount are that payment's. Anything else changes nothing.
@@ -299,7 +328,7 @@ export async function captureWebhook(event: WebhookEventEnvelope<string, Capture
   const { contract, kind, payment } = found;
   const mismatch = (orderId && orderId !== payment.orderId ? `it names order ${orderId}` : null) ?? (payment.captureId && payment.captureId !== capture.id ? `it names capture ${capture.id}` : null) ?? amountMismatch(capture.amount, payment);
   if (mismatch) {
-    timeline.emit({ kind: "webhook", status: "failed", channel: "global", title: "Capture webhook ignored", detail: `${event.event_type} doesn't match this payment: ${mismatch}.` });
+    timeline.emit({ kind: "webhook", status: "failed", title: "Capture webhook ignored", detail: `${event.event_type} doesn't match this payment: ${mismatch}.` });
     return false;
   }
   if (event.event_type === "PAYMENT.CAPTURE.COMPLETED") {

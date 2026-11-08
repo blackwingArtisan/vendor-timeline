@@ -4,11 +4,11 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { RefreshCw, ShieldCheck, ShieldX, Webhook } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
-import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, EmptyState } from "@/components/ui";
 import type { AuditEntry } from "@/lib/agent/audit";
 import { formatMoney } from "@/lib/money";
-import type { WebhookEventEnvelope } from "@/lib/paypal/types";
+import { localToday } from "@/lib/wedding/dates";
+import type { TimelineItem, TimelineView } from "@/lib/wedding/types";
 
 const when = (iso: string) => new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 
@@ -33,16 +33,17 @@ function Table({ head, children }: { head: string[]; children: ReactNode }) {
 
 export default function ActivityPage() {
   const { kitFetch, status } = useKit();
-  const { toast } = useToast();
   const [audit, setAudit] = useState<{ entries: AuditEntry[]; integrity: { ok: boolean; count: number; brokenAt?: number } } | null>(null);
-  const [events, setEvents] = useState<WebhookEventEnvelope[] | null>(null);
-  const isMock = status?.paypal.mode === "mock";
+  const [events, setEvents] = useState<TimelineItem[] | null>(null);
+  const webhookReady = status?.paypal.mode === "mock" || !!status?.paypal.webhookConfigured;
 
   const fetchAll = useCallback(async () => {
     const auditRes = await kitFetch<NonNullable<typeof audit>>("/api/audit");
-    const eventsRes = isMock ? (await kitFetch<{ events: WebhookEventEnvelope[] }>("/api/dev/webhooks")).events.reverse() : null;
+    // This couple's own payments that PayPal's webhook has confirmed. No other app's or couple's events.
+    const view = await kitFetch<TimelineView>(`/api/timeline?today=${localToday()}`);
+    const eventsRes = view.items.filter((i) => i.payment?.webhook).sort((a, b) => b.payment!.webhook!.receivedAt.localeCompare(a.payment!.webhook!.receivedAt));
     return { auditRes, eventsRes };
-  }, [kitFetch, isMock]);
+  }, [kitFetch]);
 
   const load = useCallback(async () => {
     const { auditRes, eventsRes } = await fetchAll();
@@ -63,15 +64,6 @@ export default function ActivityPage() {
       cancelled = true;
     };
   }, [fetchAll]);
-
-  async function replay(eventId: string) {
-    try {
-      await kitFetch("/api/dev/webhooks/replay", { json: { eventId } });
-      toast({ title: "Webhook replayed", description: eventId, variant: "success" });
-    } catch (e) {
-      toast({ title: "Replay failed", description: (e as Error).message, variant: "error" });
-    }
-  }
 
   return (
     <>
@@ -112,26 +104,24 @@ export default function ActivityPage() {
       </Card>
 
       <Card className="mt-6">
-        <CardHeader title="Webhooks" description={isMock ? "Events the mock PayPal emitted. Replay one to re-run the handlers." : "Events from PayPal's webhook appear on the timeline page."} />
+        <CardHeader title="Webhooks" description="PayPal's verified webhooks for your own payments. Other apps on the same PayPal sandbox never show here." />
         <CardBody>
-          {isMock && events?.length ? (
-            <Table head={["Time", "Event", "Summary", ""]}>
-              {events.map((e) => (
-                <tr key={e.id}>
-                  <td className="whitespace-nowrap px-2 py-2">{when(e.create_time)}</td>
-                  <td className="whitespace-nowrap px-2 py-2 font-mono text-xs">{e.event_type}</td>
-                  <td className="px-2 py-2">{e.summary}</td>
-                  <td className="px-2 py-2 text-right">
-                    <Button size="sm" variant="ghost" onClick={() => replay(e.id)}>Replay</Button>
-                  </td>
+          {events?.length ? (
+            <Table head={["Received", "Event", "Payment", "Capture"]}>
+              {events.map((i) => (
+                <tr key={i.id} data-testid="webhook-row">
+                  <td className="whitespace-nowrap px-2 py-2">{when(i.payment!.webhook!.receivedAt)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 font-mono text-xs">{i.payment!.webhook!.eventType}</td>
+                  <td className="px-2 py-2">{`${i.vendorName} ${i.kind}`}</td>
+                  <td className="px-2 py-2 font-mono text-xs">{i.payment!.webhook!.captureId}</td>
                 </tr>
               ))}
             </Table>
           ) : (
             <EmptyState
               icon={<Webhook className="size-5" />}
-              title={isMock ? "No webhook events yet" : "Sandbox webhooks"}
-              description={isMock ? "Pay a vendor to see PayPal's events." : status?.paypal.webhookConfigured ? "PayPal's webhook is connected." : "PayPal's webhook isn't connected on this copy, so the app reads each payment's status from PayPal directly."}
+              title="No webhooks for your payments yet"
+              description={webhookReady ? "When you pay a vendor, PayPal's PAYMENT.CAPTURE.COMPLETED webhook for that payment shows here and on the timeline." : "PayPal's webhook isn't connected on this copy, so the app reads each payment's status from PayPal directly."}
             />
           )}
         </CardBody>

@@ -43,8 +43,25 @@ describe("isOtherAppsEvent", () => {
     expect(isOtherAppsEvent(event("PAYMENT.CAPTURE.REFUNDED", refundOf("CAP-THEIRS")))).toBe(true);
   });
 
-  it("keeps events that name nothing to check", () => {
-    expect(isOtherAppsEvent(event("CUSTOMER.DISPUTE.CREATED", { dispute_id: "PP-D-1" }))).toBe(false);
+  it("drops a capture that names nothing this app made, like another entry's card sale", () => {
+    // The shared sandbox sends every entry's sales here: a $48.50 coffee order, with no order id this app knows.
+    expect(isOtherAppsEvent(event("PAYMENT.CAPTURE.COMPLETED", { id: "CAP-COFFEE", amount: { currency_code: "USD", value: "48.50" } }))).toBe(true);
+    expect(isOtherAppsEvent(event("PAYMENT.CAPTURE.COMPLETED", { id: "CAP-COFFEE", links: [{ rel: "up", href: "https://api-m.sandbox.paypal.com/v2/checkout/orders/ORDER-THEIRS" }] }))).toBe(true);
+  });
+
+  it("keeps this app's own capture, by its id or the order it belongs to", () => {
+    expect(isOtherAppsEvent(event("PAYMENT.CAPTURE.COMPLETED", { id: "CAP-MINE" }))).toBe(false);
+    expect(isOtherAppsEvent(event("PAYMENT.CAPTURE.COMPLETED", { id: "CAP-NEW", links: [{ rel: "up", href: "https://api-m.sandbox.paypal.com/v2/checkout/orders/ORDER-MINE" }] }))).toBe(false);
+  });
+
+  it("judges disputes by the capture they name, and drops ones that name nothing of this app's", () => {
+    expect(isOtherAppsEvent(event("CUSTOMER.DISPUTE.CREATED", { dispute_id: "PP-D-1", disputed_transactions: [{ seller_transaction_id: "CAP-MINE" }] }))).toBe(false);
+    expect(isOtherAppsEvent(event("CUSTOMER.DISPUTE.CREATED", { dispute_id: "PP-D-2", disputed_transactions: [{ seller_transaction_id: "CAP-THEIRS" }] }))).toBe(true);
+    expect(isOtherAppsEvent(event("CUSTOMER.DISPUTE.CREATED", { dispute_id: "PP-D-3" }))).toBe(true);
+  });
+
+  it("drops an invoice event that names no invoice", () => {
+    expect(isOtherAppsEvent(event("INVOICING.INVOICE.PAID", {}))).toBe(true);
   });
 });
 

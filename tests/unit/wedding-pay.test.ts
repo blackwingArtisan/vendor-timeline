@@ -5,10 +5,12 @@ import { getApprovals } from "@/lib/agent/approvals";
 import { getAuditLog } from "@/lib/agent/audit";
 import { getMockPayPal, getPayPal } from "@/lib/paypal";
 import { addContract, confirmContract, listContracts, requireContract, saveContract } from "@/lib/wedding/contracts";
-import { handleWebhookRequest } from "@/lib/paypal/webhook-handler";
+import { handleWebhookRequest, processWebhookEvent } from "@/lib/paypal/webhook-handler";
 import type { Capture, WebhookEventEnvelope } from "@/lib/paypal/types";
 import { moveDueDate } from "@/lib/wedding/contracts";
-import { captureCheckout, captureWebhook, orderPayee, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
+import { timeline } from "@/lib/events/bus";
+
+import { captureCheckout, captureWebhook, orderPayee, planChannel, planPayPalIds, webhookPlanChannel, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
 import { BAND, PHOTOGRAPHER } from "@/lib/wedding/samples";
 import type { Contract } from "@/lib/wedding/types";
 
@@ -263,6 +265,32 @@ describe("capture webhooks", () => {
     const contract = await confirmedContract();
     await approvedPayment(contract);
     expect(await captureWebhook(captureEvent({ captureId: "SOMEONE-ELSES", orderId: "SOMEONE-ELSES-ORDER" }))).toBe(false);
+  });
+
+  it("shows a payment's webhook only to the couple whose payment it is", async () => {
+    const contract = await confirmedContract();
+    const paid = await capturedNoWebhook(contract);
+    const seen: { channel: string; title: string }[] = [];
+    const stop = timeline.subscribe((e) => {
+      if (e.kind === "webhook") seen.push({ channel: e.channel, title: e.title });
+    });
+    await processWebhookEvent(captureEvent(paid));
+    // Someone else's sale on the same sandbox: it names nothing of this couple's, so no couple sees it.
+    await processWebhookEvent(captureEvent({ captureId: "CAP-COFFEE", orderId: "ORDER-COFFEE" }, { amount: { currency_code: "USD", value: "48.50" } }));
+    stop();
+    expect(seen[0]).toEqual({ channel: planChannel(contract.planId), title: "PAYMENT.CAPTURE.COMPLETED" });
+    expect(seen.filter((e) => e.channel.startsWith("plan:"))).toHaveLength(1);
+    expect(webhookPlanChannel(captureEvent({ captureId: "CAP-COFFEE", orderId: "ORDER-COFFEE" }))).toBeUndefined();
+    expect(paymentOf(contract.id)).toMatchObject({ state: "paid", paidBy: "webhook" });
+  });
+
+  it("lists only this couple's PayPal ids", async () => {
+    const mine = await confirmedContract();
+    const theirs = await confirmedContract();
+    const a = await capturedNoWebhook(mine);
+    const b = await capturedNoWebhook(theirs);
+    expect([...planPayPalIds(mine.planId)].sort()).toEqual([a.orderId, a.captureId].sort());
+    expect(planPayPalIds(mine.planId).has(b.orderId!)).toBe(false);
   });
 
   it("marks the payment paid from the webhook for its capture, once PayPal's status agrees", async () => {
