@@ -4,11 +4,8 @@ import { defineConfig, devices } from "@playwright/test";
  * Demo recording (npm run demo:record). Builds the app, starts it, records demo/demo.spec.ts as
  * 1440x900 .webm and copies it to videos/. Mock PayPal unless PAYPAL_MODE=sandbox (or
  * DEMO_PAYPAL_MODE=sandbox); AI is mocked unless DEMO_AI_MODE=live.
- * DEMO_BASE_URL records against a deployed copy instead (the hosted site, where PayPal's webhook
- * can reach the app), and starts no local server.
  */
 const PORT = Number(process.env.DEMO_PORT ?? 3400);
-const HOSTED = process.env.DEMO_BASE_URL;
 const SIZE = { width: 1440, height: 900 };
 const PAYPAL_MODE = process.env.DEMO_PAYPAL_MODE ?? process.env.PAYPAL_MODE ?? "mock";
 // Start clean, so the audit log on screen is only this story. Sandbox has no reset route, so fill
@@ -24,14 +21,14 @@ export default defineConfig({
   reporter: [["list"]],
   outputDir: "test-results/demo",
   use: {
-    baseURL: HOSTED ?? `http://localhost:${PORT}`,
+    baseURL: `http://localhost:${PORT}`,
     viewport: SIZE,
     deviceScaleFactor: 1,
     video: { mode: "on", size: SIZE },
     launchOptions: { slowMo: 80 },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: SIZE, deviceScaleFactor: 1 } }],
-  webServer: HOSTED ? undefined : {
+  webServer: {
     // Production build: no dev reloads or overlays in the recording.
     command: `${SETUP}npx next build && npx next start --port ${PORT}`,
     url: `http://localhost:${PORT}/api/kit/status`,

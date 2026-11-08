@@ -93,39 +93,16 @@ export async function highlight(page: Page, target: Locator, ms = 1600) {
   await sleep(Math.min(ms, 900));
 }
 
-/**
- * Keeps the cut video under its limit. A wait that the edit cuts (PayPal's page loading, a webhook
- * on its way) is marked with `cut()`: it doesn't count, and its start and end in the raw recording
- * are printed so the editor knows where to cut.
- */
+/** Keeps the video under Devpost's 3-minute limit. */
 export class DemoClock {
   private readonly start = Date.now();
-  private cutMs = 0;
-  readonly cuts: { label: string; from: number; to: number }[] = [];
-  constructor(private readonly limitSeconds = 100) {}
-  /** Seconds into the raw recording. */
-  get raw() {
-    return (Date.now() - this.start) / 1000;
-  }
-  /** Seconds into the cut video. */
+  constructor(private readonly limitSeconds = 170) {}
   get seconds() {
-    return Math.round((Date.now() - this.start - this.cutMs) / 1000);
-  }
-  async cut<T>(label: string, wait: () => Promise<T>, keepMs = 0): Promise<T> {
-    const from = this.raw;
-    const result = await wait();
-    const to = this.raw;
-    const cut = Math.max(0, (to - from) * 1000 - keepMs);
-    if (cut > 0) {
-      this.cutMs += cut;
-      this.cuts.push({ label, from: from + keepMs / 1000, to });
-      console.log(`[demo] cut "${label}": raw ${(from + keepMs / 1000).toFixed(1)}s to ${to.toFixed(1)}s`);
-    }
-    return result;
+    return Math.round((Date.now() - this.start) / 1000);
   }
   check(label: string) {
     const s = this.seconds;
-    console.log(`[demo] ${label} at ${s}s (raw ${Math.round(this.raw)}s)`);
+    console.log(`[demo] ${label} at ${s}s`);
     if (s > this.limitSeconds) throw new Error(`Demo is ${s}s at "${label}" (limit ${this.limitSeconds}s). Cut scenes or shorten captions.`);
   }
 }

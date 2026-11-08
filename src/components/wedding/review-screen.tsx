@@ -210,7 +210,7 @@ export function ReviewScreen() {
         eyebrow={<Link href="/contracts" className="hover:underline">Contracts</Link>}
         title={name}
         description={read.skipped ? "Fill in the terms from your copy of the contract." : contract.proposed.eventDate.value ? `Wedding day in this contract: ${formatDay(contract.proposed.eventDate.value)}` : "This contract doesn't give a clear wedding day."}
-        actions={<span data-testid="read-by"><Badge tone={read.mocked || read.skipped ? "neutral" : "brand"}>{read.skipped ? "Not read by AI" : read.mocked ? "Simulated read, no AI" : `Read by ${read.model}`}</Badge></span>}
+        actions={<span data-testid="read-by"><Badge tone={read.mocked || read.skipped ? "neutral" : "brand"}>{read.skipped ? "Not read by AI" : read.mocked ? "Simulated read (AI mock)" : `Read by ${read.model}`}</Badge></span>}
       />
       {contract.confirmed ? <ConfirmedSummary contract={contract} /> : <ReviewForm contract={contract} />}
       <details className="mt-6 rounded-2xl border border-zinc-200/80 bg-white px-5 py-4">

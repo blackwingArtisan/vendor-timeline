@@ -103,8 +103,6 @@ Open http://localhost:3000. For the real sandbox set `PAYPAL_MODE=sandbox`, `PAY
 
 Checks: `npm run check` (lint, typecheck, unit tests, build, no sponsor code in the bundle), `npm run test:e2e:limits` (five contracts at the real 6-a-minute limit, and AI credit running out), `npm run test:e2e:engines` with `ENGINE=webkit`, `firefox`, `iphone` or `android`, `npm run test:e2e` (every flow on mock PayPal; `NEXT_PUBLIC_SPONSOR_UI=1 npm run test:e2e` runs it with the Gantt), `npm run test:e2e:sandbox` (the vendor and agent flows on the real sandbox, pays through PayPal's checkout as a guest with the test card, then re-reads the order and capture from PayPal; add `E2E_BASE_URL` to run them against a deployed copy, which also requires the webhook). Run one Playwright suite at a time.
 
-Demo video: `npm run demo:record` records `demo/demo.spec.ts` (about 65 s once cut) on a local build with mock AI and mock PayPal; add `DEMO_PAYPAL_MODE=sandbox` for PayPal's own checkout page. To record on the deployed copy, where PayPal's webhook reaches the app, run `DEMO_BASE_URL=https://vendor-timeline.onrender.com npx playwright test -c playwright.demo.config.ts`. The script uses no pinned clock, so every date is the recording date, and it prints the waits to cut (contract reads, PayPal's page loading, the webhook on its way), keeping 8 s of PayPal's checkout.
-
 ## Sandbox test accounts
 
 1. In the PayPal Developer Dashboard → **Testing Tools → Sandbox Accounts**, use the default Personal and Business accounts or create new ones. The Personal account is a couple who can log in to PayPal's checkout; the Business account owns the REST app and stands in for the vendors as the order's payee (`PAYPAL_SANDBOX_SELLER_EMAIL`).
