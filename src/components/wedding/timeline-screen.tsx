@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CalendarClock, CalendarDays, CircleCheck, FileText, Send, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarDays, CircleCheck, FileText, ReceiptText, Send, Wallet } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
@@ -20,6 +20,7 @@ import { PayApproval } from "./pay-approval";
 import { PayPalCheckout, StandInLine } from "./paypal-checkout";
 import { SamplePlanBanner } from "@/components/wedding/sample-plan-banner";
 import { PaymentChart, SPONSOR_UI } from "./payment-chart";
+import { ReceiptView } from "./receipt-view";
 import { AxisHeader, axisFor, VendorBar, type Axis } from "./vendor-bars";
 
 const STATUS: Record<ItemStatus, { label: string; tone: Tone; dot: string }> = {
@@ -101,6 +102,7 @@ function MoveDateForm({ item, onMove, onClose }: { item: TimelineItem; onMove: (
  */
 function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { item: TimelineItem; view: TimelineView; axis: Axis | null; onPay: (item: TimelineItem) => void; onMove: (item: TimelineItem, due: string) => void; busy: boolean; onDecided: () => void; panelRuns: string[] }) {
   const [moving, setMoving] = useState(false);
+  const [receipt, setReceipt] = useState(false);
   const status = STATUS[item.status];
   const isNext = view.nextDue?.id === item.id;
   // The most urgent payment is tagged, overdue or not. One tag at most, beside its status.
@@ -113,7 +115,7 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
   const when = whenLabel(item);
   const cols = axis ? "xl:grid-cols-[8.75rem_minmax(0,12rem)_5.75rem_minmax(0,1fr)_9.5rem_11rem]" : "xl:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_9.5rem_11rem]";
   return (
-    <li className={`border-b border-zinc-100 px-4 py-1.5 last:border-b-0 ${isFirst ? "bg-brand-50/50" : item.status === "overdue" ? "bg-red-50/40" : ""}`} data-testid="timeline-item" data-role={item.vendorRole} data-kind={item.kind} data-status={item.status}>
+    <li className={`border-b border-zinc-100 px-4 py-1 last:border-b-0 ${isFirst ? "bg-brand-50/50" : item.status === "overdue" ? "bg-red-50/40" : ""}`} data-testid="timeline-item" data-role={item.vendorRole} data-kind={item.kind} data-status={item.status}>
       <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 md:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_auto] ${cols}`}>
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-sm font-medium text-zinc-900">
@@ -151,6 +153,11 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
               </Button>
             </>
           ) : null}
+          {item.status === "paid" && item.payment?.captureId ? (
+            <Button size="sm" variant="secondary" icon={<ReceiptText className="size-3.5" />} onClick={() => setReceipt((r) => !r)} aria-expanded={receipt} data-testid="receipt-open">
+              Receipt
+            </Button>
+          ) : null}
         </div>
       </div>
       {canPay && moving ? <MoveDateForm key={item.due} item={item} onMove={onMove} onClose={() => setMoving(false)} /> : null}
@@ -166,6 +173,7 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
         </p>
       ) : null}
       <PayPalProof item={item} standIn={view.sandboxStandIn} />
+      {receipt && item.status === "paid" ? <ReceiptView item={item} onClose={() => setReceipt(false)} /> : null}
     </li>
   );
 }
