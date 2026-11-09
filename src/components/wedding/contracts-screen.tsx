@@ -14,7 +14,7 @@ import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Textarea 
 import { formatCents } from "@/lib/wedding/cents";
 import { MAX_CONTRACT_CHARS } from "@/lib/wedding/limits";
 import { SAMPLE_PDF, SAMPLES, sampleUrl, type SampleFacts } from "@/lib/wedding/samples";
-import type { Contract } from "@/lib/wedding/types";
+import type { Contract, PlanMix } from "@/lib/wedding/types";
 
 export function ContractsScreen() {
   const { kitFetch } = useKit();
@@ -22,6 +22,7 @@ export function ContractsScreen() {
   const router = useRouter();
   const [contracts, setContracts] = useState<Contract[] | null>(null);
   const [samplePlan, setSamplePlan] = useState(false);
+  const [mix, setMix] = useState<PlanMix>();
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string>();
   const [reading, setReading] = useState(false);
@@ -50,10 +51,11 @@ export function ContractsScreen() {
   }, []);
 
   useEffect(() => {
-    kitFetch<{ contracts: Contract[]; samplePlan?: boolean }>("/api/contracts")
+    kitFetch<{ contracts: Contract[]; samplePlan?: boolean; planMix?: PlanMix }>("/api/contracts")
       .then((r) => {
         setContracts(r.contracts);
         setSamplePlan(!!r.samplePlan);
+        setMix(r.planMix);
       })
       .catch(() => setContracts([]));
   }, [kitFetch]);
@@ -140,7 +142,7 @@ export function ContractsScreen() {
   return (
     <>
       <PageHeader title="Contracts" description="Add each vendor's contract. AI pulls out the payment terms, and nothing reaches your timeline until you confirm them." />
-      {samplePlan ? <SamplePlanBanner className="mb-6" /> : null}
+      {samplePlan ? <SamplePlanBanner mix={mix} className="mb-6" /> : null}
       <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <Card>
           <CardHeader title="Add a contract" description="Paste the text, or upload a .txt or .pdf file." />

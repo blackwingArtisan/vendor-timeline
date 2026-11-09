@@ -23,6 +23,7 @@ import { getPayPal } from "@/lib/paypal";
 import type { Capture, CreateOrderRequest, Order, PurchaseUnit, WebhookEventEnvelope } from "@/lib/paypal/types";
 import { singleton } from "@/lib/singleton";
 import { isSamplePlan, monthlyBudget } from "./budget";
+import { planMix } from "./plan-mix";
 import { centsToDollars, dollarsToCents, formatCents } from "./cents";
 import { contractWithPayPalId, findContract, listContracts, requireContract, requirePlanContract, saveContract } from "./contracts";
 import { formatDay, isCalendarDay, utcToday } from "./dates";
@@ -440,5 +441,5 @@ export async function viewTimeline(planId: string, today = utcToday()): Promise<
   const byId = new Map(listContracts(planId).map((c) => [c.id, c]));
   const items = view.items.map((item) => ({ ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(byId.get(item.contractId)?.confirmed?.payeeEmail ?? "") }));
   const same = (item: TimelineItem | null) => items.find((i) => i.id === item?.id) ?? null;
-  return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId) };
+  return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId), planMix: planMix(listContracts(planId)) };
 }
