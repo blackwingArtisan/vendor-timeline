@@ -64,15 +64,22 @@ export function CashPlanMoves({ fix, started, items, cash, sandbox, onStarted, o
   const moves = [...started, ...current.filter((m) => !started.some((s) => s.itemId === m.itemId))];
   return (
     <div className={`rounded-xl border border-brand-200 bg-brand-50/40 p-4 ${className ?? ""}`} data-testid="cash-plan">
+      <div data-testid="cash-plan-head">
       <p className="text-sm font-semibold text-zinc-900">Cash plan: approve each move on its own</p>
-      {/* The agent's message gives the plan as proposed. This line follows it as moves are made. */}
+      {/* The agent's message gives the plan as proposed. This line follows it as moves are made; the sums wait under Details. */}
       {fix ? (
-        fix.stillOver ? <p className="mt-1 text-sm text-zinc-700" data-testid="cash-plan-still-over">{fix.stillOver}</p> : null
+        fix.stillOver ? (
+          <details className="mt-1">
+            <summary className="cursor-pointer text-sm text-zinc-700" data-label>Still over budget after these moves. Details</summary>
+            <p className="mt-1 text-sm text-zinc-700" data-testid="cash-plan-still-over">{fix.stillOver}</p>
+          </details>
+        ) : null
       ) : (
         <p className="mt-1 flex items-center gap-2 text-sm text-emerald-800" data-testid="cash-plan-fits">
           <CircleCheck className="size-4 shrink-0" /> Every month now fits your {formatCents(cash.monthlyBudgetCents)} monthly budget.
         </p>
       )}
+      </div>
       {moves.length ? (
         <ul className="mt-3 space-y-3">
           {moves.map((move) => {
@@ -81,11 +88,14 @@ export function CashPlanMoves({ fix, started, items, cash, sandbox, onStarted, o
               <li key={move.id} className="rounded-lg border border-zinc-200 bg-white px-3 py-3" data-testid="cash-move" data-kind={move.kind} data-item={item ? `${item.vendorRole}.${item.kind}` : undefined}>
                 <div className="flex items-start justify-between gap-3">
                   <p className="min-w-0 text-sm font-medium text-zinc-900" data-testid="move-title">{move.title}</p>
-                  <Badge tone={move.kind === "pay_now" ? "brand" : "neutral"}>
+                  <span data-label><Badge tone={move.kind === "pay_now" ? "brand" : "neutral"}>
                     <span className="inline-flex items-center gap-1">{move.kind === "pay_now" ? <Wallet className="size-3" /> : <CalendarClock className="size-3" />}{move.kind === "pay_now" ? "Pay early" : "Ask to move"}</span>
-                  </Badge>
+                  </Badge></span>
                 </div>
-                <p className="mt-1 text-xs text-zinc-600" data-testid="move-why">{move.why}</p>
+                <details className="mt-1">
+                  <summary className="cursor-pointer text-sm text-zinc-600 underline underline-offset-2" data-label>Why: the contract&apos;s words</summary>
+                  <p className="mt-1 text-sm text-zinc-600" data-testid="move-why">{move.why}</p>
+                </details>
                 {move.kind === "pay_now" ? (
                   <PayEarly move={move} item={item} cash={cash} sandbox={sandbox} onStarted={(runId) => onStarted(move, runId)} onDone={onDone} />
                 ) : (
