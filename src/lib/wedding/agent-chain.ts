@@ -41,3 +41,14 @@ export function firstSentences(text: string, n: number): { lead: string; rest: s
   const sentences = text.trim().split(/(?<=[.!?])\s+(?=["'(A-Z0-9$])/);
   return { lead: sentences.slice(0, n).join(" "), rest: sentences.slice(n).join(" ") };
 }
+
+/**
+ * Who wrote the reply on show: the model by name when it's Claude, code when a precheck answered
+ * before any model ran, and plainly "AI off" otherwise. Never a model that didn't run.
+ */
+export function replyAuthor(engine: string | undefined): string {
+  if (engine && /^claude/i.test(engine)) return engine;
+  if (engine?.startsWith("checked in code")) return "Checked by code";
+  return "Scripted agent, AI off";
+}
+
