@@ -33,6 +33,9 @@ const CHECKOUT_ON_CAMERA_MS = 8_000;
 /** The Guard's refusal and PayPal's checkout each hold at least this long in the cut, or the take fails. */
 const HOLD_ON_CAMERA_S = 5;
 
+/** The dollar amounts in a piece of on-screen text, cents dropped when they're zero: "$2,500". */
+const dollars = (text: string) => [...text.matchAll(/\$\d[\d,]*(?:\.\d\d)?/g)].map((m) => m[0].replace(/\.00$/, ""));
+
 const scrollTo = async (page: Page, target: ReturnType<Page["getByTestId"]>) => {
   await target.evaluate((el) => window.scrollBy({ top: el.getBoundingClientRect().top - 96, behavior: "smooth" }));
   await page.waitForTimeout(600);
@@ -77,6 +80,7 @@ test("demo", async ({ page, context }) => {
 
   // Scene 1: a real contract, and the case for the app, from research.
   const contractText = page.getByTestId("contract-text");
+  clock.say(1, "Every wedding vendor has its own contract, with its own payment dates.");
   await highlight(page, contractText, 3400);
   await caption(page, "A photographer's contract, uploaded as a PDF. About 13 vendors per couple (The Knot 2026), each with its own payment dates.", { ms: 3600, over: contractText });
   await check("contract");
@@ -88,6 +92,7 @@ test("demo", async ({ page, context }) => {
   // The review screen holds for about 7 s, with the contract's own sentence lit up.
   const source = page.getByTestId("source-deposit");
   await mark(source, 7000);
+  clock.say(3, `${aiLive ? "Claude reads the terms. " : ""}Each amount sits beside its sentence, and nothing counts until you confirm it.`);
   await highlight(page, source, 7000);
   await caption(page, aiLive ? "Claude reads the payment terms. Each amount and date sits beside the sentence it came from." : "The payment terms, each amount and date beside the sentence it came from.", { ms: 3600 });
   await caption(page, "Nothing reaches the timeline until you confirm it.", { ms: 2500 });
@@ -108,6 +113,7 @@ test("demo", async ({ page, context }) => {
   // The mismatch flag holds for at least 4 s, the caption clear of it.
   const flagFrom = clock.raw;
   await mark(flag, 4600);
+  clock.say(4, "The caterer's contract gets its own sum wrong. Code flags it.");
   await highlight(page, flag, 4600);
   await caption(page, `The contract says the balance is ${formatCents(CATERER_STATED_BALANCE_CENTS)}. Its own total minus deposit is ${formatCents(CATERER.balanceCents)}, so code flags it.`, { ms: 3800, over: flag });
   const flagShown = clock.onCamera(flagFrom, clock.raw);
@@ -121,6 +127,7 @@ test("demo", async ({ page, context }) => {
   await page.reload();
   await expect(page.getByTestId("timeline-item")).toHaveCount(10);
   const overdue = page.locator('[data-testid="timeline-item"][data-role="florist"][data-kind="deposit"]');
+  clock.say(5, "Now one timeline for all five vendors. The florist's deposit is overdue.");
   await highlight(page, overdue, 3000);
   await caption(page, `With the other three, one timeline for all five. The florist's ${formatCents(FLORIST.depositCents)} deposit is already overdue.`, { ms: 3000, over: overdue });
   await check("contracts");
@@ -135,6 +142,9 @@ test("demo", async ({ page, context }) => {
   const refusal = panel.getByTestId("guard-refusal");
   await clock.cut("agent", () => expect(refusal).toBeVisible({ timeout: 90_000 }), 1000);
   const refusalFrom = clock.raw;
+  // The confirmed deposit is whatever the Guard's own reason names, not a number written here.
+  const confirmedDeposit = dollars(await refusal.getByTestId("guard-reason").innerText()).find((d) => d !== "$5,000");
+  clock.say(6, `Asked for $5,000, the Guard refuses${confirmedDeposit ? `: the confirmed deposit is ${confirmedDeposit}` : " in code"}. Nothing is sent.`);
   await highlight(page, refusal, 5400);
   await caption(page, "Asked to pay the caterer $5,000, the Guard checks the signed contract in code and refuses. Nothing is sent.", { ms: 5400 });
   const refusalShown = clock.onCamera(refusalFrom, clock.raw);
@@ -148,6 +158,8 @@ test("demo", async ({ page, context }) => {
   const prompt = panel.getByTestId("approval-prompt").first();
   await clock.cut("agent", () => expect(prompt).toBeVisible({ timeout: 90_000 }), 1500);
   await page.screenshot({ path: "docs/screenshot.png" });
+  const asked = dollars(await prompt.innerText())[0];
+  clock.say(7, `The agent puts the overdue${asked ? ` ${asked}` : ""} deposit first. It can't pay alone.`);
   await highlight(page, panel.getByTestId("agent-messages"), 1800);
   await caption(page, "The agent puts the overdue deposit first, explains the cash clash and proposes a plan the contracts allow.", { ms: 3600 });
   await check("agent");
@@ -155,6 +167,7 @@ test("demo", async ({ page, context }) => {
   // Scene 6: the cash plan resolves a clash on screen. A vendor agrees to a later date.
   const ask = page.locator('[data-testid="cash-move"][data-kind="ask_vendor"]').first();
   await scrollTo(page, ask);
+  clock.say(8, "The cash plan asks a vendor for a later date, with a drafted message. When they agree, the crowded week clears.");
   await highlight(page, ask.getByTestId("move-message"), 1600);
   await caption(page, "Asking a vendor for a later date? The message is drafted by code. Copy it and send it.", { ms: 3000 });
   await ask.getByTestId("move-copy").click();
@@ -170,6 +183,7 @@ test("demo", async ({ page, context }) => {
 
   // Scene 7: one approval, then PayPal's checkout, 5 to 8 s of it on camera.
   await scrollTo(page, prompt);
+  clock.say(9, "One approval, then the couple pay it themselves.");
   await highlight(page, prompt.getByTestId("approve-button"), 1200);
   await caption(page, "Nothing moves without you. One approval, then pay it yourself in PayPal.", { ms: 2400 });
   await prompt.getByTestId("approve-button").click();
@@ -183,6 +197,7 @@ test("demo", async ({ page, context }) => {
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.waitForTimeout(400);
     });
+    clock.say(10, `In PayPal's own checkout, for exactly ${asked ?? "that amount"}, with the sandbox test card.`);
     await caption(page, `PayPal's own checkout, for exactly the confirmed ${formatCents(FLORIST.depositCents)} (sandbox).`, { ms: 5600 });
     await clock.cut("PayPal checkout", async () => {
       await payAsGuest(page, { typingDelay: 0 });
@@ -195,6 +210,7 @@ test("demo", async ({ page, context }) => {
   } else {
     await expect(page.getByTestId("mock-order-id")).toHaveText(/\S/, { timeout: 60_000 });
     const checkoutFrom = clock.raw;
+    clock.say(10, `Checkout, for exactly ${asked ?? "the confirmed amount"}.`);
     await caption(page, "Checkout, for exactly the confirmed amount.", { ms: 5400 });
     const shown = clock.onCamera(checkoutFrom, clock.raw);
     console.log(`[demo] checkout on camera ${shown.toFixed(1)}s`);
@@ -210,11 +226,14 @@ test("demo", async ({ page, context }) => {
   const proof = deposit.getByTestId("paypal-proof");
   await highlight(page, proof, 2200);
   const confirmedBy = await deposit.getByTestId("paid-by").innerText();
-  await caption(page, sandbox ? `Paid. PayPal's capture reads COMPLETED${confirmedBy.startsWith("Confirmed by PayPal webhook") ? ", and PayPal's webhook for it arrived" : ", read back from PayPal"}.` : "Paid. The capture reads COMPLETED.", { ms: 3000, over: proof });
+  const byWebhook = confirmedBy.startsWith("Confirmed by PayPal webhook");
+  clock.say(11, byWebhook ? "Paid, and PayPal's webhook confirmed it." : sandbox ? "Paid, read back from PayPal." : "Paid.");
+  await caption(page, sandbox ? `Paid. PayPal's capture reads COMPLETED${byWebhook ? ", and PayPal's webhook for it arrived" : ", read back from PayPal"}.` : "Paid. The capture reads COMPLETED.", { ms: 3000, over: proof });
   await deposit.getByTestId("receipt-open").click();
   const receipt = deposit.getByTestId("receipt");
   await expect(receipt.getByTestId("receipt-capture-id")).toHaveText(/\S/, { timeout: 30_000 });
   await receipt.scrollIntoViewIfNeeded();
+  clock.say(12, sandbox ? "The receipt is read back from PayPal: order, capture, webhook event and debug id. Every PayPal call is listed below it." : "The receipt, and every call behind it.");
   await highlight(page, receipt, 2800);
   await caption(page, sandbox ? "Its receipt, read back from PayPal: order, capture, webhook event and PayPal's debug_id." : "Its receipt: order, capture and webhook event.", { ms: 3000, over: receipt });
   await check("paid");
@@ -237,7 +256,8 @@ test("demo", async ({ page, context }) => {
 
   // The end card comes up on a clear screen: no caption or outline left over the receipt.
   await clearOverlays(page);
-  await titleCard(page, "How PayPal pays each vendor", "Create order → the couple approve in PayPal's checkout → capture → PAYMENT.CAPTURE.COMPLETED webhook", 3200, { stay: true });
+  clock.say(13, "Claude reads, code checks, you approve, PayPal pays.");
+  await titleCard(page, "How PayPal pays each vendor", "Create order → the couple approve in PayPal's checkout → capture → PAYMENT.CAPTURE.COMPLETED webhook", 3800, { stay: true });
   clock.end();
   await check("end");
   if (live.requireLive) {
@@ -245,6 +265,9 @@ test("demo", async ({ page, context }) => {
     expect(status.paypal.mode, "DEMO_REQUIRE_LIVE=1 needs PayPal's sandbox").toBe("sandbox");
   }
   const edit = clock.writeCuts("test-results/demo/cuts.json");
+  const voice = clock.writeVoiceover("test-results/demo/voiceover.json");
+  console.log(`[demo] Voiceover: ${voice.lines.map((l) => `${l.shot}@${l.at}s`).join(" ")}`);
+  if (voice.tooLong.length) console.log(`[demo] Voiceover lines to trim: ${voice.tooLong.join("; ")}`);
   const after = await (await page.request.get("/api/kit/status")).json();
   console.log(`[demo] PayPal ${after.paypal.mode}, AI ${after.ai.mode}, AI spend today: ${JSON.stringify(after.ai.budget)}`);
   console.log(`[demo] Paid: ${await deposit.getByTestId("paypal-proof").innerText()}`);
