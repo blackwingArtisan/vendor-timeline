@@ -1,6 +1,6 @@
 /**
- * Loads the five fictional sample contracts into one wedding with no AI spend. Their reads are
- * fixtures made ahead of time, marked `sample`, so the review page and the banner say so. The
+ * Loads the five fictional sample contracts into one wedding with no AI spend. Their reads were
+ * prepared ahead of time, marked `sample` and `prepared`, so the review page and the banner say so. The
  * band's contract leaves its email and balance date blank on purpose, so the sample couple's
  * answers fill those in here.
  */
@@ -13,6 +13,12 @@ import { toProposedTerms } from "./review";
 import { BAND_ANSWERS, SAMPLES, type SampleFacts } from "./samples";
 
 const sampleText = (sample: SampleFacts) => fs.readFileSync(path.join(/*turbopackIgnore: true*/ process.cwd(), "public/sample-contracts", sample.file), "utf8");
+
+/**
+ * How a sample was read, said honestly: its terms were written out ahead of time with the app, not
+ * read by AI on this visit. Not "mocked" (no AI call was faked) and never live.
+ */
+export const SAMPLE_READ = { mocked: false, prepared: true, by: "Sample, prepared ahead of time, not read on this visit", costUsd: 0 } as const;
 
 /** "SALTMEADOW TABLE CATERING" and "Saltmeadow Table Catering" are one vendor. */
 const nameKey = (name: string | null | undefined) => (name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -29,7 +35,7 @@ export function loadSampleWedding(planId: string): { added: number } {
   const missing = SAMPLES.filter((s) => !roles.has(s.vendorRole) && !names.has(nameKey(s.vendorName)));
   for (const sample of missing) {
     const text = sampleText(sample);
-    const contract = saveContract({ id: `ctr_${randomUUID().slice(0, 8)}`, planId, sample: true, createdAt: new Date().toISOString(), payments: {}, proposed: toProposedTerms(mockExtraction(text), text), read: { mocked: true, costUsd: 0 }, text, fileName: sample.file });
+    const contract = saveContract({ id: `ctr_${randomUUID().slice(0, 8)}`, planId, sample: true, createdAt: new Date().toISOString(), payments: {}, proposed: toProposedTerms(mockExtraction(text), text), read: SAMPLE_READ, text, fileName: sample.file });
     confirmContract(planId, contract.id, {
       vendorName: sample.vendorName,
       vendorRole: sample.vendorRole,
