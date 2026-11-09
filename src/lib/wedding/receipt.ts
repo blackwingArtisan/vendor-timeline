@@ -8,7 +8,7 @@ import { HttpError } from "@/lib/http";
 import { getPayPal } from "@/lib/paypal";
 import { collectCalls } from "@/lib/paypal/meta";
 import { requirePlanContract } from "./contracts";
-import type { ItemKind } from "./types";
+import type { ItemKind, Payment } from "./types";
 
 export interface ReceiptCall {
   /** "orders.get" */
@@ -30,7 +30,7 @@ export interface Receipt {
   payee?: string;
   /** The verified PAYMENT.CAPTURE.COMPLETED event, when one reached this copy of the app. */
   webhook?: { eventId: string; eventType: string; receivedAt: string };
-  paidBy?: "webhook" | "re-read";
+  paidBy?: Payment["paidBy"];
   /** Each call made to PayPal for this receipt, with PayPal's debug_id. */
   calls: ReceiptCall[];
   readAt: string;

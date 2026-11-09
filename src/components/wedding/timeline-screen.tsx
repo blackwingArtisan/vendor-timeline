@@ -20,6 +20,7 @@ import { PageLoading } from "./page-loading";
 import { PayApproval } from "./pay-approval";
 import { PayPalCheckout, StandInLine } from "./paypal-checkout";
 import { SamplePlanBanner } from "@/components/wedding/sample-plan-banner";
+import { PaidOutsideForm, PaidOutsideNote, paidOutsideIcon } from "./paid-outside";
 import { PaymentChart, SPONSOR_UI } from "./payment-chart";
 import { ReceiptView } from "./receipt-view";
 import { AxisHeader, axisFor, VendorBar, type Axis } from "./vendor-bars";
@@ -33,6 +34,8 @@ const STATUS: Record<ItemStatus, { label: string; tone: Tone; dot: string }> = {
   due_today: { label: "Due today", tone: "warning", dot: "bg-amber-500" },
   upcoming: { label: "Upcoming", tone: "neutral", dot: "bg-zinc-300" },
 };
+/** Paid, but not through PayPal: said plainly, in grey rather than PayPal's green. */
+const PAID_OUTSIDE = { label: "Paid outside PayPal", tone: "neutral" as Tone, dot: "bg-zinc-500" };
 
 function whenLabel(item: TimelineItem) {
   if (item.status === "paid") return null;
@@ -104,7 +107,8 @@ function MoveDateForm({ item, onMove, onClose }: { item: TimelineItem; onMove: (
 function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { item: TimelineItem; view: TimelineView; axis: Axis | null; onPay: (item: TimelineItem) => void; onMove: (item: TimelineItem, due: string) => void; busy: boolean; onDecided: () => void; panelRuns: string[] }) {
   const [moving, setMoving] = useState(false);
   const [receipt, setReceipt] = useState(false);
-  const status = STATUS[item.status];
+  const [outside, setOutside] = useState(false);
+  const status = item.payment?.paidBy === "outside" ? PAID_OUTSIDE : STATUS[item.status];
   const isNext = view.nextDue?.id === item.id;
   // The most urgent payment is tagged, overdue or not. One tag at most, beside its status.
   const isFirst = view.payFirst?.id === item.id;
@@ -146,6 +150,9 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
         <div className="order-5 flex items-center justify-end gap-1 md:order-none">
           {canPay ? (
             <>
+              <Button size="sm" variant="ghost" className="px-2" icon={paidOutsideIcon} onClick={() => setOutside((o) => !o)} aria-label={`Mark the ${item.vendorName} ${item.kind} paid outside PayPal`} title="Paid outside PayPal (cash or cheque)" aria-expanded={outside} data-testid="paid-outside-open">
+                <span className="sr-only">Paid outside PayPal</span>
+              </Button>
               <Button size="sm" variant="ghost" className="px-2" icon={<CalendarDays className="size-3.5" />} onClick={() => setMoving((m) => !m)} aria-label={`Change the date of the ${item.vendorName} ${item.kind}`} title="Change date" data-testid="move-date">
                 <span className="sr-only">Change date</span>
               </Button>
@@ -162,6 +169,8 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
         </div>
       </div>
       {canPay && moving ? <MoveDateForm key={item.due} item={item} onMove={onMove} onClose={() => setMoving(false)} /> : null}
+      {canPay && outside ? <PaidOutsideForm item={item} onSaved={onDecided} onClose={() => setOutside(false)} /> : null}
+      <PaidOutsideNote item={item} />
       {item.status === "awaiting_approval" && approval ? (
         <PayApproval className="mt-2" item={item} approval={approval} cash={view.cash} sandbox={view.sandboxStandIn} onDecided={onDecided} />
       ) : null}
