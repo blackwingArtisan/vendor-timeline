@@ -12,11 +12,19 @@ import type { Locator, Page } from "@playwright/test";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Bottom-centre caption. Waits `ms` (reading time) unless wait=false. */
-export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean } = {}) {
+/** Captions that, top or bottom, still covered the thing they describe. A take should have none. */
+export const coveredCaptions: string[] = [];
+
+/**
+ * Bottom-centre caption. Waits `ms` (reading time) unless wait=false. It moves to the top of the
+ * screen when, at the bottom, it would cover what it describes: `over`, or whatever is highlighted
+ * or marked on screen. Returns where it went.
+ */
+export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean; over?: Locator } = {}): Promise<{ place: "top" | "bottom"; covers: boolean }> {
   const ms = opts.ms ?? Math.min(6000, 1400 + text.length * 45);
-  await page.evaluate(
-    ({ text, ms }) => {
+  const over = opts.over ? await opts.over.boundingBox() : null;
+  const place = await page.evaluate(
+    ({ text, ms, over }) => {
       let el = document.getElementById("__demo_caption");
       if (!el) {
         el = document.createElement("div");
@@ -30,6 +38,17 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
         document.body.appendChild(el);
       }
       el.textContent = text;
+      // Measured at the bottom; if that covers the thing it's about, it goes to the top instead.
+      Object.assign(el.style, { bottom: "36px", top: "auto" });
+      const at = el.getBoundingClientRect();
+      const targets = [...document.querySelectorAll("[data-demo-highlight], [data-demo-mark]")].map((t) => t.getBoundingClientRect());
+      if (over) targets.push(new DOMRect(over.x, over.y, over.width, over.height));
+      const covers = targets.some((r) => r.width && r.height && r.left < at.right && at.left < r.right && r.top < at.bottom + 12 && at.top - 12 < r.bottom);
+      if (covers) Object.assign(el.style, { top: "28px", bottom: "auto" });
+      el.dataset.place = covers ? "top" : "bottom";
+      // Still on top of the thing it describes, even at the top? The scene should scroll it clear.
+      const now = el.getBoundingClientRect();
+      const still = !!over && over.x < now.right && now.left < over.x + over.width && over.y < now.bottom && now.top < over.y + over.height;
       requestAnimationFrame(() => {
         el!.style.opacity = "1";
         el!.style.transform = "translateX(-50%) translateY(0)";
@@ -38,16 +57,36 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
       (window as unknown as { __demoCaptionTimer?: number }).__demoCaptionTimer = window.setTimeout(() => {
         el!.style.opacity = "0";
       }, ms);
+      return { place: covers ? ("top" as const) : ("bottom" as const), covers: still };
     },
-    { text, ms },
+    { text, ms, over },
   );
+  if (place.covers) {
+    coveredCaptions.push(text);
+    console.log(`[demo] caption covers what it describes: "${text}"`);
+  }
   if (opts.wait !== false) await sleep(ms);
+  return place;
+}
+
+/** Takes any caption and highlight off the screen at once, so nothing sits on the next frame. */
+export async function clearOverlays(page: Page) {
+  await page.evaluate(() => {
+    const el = document.getElementById("__demo_caption");
+    if (el) el.style.opacity = "0";
+    for (const h of document.querySelectorAll("[data-demo-highlight]")) h.remove();
+  });
+  await sleep(350);
 }
 
 /** Full-screen title card (intro/outro). */
 export async function titleCard(page: Page, title: string, subtitle = "", ms = 3200, opts: { stay?: boolean } = {}) {
   await page.evaluate(
     ({ title, subtitle }) => {
+      // Nothing from the scene before stays on top of the card.
+      const caption = document.getElementById("__demo_caption");
+      if (caption) caption.style.opacity = "0";
+      for (const h of document.querySelectorAll("[data-demo-highlight]")) h.remove();
       const el = document.createElement("div");
       el.id = "__demo_title";
       el.innerHTML = `<div style="font:700 56px/1.1 ui-sans-serif,system-ui;letter-spacing:-0.02em">${title}</div>${subtitle ? `<div style="margin-top:18px;font:500 26px/1.4 ui-sans-serif,system-ui;opacity:.8">${subtitle}</div>` : ""}`;
@@ -86,6 +125,7 @@ export async function highlight(page: Page, target: Locator, ms = 1600) {
         border: "3px solid #f59e0b", borderRadius: "14px", zIndex: "2147483646", pointerEvents: "none",
         boxShadow: "0 0 0 6px rgba(245,158,11,.25)", transition: "opacity .3s",
       });
+      el.dataset.demoHighlight = "1";
       document.body.appendChild(el);
       setTimeout(() => {
         el.style.opacity = "0";
@@ -102,7 +142,11 @@ export async function mark(target: Locator, ms = 6000) {
   await target.evaluate((el: HTMLElement, ms) => {
     const before = { background: el.style.background, boxShadow: el.style.boxShadow, transition: el.style.transition, color: el.style.color };
     Object.assign(el.style, { transition: "background .3s, box-shadow .3s", background: "#fef08a", boxShadow: "0 0 0 4px #fef08a", color: "#18181b" });
-    setTimeout(() => Object.assign(el.style, before), ms);
+    el.dataset.demoMark = "1";
+    setTimeout(() => {
+      Object.assign(el.style, before);
+      delete el.dataset.demoMark;
+    }, ms);
   }, ms);
 }
 
