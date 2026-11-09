@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { RefreshCw, ShieldCheck, ShieldX, Webhook } from "lucide-react";
+import { CalendarClock, RefreshCw, ShieldCheck, ShieldX, Webhook } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
-import { Badge, Button, Card, CardBody, CardHeader, EmptyState } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, CardBody, CardHeader, EmptyState } from "@/components/ui";
 import type { AuditEntry } from "@/lib/agent/audit";
 import { formatMoney } from "@/lib/money";
 import { localToday } from "@/lib/wedding/dates";
@@ -53,6 +53,7 @@ export default function ActivityPage() {
   const { kitFetch, status } = useKit();
   const [audit, setAudit] = useState<{ entries: AuditEntry[]; integrity: { ok: boolean; count: number; brokenAt?: number } } | null>(null);
   const [events, setEvents] = useState<TimelineItem[] | null>(null);
+  const [samplePlan, setSamplePlan] = useState(false);
   const webhookReady = status?.paypal.mode === "mock" || !!status?.paypal.webhookConfigured;
 
   const fetchAll = useCallback(async () => {
@@ -60,22 +61,24 @@ export default function ActivityPage() {
     // This couple's own payments that PayPal's webhook has confirmed. No other app's or couple's events.
     const view = await kitFetch<TimelineView>(`/api/timeline?today=${localToday()}`);
     const eventsRes = view.items.filter((i) => i.payment?.webhook).sort((a, b) => b.payment!.webhook!.receivedAt.localeCompare(a.payment!.webhook!.receivedAt));
-    return { auditRes, eventsRes };
+    return { auditRes, eventsRes, sample: !!view.samplePlan };
   }, [kitFetch]);
 
   const load = useCallback(async () => {
-    const { auditRes, eventsRes } = await fetchAll();
+    const { auditRes, eventsRes, sample } = await fetchAll();
     setAudit(auditRes);
     setEvents(eventsRes);
+    setSamplePlan(sample);
   }, [fetchAll]);
 
   useEffect(() => {
     let cancelled = false;
     fetchAll()
-      .then(({ auditRes, eventsRes }) => {
+      .then(({ auditRes, eventsRes, sample }) => {
         if (cancelled) return;
         setAudit(auditRes);
         setEvents(eventsRes);
+        setSamplePlan(sample);
       })
       .catch(() => undefined);
     return () => {
@@ -83,9 +86,30 @@ export default function ActivityPage() {
     };
   }, [fetchAll]);
 
+  // Nothing asked for, approved or paid on this plan yet: one card that says so, not two empty ones.
+  const nothingYet = !!audit && !!events && !audit.entries.length && !events.length;
+
   return (
     <>
       <PageHeader title="Activity" description="Every payment request, approval and result, plus PayPal's webhooks." actions={<Button variant="secondary" icon={<RefreshCw className="size-4" />} onClick={load}>Refresh</Button>} />
+      {nothingYet ? (
+        <Card data-testid="activity-empty">
+          <CardBody>
+            <EmptyState
+              icon={<CalendarClock className="size-5" />}
+              title={
+                <span className="inline-flex flex-wrap items-center justify-center gap-2">
+                  {samplePlan ? <span data-testid="activity-sample"><Badge tone="brand">Sample plan</Badge></span> : null}
+                  Nothing asked for or paid on this plan yet
+                </span>
+              }
+              description={`${samplePlan ? "The sample contracts are confirmed, and none of their payments has been asked for yet. " : ""}Ask the agent or pay a vendor from the timeline. Each request, your approval, the payment and PayPal's webhook for it then show here.`}
+              action={<ButtonLink href="/timeline" size="sm" data-testid="activity-to-timeline">Go to the timeline</ButtonLink>}
+            />
+          </CardBody>
+        </Card>
+      ) : (
+      <>
       <Card>
         <CardHeader
           title="Audit log"
@@ -144,6 +168,8 @@ export default function ActivityPage() {
           )}
         </CardBody>
       </Card>
+      </>
+      )}
     </>
   );
 }
