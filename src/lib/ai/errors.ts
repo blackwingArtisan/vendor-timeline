@@ -33,6 +33,15 @@ export function isOutOfCredit(error: unknown): boolean {
   return e?.status === 402 || (e?.status === 400 && /credit balance/i.test(String(e?.message)));
 }
 
+/** A model call that didn't come back in time: it stops here, with a plain message, instead of hanging. */
+export class AiTimeoutError extends Error {
+  readonly status = 504;
+  constructor(readonly feature: string, readonly afterMs: number) {
+    super("Claude didn't answer in time, so this stopped. Try again.");
+    this.name = "AiTimeoutError";
+  }
+}
+
 export class AiRefusalError extends Error {
   readonly status = 422;
   constructor(

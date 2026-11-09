@@ -76,12 +76,20 @@ export async function runAgentToCompletion(def: AgentDefinition, input: AgentInp
         result = await runScriptedAgent({ runId: run.id, channel: run.channel, def, input, guard, script: def.mockScript(input) });
       }
       Object.assign(run, { status: "completed", summary: result.summary, costUsd: result.costUsd, finishedAt: new Date().toISOString() });
+      console.info(`[agent] ${logLine(run)}`);
       timeline.emit({ kind: "run", status: "succeeded", stepId, title: `${def.name} finished`, subtitle: engine, detail: result.summary || "Done.", data: { costUsd: result.costUsd, turns: result.turns } });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       Object.assign(run, { status: "failed", error: message, finishedAt: new Date().toISOString() });
+      console.error(`[agent] ${logLine(run)} (${(error as Error)?.name ?? "Error"})`);
       timeline.emit({ kind: "run", status: "failed", stepId, title: `${def.name} stopped`, subtitle: engine, detail: message, error: { name: (error as Error)?.name ?? "Error", message } });
     }
     return run;
   });
+}
+
+/** One server log line per finished run: which agent, how, its status, how long, and its error. */
+export function logLine(run: AgentRun): string {
+  const seconds = run.finishedAt ? ((Date.parse(run.finishedAt) - Date.parse(run.startedAt)) / 1000).toFixed(1) : "?";
+  return `run ${run.id} ${run.agentName} (${run.mode}) ${run.status} after ${seconds}s${run.error ? `: ${run.error}` : ""}`;
 }

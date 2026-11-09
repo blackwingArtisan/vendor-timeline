@@ -12,7 +12,7 @@ import { singleton } from "../singleton";
 import { getBudget } from "./budget";
 import { modelLabel, SERVER_FALLBACK } from "./config";
 import { actualCostUsd, estimateInputTokens, worstCaseCostUsd } from "./cost";
-import { AiCreditError, AiRefusalError, AiUnavailableError, isOutOfCredit } from "./errors";
+import { AiCreditError, AiRefusalError, AiTimeoutError, AiUnavailableError, isOutOfCredit } from "./errors";
 
 export type BetaCreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 export type BetaMessage = Anthropic.Beta.BetaMessage;
@@ -22,10 +22,28 @@ export function isAiLive(): boolean {
   return getEnv().aiMode === "live";
 }
 
+/**
+ * One request waits at most 45 s and is tried once more, so a call that hangs fails in about a
+ * minute and a half instead of six (the SDK's 120 s x 3). A hosted reply read once hung past 150 s.
+ */
+export const AI_REQUEST_TIMEOUT_MS = 45_000;
+export const AI_MAX_RETRIES = 1;
+/** The whole call, both tries and the SDK's backoff, ends by this even if the SDK never does. */
+export const AI_CALL_DEADLINE_MS = AI_REQUEST_TIMEOUT_MS * (AI_MAX_RETRIES + 1) + 10_000;
+
 export function getAnthropic(): Anthropic {
   const env = getEnv();
   if (env.aiMode !== "live") throw new AiUnavailableError();
-  return singleton("ai:client", () => new Anthropic({ apiKey: env.anthropicApiKey, maxRetries: 2, timeout: 120_000 }));
+  return singleton("ai:client", () => new Anthropic({ apiKey: env.anthropicApiKey, maxRetries: AI_MAX_RETRIES, timeout: AI_REQUEST_TIMEOUT_MS }));
+}
+
+/** `work`, or an AiTimeoutError once `ms` have passed without it settling. */
+export function withDeadline<T>(work: Promise<T>, ms: number, feature: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new AiTimeoutError(feature, ms)), ms);
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
 /** Adds the server-side refusal fallback where the model supports it (Sonnet 5.5). */
@@ -75,7 +93,7 @@ export async function guardedClaudeCall<M extends BetaMessage>(
   });
   let settled = false;
   try {
-    const message = await exec(client, p);
+    const message = await withDeadline(exec(client, p), AI_CALL_DEADLINE_MS, meta.feature);
     const cost = actualCostUsd(message);
     budget.commit(reservation, cost);
     settled = true;
@@ -89,6 +107,8 @@ export async function guardedClaudeCall<M extends BetaMessage>(
   } catch (error) {
     if (!settled) budget.release(reservation);
     const failure = isOutOfCredit(error) ? new AiCreditError() : error;
+    // Server log: which call failed and why, so a stall on the hosted copy shows its cause.
+    console.error(`[ai] ${meta.feature} (${p.model}) failed: ${(failure as Error)?.name ?? "Error"}: ${(failure as Error)?.message ?? String(failure)}`);
     step.fail(failure);
     throw failure;
   }
