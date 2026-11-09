@@ -6,7 +6,9 @@
  *
  * "Paid" takes PayPal's own record of that capture, read back with GET, plus the verified
  * PAYMENT.CAPTURE.COMPLETED webhook for that capture id. A copy of the app PayPal can't call back
- * (a local one) takes the re-read alone, and the screen says which of the two it was.
+ * (a local one) takes the re-read alone, and the screen says which of the two it was. A copy PayPal
+ * can call back takes the re-read too if the webhook is over a minute late (PayPal's sandbox has taken
+ * 58 s to create one), and a webhook that comes after that still becomes the confirmation.
  */
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -326,6 +328,7 @@ export async function syncPayment(contractId: string, kind: ItemKind): Promise<v
   const state = reported === "paid" && !paidBy ? "sending" : reported;
   patchPayment(contractId, kind, {
     state,
+    webhookLate: paidBy === "re-read" && webhookExpected() ? true : undefined,
     captureStatus: capture.status,
     error: amountOff ? `${amountOff}.` : state === "failed" ? `PayPal reports the capture ${capture.status}${capture.status_details?.reason ? ` (${capture.status_details.reason})` : ""}.` : undefined,
     checkedAt: now,
@@ -386,7 +389,10 @@ export async function captureWebhook(event: WebhookEventEnvelope<string, Capture
     return false;
   }
   if (event.event_type === "PAYMENT.CAPTURE.COMPLETED") {
-    patchPayment(contract.id, kind, { webhook: { eventId: event.id, eventType: event.event_type, captureId: capture.id, receivedAt: new Date().toISOString() } });
+    const webhook = { eventId: event.id, eventType: event.event_type, captureId: capture.id, receivedAt: new Date().toISOString() };
+    // Already paid on the re-read because the webhook was late: the webhook still confirms it.
+    const late = payment.state === "paid" && payment.paidBy === "re-read" && payment.captureId === capture.id;
+    patchPayment(contract.id, kind, late ? { webhook, paidBy: "webhook", webhookLate: undefined } : { webhook });
   }
   await syncPayment(contract.id, kind);
   return true;

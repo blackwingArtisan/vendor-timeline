@@ -34,6 +34,24 @@ describe("the sample banner says only what is true of the plan", () => {
     expect(text).not.toMatch(/five fictional/i);
   });
 
+  it("fills only the missing vendors when Claude read a name in capitals or the role is already there", () => {
+    // The hosted take: Claude read the caterer's name as its letterhead prints it, and the samples
+    // added that caterer a second time (12 rows instead of 10).
+    const plan = fresh();
+    startOwnPlan(plan);
+    const caterer = SAMPLES.find((s) => s.vendorRole === "caterer")!;
+    const photographer = SAMPLES.find((s) => s.vendorRole === "photographer")!;
+    const shouted = addUnreadContract(plan, { text: "Caterer contract.", fileName: "caterer.txt" });
+    saveContract({ ...shouted, read: { mocked: false, model: "claude-haiku", costUsd: 0.001 }, proposed: { ...shouted.proposed, vendorName: { ...shouted.proposed.vendorName, value: caterer.vendorName.toUpperCase() } } });
+    const renamed = addUnreadContract(plan, { text: "Photo contract.", fileName: "photo.txt" });
+    saveContract({ ...renamed, read: { mocked: false, model: "claude-haiku", costUsd: 0.001 }, proposed: { ...renamed.proposed, vendorRole: "photographer", vendorName: { ...renamed.proposed.vendorName, value: "Quillfeather Photography LLC" } } });
+    expect(loadSampleWedding(plan)).toEqual({ added: SAMPLES.length - 2 });
+    const names = listContracts(plan).map((c) => c.proposed.vendorName.value);
+    expect(names).not.toContain(caterer.vendorName);
+    expect(names).not.toContain(photographer.vendorName);
+    expect(loadSampleWedding(plan)).toEqual({ added: 0 });
+  });
+
   it("never credits Claude with a contract read without AI", () => {
     const { text } = sampleBannerText({ samples: ["A", "B", "C"], readLive: ["Lens & Light"], readWithoutAi: ["Ivy Table"] });
     expect(text).toBe("Lens & Light was read by Claude on this visit; Ivy Table was added on this visit without an AI read. The other three are fictional samples, read ahead of time.");

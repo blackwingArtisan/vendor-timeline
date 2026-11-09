@@ -301,6 +301,38 @@ export class DemoClock {
     fs.writeFileSync(file, JSON.stringify({ rawSeconds: this.raw, cutSeconds, syncAt: this.syncAt, cuts, waits: this.cuts, busy: this.busy }, null, 2));
     return { cuts, videoSeconds: this.raw - cutSeconds };
   }
+  /** The voiceover, one line per shot, in raw seconds until writeVoiceover() maps them to the cut video. */
+  readonly voice: { shot: number; raw: number; text: string }[] = [];
+
+  /** A voiceover line for `shot`, starting now. Amounts in it are read from the screen by the caller. */
+  say(shot: number, text: string) {
+    this.voice.push({ shot, raw: this.raw, text: text.replace(/\s+/g, " ").trim() });
+  }
+
+  /** Seconds into the cut video at raw second `raw`: every cut before it is taken out. */
+  editedAt(raw: number) {
+    return raw - merge(this.allCuts()).reduce((sum, c) => sum + Math.max(0, Math.min(raw, c.to) - c.from), 0);
+  }
+
+  /**
+   * Writes the voiceover as [{ shot, at, text }], `at` in seconds of the cut video (the edit's own
+   * small clock offset aside; `raw` is kept for that). Lines that can't be read at about 2.6 words a
+   * second before the next line starts are returned, so the take can say which line to trim.
+   */
+  writeVoiceover(file: string, wordsPerSecond = 2.6) {
+    const end = this.editedAt(this.raw);
+    const lines = this.voice.map((v) => ({ shot: v.shot, at: Math.round(this.editedAt(v.raw) * 10) / 10, text: v.text, raw: Math.round(v.raw * 10) / 10 }));
+    const tooLong = lines.flatMap((l, i) => {
+      const room = (lines[i + 1]?.at ?? end) - l.at;
+      // "$2,500" is read as three or four words.
+      const needs = l.text.split(" ").reduce((n, w) => n + (/^\$\d/.test(w) ? 3 : 1), 0) / wordsPerSecond;
+      return needs > room ? [`shot ${l.shot}: needs ${needs.toFixed(1)}s, has ${room.toFixed(1)}s`] : [];
+    });
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(lines, null, 2));
+    return { lines, tooLong };
+  }
+
   /** Seconds into the raw recording. */
   get raw() {
     return (Date.now() - this.start) / 1000;

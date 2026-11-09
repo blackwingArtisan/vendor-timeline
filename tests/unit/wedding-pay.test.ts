@@ -379,6 +379,24 @@ describe("capture webhooks", () => {
     expect(paymentOf(contract.id)).toMatchObject({ state: "paid", paidBy: "re-read" });
   });
 
+  it("a webhook that comes after the re-read made it paid still becomes the confirmation", async () => {
+    const contract = await confirmedContract();
+    const paid = await capturedNoWebhook(contract);
+    const stored = requireContract(contract.id);
+    const longAgo = new Date(Date.now() - WEBHOOK_WAIT_MS - 1000).toISOString();
+    saveContract({ ...stored, payments: { deposit: { ...stored.payments.deposit!, successSeenAt: longAgo } } });
+    await syncPayment(contract.id, "deposit");
+    // Mock PayPal is a copy PayPal can call back, so the re-read says the webhook is late, not impossible.
+    expect(paymentOf(contract.id)).toMatchObject({ state: "paid", paidBy: "re-read", webhookLate: true });
+    const event = captureEvent(paid);
+    expect(await captureWebhook(event)).toBe(true);
+    expect(paymentOf(contract.id)).toMatchObject({ state: "paid", paidBy: "webhook", webhook: { eventId: event.id } });
+    expect(paymentOf(contract.id).webhookLate).toBeUndefined();
+    // A webhook for some other capture changes nothing.
+    expect(await captureWebhook(captureEvent({ orderId: paid.orderId, captureId: "OTHER-CAPTURE" }))).toBe(false);
+    expect(paymentOf(contract.id)).toMatchObject({ paidBy: "webhook", webhook: { eventId: event.id } });
+  });
+
   it("rejects a webhook with no valid signature before it reaches a payment", async () => {
     const contract = await confirmedContract();
     const paid = await capturedNoWebhook(contract);

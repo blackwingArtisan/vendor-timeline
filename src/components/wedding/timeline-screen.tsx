@@ -66,7 +66,13 @@ function PayPalProof({ item, standIn }: { item: TimelineItem; standIn: boolean }
           Confirmed by PayPal webhook <span className="break-all font-mono" data-testid="paid-by-event">{p.webhook?.eventId}</span> for this capture
         </p>
       ) : null}
-      {p.paidBy === "re-read" ? <p className="mt-0.5" data-testid="paid-by">Confirmed by re-reading the capture from PayPal. PayPal can&apos;t send webhooks to this copy of the app.</p> : null}
+      {p.paidBy === "re-read" ? (
+        <p className="mt-0.5" data-testid="paid-by">
+          {p.webhookLate
+            ? "Confirmed by re-reading the capture from PayPal. PayPal's webhook hadn't come after a minute; it shows here when it does."
+            : "Confirmed by re-reading the capture from PayPal. PayPal can't send webhooks to this copy of the app."}
+        </p>
+      ) : null}
       {standIn ? <StandInLine item={item} className="mt-0.5 text-zinc-500" /> : null}
     </div>
   );
@@ -278,6 +284,11 @@ export function TimelineScreen() {
   useEffect(() => {
     if (askedToPay) void refresh().catch(() => undefined);
   }, [askedToPay, refresh]);
+  // A capture webhook for this couple (a late one included) changes what confirmed a payment.
+  const captureWebhooks = steps.filter((s) => s.title === "PAYMENT.CAPTURE.COMPLETED").length;
+  useEffect(() => {
+    if (captureWebhooks) void refresh().catch(() => undefined);
+  }, [captureWebhooks, refresh]);
   useEffect(() => {
     lastView = view;
   }, [view]);
