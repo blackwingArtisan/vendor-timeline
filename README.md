@@ -1,18 +1,13 @@
 # Wedding Vendor Timeline
 
-**Three new things for couples paying wedding vendors.**
-1. **A cash plan limited to what the contracts allow.** When a month is over budget, code finds the fewest, smallest moves the signed contracts permit: pay a balance early, quoting the contract's own date sentence, or ask a vendor for a later date before the wedding. Nothing outside the contracts is suggested.
-2. **A reply link for the vendor.** The vendor opens it on a phone with no account, taps Yes, No or another date, and gives the PayPal email they want paid. No couple-side tool with a vendor reply link was found in our scan.
-3. **A parent pays one vendor from their own PayPal.** "Assign" makes a link for one person (in the sample, Linda, an illustrative parent). After the couple approve, that person pays the vendor in their own PayPal checkout, and the row reads "Paid by Linda's PayPal".
-
 **How PayPal is central.**
 1. **Create order:** every payment is a PayPal Orders v2 order the server creates for exactly the confirmed contract term, to that vendor, only after one approval in the app. The Guard refuses anything else before PayPal hears of it.
 2. **Capture:** the couple pay in PayPal's own checkout, and the server captures that order and reads the capture back from PayPal.
 3. **Webhook:** PayPal's `PAYMENT.CAPTURE.COMPLETED` webhook for that capture marks the item Paid, once PayPal's own status agrees (if PayPal's webhook can't arrive, the capture re-read is used, and the item says so). Each paid item's Receipt re-reads the order and capture, with PayPal's `debug_id`s.
 
-**Live demo:** https://vendor-timeline.onrender.com · **Video:** link added at submission · **License:** MIT
-
 > For couples juggling wedding vendors: Claude reads each vendor contract, you confirm every deposit and balance on one timeline, and you pay each vendor from your own PayPal, most urgent first.
+
+**Live demo:** https://vendor-timeline.onrender.com · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
 
 ![The agent stopped for approval, beside the cash check](docs/screenshot.png)
 
@@ -55,7 +50,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 
 **Paid status:** an item turns Paid when PayPal's own record of the capture, read back with GET, says COMPLETED, and the verified `PAYMENT.CAPTURE.COMPLETED` webhook for that capture id has arrived. Nothing on the screen, and no other event, can mark it paid. If the webhook doesn't come within 60 seconds, the re-read stands and the item says so. A local copy can't receive webhooks at all, so there the re-read stands at once and the item says that too.
 
-**Safety around money:** every payment goes through a guard. It enforces a per-action cap, a daily cap, a payee allowlist and idempotency, and `create_vendor_order` always waits for a person. The tool takes a contract, a kind and an amount, never a payee. If the couple's request names a vendor and an amount that isn't a confirmed term ("Pay the caterer $5,000"), code checks the amount against the confirmed contract before the model runs and the Guard refuses it: no model call, no approval, no PayPal order. If the model itself asks for an amount that isn't a confirmed term, the tool's own check refuses it the same way before any approval is created. After the approval, `vendorOrder()` builds the order from the confirmed terms on the server and refuses any other amount, any other payee or an unconfirmed term before PayPal is called. The capture route only captures that payment's own order, once. Every decision goes to a hash-chained, append-only audit log.
+**Safety around money:** every payment goes through a guard. It enforces a per-action cap, a daily cap, a payee allowlist and idempotency, and `create_vendor_order` always waits for a person. The tool takes a contract, a kind and an amount, never a payee. Code refuses the call before any approval is created unless the amount exactly matches a confirmed term for that couple's contract, so an agent asking for too much gets a refusal, not a prompt. After the approval, `vendorOrder()` builds the order from the confirmed terms on the server and refuses any other amount, any other payee or an unconfirmed term before PayPal is called. The capture route only captures that payment's own order, once. Every decision goes to a hash-chained, append-only audit log.
 
 ## How AI is used
 
@@ -95,6 +90,14 @@ Each browser gets its own plan through a cookie, so people trying the hosted cop
 
 This app's copy of the kit adds two optional hooks to `defineTool`: `check` refuses a call inside the Guard before an approval exists, and `after` runs once the Guard has finished. The run itself stays open until a person decides.
 
+## Sponsor Gantt
+
+The timeline can show a [Bryntum Gantt](https://bryntum.com/products/gantt/) instead of the free bars: drag a deposit or balance and the new date saves through the same route as "Change date". It's behind a build-time switch, `NEXT_PUBLIC_SPONSOR_UI=1`, and it's off on the hosted copy until the sponsor allows a public demo.
+
+With the switch off, `next.config.ts` points the import at a stub, and `npm run check` greps the browser bundle to prove no sponsor code is in it. Bryntum is an npm dependency only, on its trial package, so the faint trial watermark is expected. No sponsor code is in this repo.
+
+Portions of this software are copyright 2015-2026 by Bryntum AB.
+
 ## Run locally
 
 Requirements: Node 24+ (developed on Node 26), npm.
@@ -130,7 +133,7 @@ Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter th
 - Local JSON storage: data resets on redeploy (fine for a demo, not for production).
 - Contracts come in as pasted text, .txt or a PDF with real text in it. A scanned PDF or a photo isn't read: the app says so, and the terms can be typed in by hand.
 - All the sample contracts and vendors are fictional.
-- The vendors are fictional, so in sandbox a test business account is the payee in each vendor's place. A real vendor would be paid at the PayPal email on its contract, or the one it gives on the reply link.
+- The vendors are fictional, so in sandbox the app's test business account is the payee in each vendor's place. A real vendor would be paid at the PayPal email on its contract.
 - The optional PayPal remote MCP connector is read-only and untested.
 - A payment date can move, but the budget is one number per couple, and a payment can't yet be split in two. Cash warnings go by the day each payment leaves, not by the couple's paydays.
 - The Bryntum Gantt isn't public yet, so the hosted copy shows the free bars.
@@ -138,11 +141,3 @@ Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter th
 ## License
 
 MIT, see [LICENSE](LICENSE).
-
-## Sponsor Gantt
-
-The timeline can show a [Bryntum Gantt](https://bryntum.com/products/gantt/) instead of the free bars: drag a deposit or balance and the new date saves through the same route as "Change date". It's behind a build-time switch, `NEXT_PUBLIC_SPONSOR_UI=1`, and it's off on the hosted copy until the sponsor allows a public demo.
-
-With the switch off, `next.config.ts` points the import at a stub, and `npm run check` greps the browser bundle to prove no sponsor code is in it. Bryntum is an npm dependency only, on its trial package, so the faint trial watermark is expected. No sponsor code is in this repo.
-
-Portions of this software are copyright 2015-2026 by Bryntum AB.
