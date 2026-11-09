@@ -5,6 +5,7 @@
  * copy, with no AI and no payment.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { openCashCheck } from "./open-cash";
 import { CATERER } from "../../src/lib/wedding/samples";
 
 const TODAY = "2026-11-20";
@@ -14,6 +15,7 @@ test("moving a date moves its bar, and the over-budget mark follows the money", 
   await page.clock.setFixedTime(new Date(`${TODAY}T12:00:00`));
   await page.goto("/timeline");
   await expect(page.getByTestId("timeline-item")).toHaveCount(10);
+  await openCashCheck(page);
   await page.getByTestId("monthly-budget").fill("6,000");
   await page.getByTestId("save-budget").click();
 

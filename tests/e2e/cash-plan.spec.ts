@@ -5,6 +5,7 @@
  * plan, its sums and its cards are code's, so the same checks hold.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { openCashCheck } from "./open-cash";
 import { approveAndPay } from "./pay-in-checkout";
 import { readOrder, sandboxVendorEmail } from "./paypal-reread";
 import { formatCents } from "../../src/lib/wedding/cents";
@@ -86,6 +87,7 @@ test("paying a balance early from the plan goes through the same approval and Pa
   await fiveContracts(page);
   const status = await (await page.request.get("/api/kit/status")).json();
   const sandbox = status.paypal.mode === "sandbox";
+  await openCashCheck(page);
   await page.getByTestId("monthly-budget").fill("15,000");
   await page.getByTestId("save-budget").click();
   const warning = page.getByTestId("cash-warning");
@@ -121,6 +123,7 @@ test("paying a balance early from the plan goes through the same approval and Pa
   await expect(balance.getByTestId("paypal-status")).toHaveText("COMPLETED");
   // The warning clears on screen: May now fits.
   await expect(page.getByTestId("cash-warning")).toHaveCount(0);
+  await openCashCheck(page);
   await expect(page.getByTestId("cash-clear")).toBeVisible();
   // So does the chart's mark: the balance left May for today's month.
   await expect(may).toHaveAttribute("data-total-cents", "1406000");

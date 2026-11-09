@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, CircleCheck } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { Button, Card, CardBody, CardHeader, MoneyInput } from "@/components/ui";
-import { CashChart } from "./cash-chart";
+import { CashChart, ChartLegend, chartSummary } from "./cash-chart";
 import { amountText, formatCents } from "@/lib/wedding/cents";
 import { MAX_BUDGET_CENTS, readAmount } from "@/lib/wedding/limits";
 import { formatDay } from "@/lib/wedding/dates";
@@ -59,6 +59,12 @@ function monthLines(m: CashMonth): [string, number][] {
 export function CashCard({ cash, onChanged }: { cash: CashPlan; onChanged: () => void }) {
   const { kitFetch } = useKit();
   const [budget, setBudget] = useState(amountText(cash.monthlyBudgetCents));
+  // A saved budget comes back in `cash`: show it in the box, without closing the card's details.
+  const [shownCents, setShownCents] = useState(cash.monthlyBudgetCents);
+  if (shownCents !== cash.monthlyBudgetCents) {
+    setShownCents(cash.monthlyBudgetCents);
+    setBudget(amountText(cash.monthlyBudgetCents));
+  }
   const [saving, setSaving] = useState(false);
   /** Why the budget wasn't saved. Stays until the box changes. */
   const [problem, setProblem] = useState<string | null>(null);
@@ -79,70 +85,86 @@ export function CashCard({ cash, onChanged }: { cash: CashPlan; onChanged: () =>
 
   return (
     <Card data-testid="cash-card">
-      <CardHeader className="py-3!" title="Cash check" description="Each month against your budget, worked out by code." />
+      <CardHeader className="py-3!" title="Cash check" />
       <CardBody className="py-3!">
-        <CashChart cash={cash} className="mb-2" />
-        <form
-          className="mb-2 flex items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save();
-          }}
-        >
-          <label htmlFor="monthly-budget" className="shrink-0 text-sm font-medium text-zinc-700">Monthly budget</label>
-          <MoneyInput id="monthly-budget" className="min-w-0 flex-1" value={budget} onChange={(e) => {
-              setBudget(e.target.value);
-              setProblem(null);
-            }}
-            aria-invalid={!!problem}
-            data-testid="monthly-budget"
-          />
-          <Button type="submit" size="sm" variant="secondary" loading={saving} disabled={saving} data-testid="save-budget">
-            Save
-          </Button>
-        </form>
-        {problem ? (
-          <p role="alert" className="-mt-1 mb-3 text-sm text-red-700" data-testid="budget-problem">
-            {problem}
-          </p>
-        ) : null}
-        {cash.warnings.length ? (
-          <ul className="space-y-1">
-            {cash.warnings.map((w) => (
-              <li key={`${w.kind}-${w.from}`} className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-900" data-testid="cash-warning" data-kind={w.kind}>
-                {/* The link to the sums ends the warning's own line, so three warnings don't take six. */}
-                <details data-testid="cash-sums">
-                  <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
-                    <AlertTriangle className="mt-px size-3.5 shrink-0" />
-                    <span className="min-w-0">
-                      {w.message} <span className="whitespace-nowrap font-medium underline underline-offset-2">Show the sums</span>
-                    </span>
-                  </summary>
-                  <div className="pl-5">
-                    <Sums payments={w.payments} lines={warningLines(w, cash.monthlyBudgetCents)} />
-                  </div>
-                </details>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="flex items-center gap-2 text-sm text-zinc-600" data-testid="cash-clear">
-            <CircleCheck className="size-4 text-emerald-600" /> Nothing clashes with your budget.
-          </p>
-        )}
-        {cash.months.length ? (
-          <details className="mt-2 text-sm text-zinc-700" data-testid="cash-months">
-            <summary className="cursor-pointer text-xs font-medium underline underline-offset-2">Month by month</summary>
-            <ul className="mt-2 space-y-3">
-              {cash.months.map((m) => (
-                <li key={m.month} data-testid="cash-month" data-month={m.month}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{m.label}</p>
-                  <Sums payments={m.payments} lines={monthLines(m)} />
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
+        <CashChart cash={cash} />
+        {/* The chart and one line. The budget, each warning's sums and the months open from that line. */}
+        <details className="group/cash mt-2" data-testid="cash-more">
+          <summary className="flex cursor-pointer list-none items-start gap-1.5 text-xs [&::-webkit-details-marker]:hidden">
+            {cash.warnings.length ? <AlertTriangle className="mt-px size-3.5 shrink-0 text-red-700" aria-hidden /> : <CircleCheck className="mt-px size-3.5 shrink-0 text-emerald-600" aria-hidden />}
+            <span className="min-w-0">
+              <span className={cash.warnings.length ? "text-red-700" : "text-emerald-700"} data-testid="cash-chart-summary">{chartSummary(cash)}</span>{" "}
+              <span className="whitespace-nowrap font-medium text-zinc-700 underline underline-offset-2">
+                {cash.warnings.length ? `${cash.warnings.length} ${cash.warnings.length === 1 ? "warning" : "warnings"}, budget and sums` : "Budget and sums"}
+              </span>
+            </span>
+          </summary>
+          <div className="mt-3">
+            <p className="mb-2 text-xs text-zinc-500">Each month against your budget, worked out by code.</p>
+            <ChartLegend className="mb-3" />
+            <form
+              className="mb-2 flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void save();
+              }}
+            >
+              <label htmlFor="monthly-budget" className="shrink-0 text-sm font-medium text-zinc-700">Monthly budget</label>
+              <MoneyInput id="monthly-budget" className="min-w-0 flex-1" value={budget} onChange={(e) => {
+                  setBudget(e.target.value);
+                  setProblem(null);
+                }}
+                aria-invalid={!!problem}
+                data-testid="monthly-budget"
+              />
+              <Button type="submit" size="sm" variant="secondary" loading={saving} disabled={saving} data-testid="save-budget">
+                Save
+              </Button>
+            </form>
+            {problem ? (
+              <p role="alert" className="-mt-1 mb-3 text-sm text-red-700" data-testid="budget-problem">
+                {problem}
+              </p>
+            ) : null}
+            {cash.warnings.length ? (
+              <ul className="space-y-1">
+                {cash.warnings.map((w) => (
+                  <li key={`${w.kind}-${w.from}`} className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-900" data-testid="cash-warning" data-kind={w.kind}>
+                    {/* The link to the sums ends the warning's own line, so three warnings don't take six. */}
+                    <details data-testid="cash-sums">
+                      <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
+                        <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                        <span className="min-w-0">
+                          {w.message} <span className="whitespace-nowrap font-medium underline underline-offset-2">Show the sums</span>
+                        </span>
+                      </summary>
+                      <div className="pl-5">
+                        <Sums payments={w.payments} lines={warningLines(w, cash.monthlyBudgetCents)} />
+                      </div>
+                    </details>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="flex items-center gap-2 text-sm text-zinc-600" data-testid="cash-clear">
+                <CircleCheck className="size-4 text-emerald-600" /> Nothing clashes with your budget.
+              </p>
+            )}
+            {cash.months.length ? (
+              <details className="mt-2 text-sm text-zinc-700" data-testid="cash-months">
+                <summary className="cursor-pointer text-xs font-medium underline underline-offset-2">Month by month</summary>
+                <ul className="mt-2 space-y-3">
+                  {cash.months.map((m) => (
+                    <li key={m.month} data-testid="cash-month" data-month={m.month}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{m.label}</p>
+                      <Sums payments={m.payments} lines={monthLines(m)} />
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        </details>
       </CardBody>
     </Card>
   );

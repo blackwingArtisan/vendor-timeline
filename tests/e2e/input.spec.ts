@@ -4,6 +4,7 @@
  * AI: every contract here is refused before any read, or entered by hand.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { openCashCheck } from "./open-cash";
 import { formatDay } from "../../src/lib/wedding/dates";
 import { CATERER } from "../../src/lib/wedding/samples";
 
@@ -21,6 +22,7 @@ async function fiveContracts(page: Page) {
 
 test("a huge or zero budget is refused beside the box, and the server refuses it too", async ({ page }) => {
   await fiveContracts(page);
+  await openCashCheck(page);
   const budget = page.getByTestId("monthly-budget");
   await budget.fill("99,999,999,999");
   await page.getByTestId("save-budget").click();

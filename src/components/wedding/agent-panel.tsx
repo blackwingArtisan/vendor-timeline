@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bot, Send, ShieldX } from "lucide-react";
+import { ArrowRight, Bot, ChevronRight, Send, ShieldX } from "lucide-react";
 import { PacedWait } from "@/components/wedding/paced-wait";
 import { PayApproval } from "@/components/wedding/pay-approval";
 import { PayPalCheckout } from "@/components/wedding/paypal-checkout";
@@ -29,19 +29,19 @@ const PHASE: Record<Exclude<Phase, "idle">, { label: string; tone: Tone }> = {
   failed: { label: "Stopped", tone: "danger" },
 };
 
-function Message({ m, text, testId = "agent-message" }: { m: TimelineStep; text?: string; testId?: string }) {
+function Message({ m, text, testId = "agent-message", as: Tag = "li" }: { m: TimelineStep; text?: string; testId?: string; as?: "li" | "span" }) {
   const fromApp = APP_MESSAGE_TITLES.includes(m.title);
   return (
-    <li className={fromApp ? "whitespace-pre-line font-medium text-zinc-900" : "whitespace-pre-line"} data-testid={testId} data-from={fromApp ? "app" : "agent"}>
+    <Tag className={`${Tag === "span" ? "block " : ""}${fromApp ? "whitespace-pre-line font-medium text-zinc-900" : "whitespace-pre-line"}`} data-testid={testId} data-from={fromApp ? "app" : "agent"}>
       {text ?? plainText(m.detail)}
-    </li>
+    </Tag>
   );
 }
 
 /** The run so far, one short link per step, all written by code. */
 function Chain({ links }: { links: string[] }) {
   return (
-    <ol className="mt-2.5 flex flex-wrap items-center gap-x-0.5 gap-y-1 text-[11px] font-medium leading-4" data-testid="agent-chain" aria-label="What the agent has done">
+    <ol className="flex flex-wrap items-center gap-x-0.5 gap-y-1 text-[11px] font-medium leading-4" data-testid="agent-chain" aria-label="What the agent has done">
       {links.map((link, i) => (
         <li key={link} className="inline-flex items-center gap-0.5">
           {i ? <ArrowRight className="size-3 text-zinc-400" aria-hidden /> : null}
@@ -74,8 +74,8 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
 
   const runSteps = useMemo(() => steps.filter((s) => s.runId === runId), [steps, runId]);
   const said = runSteps.filter((s) => s.kind === "agent.message");
-  // Code's "Pay first" leads, then the model's last reply, cut to two sentences. The cash check and
-  // plan in numbers, anything the model said on the way, and the rest of its reply wait under
+  // Code's "Pay first" is the one sentence on show, under the approval. The steps, the model's reply
+  // (cut to two sentences), the cash check and plan in numbers and the rest of the reply wait under
   // Details. The cash card beside the panel shows the same numbers as a chart.
   const payFirst = said.filter((m) => m.title === PAY_FIRST_TITLE);
   const modelSaid = said.filter((m) => !APP_MESSAGE_TITLES.includes(m.title));
@@ -137,6 +137,49 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
         action={phase === "idle" ? null : <span data-testid="agent-phase"><Badge tone={PHASE[phase].tone}>{PHASE[phase].label}</Badge></span>}
       />
       <CardBody>
+        {/* What needs the couple comes first: the approval (or PayPal's checkout), then code's "Pay first". */}
+        {pending?.approval ? (
+          <PayApproval key={pending.approval.id} className="mb-3" item={pending} approval={pending.approval} cash={cash} sandbox={sandbox} onDecided={onDecided} />
+        ) : null}
+        {checkout ? <PayPalCheckout className="mb-3" item={checkout} sandbox={sandbox} onPaid={onDecided} /> : null}
+        {refused ? (
+          <div className="mb-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" data-testid="guard-refusal" role="status">
+            <ShieldX className="mt-0.5 size-5 shrink-0 text-red-600" aria-hidden />
+            <div className="min-w-0">
+              <p className="font-semibold">The Guard refused this payment{askedFor ? ` of ${askedFor}` : ""}</p>
+              <p className="mt-0.5" data-testid="guard-reason">{refused.detail}</p>
+              <p className="mt-1 text-xs text-red-800">No PayPal order was created and no approval was asked for. Only a confirmed contract term can be paid.</p>
+            </div>
+          </div>
+        ) : null}
+        {run?.status === "failed" ? (
+          <p className="mb-3 text-sm text-red-700" data-testid="agent-error">
+            {`${run.detail} The agent has stopped, and it can't pay anyone without your approval. You can still pay from the timeline.`}
+          </p>
+        ) : null}
+        {/* The steps and everything said sit under one toggle, led by code's "Pay first" sentence. */}
+        {links.length || said.length ? (
+          <div className="mb-3 text-sm text-zinc-700" data-testid="agent-messages">
+            <details data-testid="agent-details" className="group/details">
+              <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
+                <ChevronRight className="mt-0.5 size-4 shrink-0 text-zinc-400 transition-transform group-open/details:rotate-90" aria-hidden />
+                <span className="min-w-0 flex-1 space-y-1">
+                  {payFirst.map((m) => <Message key={m.stepId} m={m} as="span" />)}
+                  {!payFirst.length && links.length ? <span className="block text-zinc-600">{links.at(-1)}</span> : null}
+                  <span className="block text-xs font-medium text-zinc-600 underline underline-offset-2">Details: what the agent did and said, the cash check in numbers</span>
+                </span>
+              </summary>
+              <div className="mt-2 pl-6">
+                {links.length ? <Chain links={links} /> : null}
+                <ul className="mt-2 space-y-1.5">
+                  {reply && cut ? <Message key={reply.stepId} m={reply} text={cut.lead} testId="agent-reply" /> : null}
+                  {details.map((m) => <Message key={m.stepId} m={m} />)}
+                  {reply && cut?.rest ? <Message key={`${reply.stepId}-rest`} m={reply} text={cut.rest} /> : null}
+                </ul>
+              </div>
+            </details>
+          </div>
+        ) : null}
         <form
           className="flex flex-col gap-2 sm:flex-row"
           onSubmit={(e) => {
@@ -151,43 +194,6 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
         </form>
         {waitSeconds !== null ? <PacedWait className="mt-3" seconds={waitSeconds} what="agent" onStop={stopWaiting} testId="agent-wait" /> : null}
         {blocked ? <p className="mt-3 text-sm text-red-700" data-testid="agent-blocked">{blocked}</p> : null}
-        {links.length ? <Chain links={links} /> : null}
-        {said.length ? (
-          <ul className="mt-3 space-y-1.5 text-sm text-zinc-700" data-testid="agent-messages">
-            {payFirst.map((m) => <Message key={m.stepId} m={m} />)}
-            {reply && cut ? <Message key={reply.stepId} m={reply} text={cut.lead} testId="agent-reply" /> : null}
-            {details.length || cut?.rest ? (
-              <li>
-                <details data-testid="agent-details">
-                  <summary className="cursor-pointer text-xs font-medium text-zinc-600 underline underline-offset-2">Details: the cash check and the plan, in numbers</summary>
-                  <ul className="mt-1.5 space-y-1.5">
-                    {details.map((m) => <Message key={m.stepId} m={m} />)}
-                    {reply && cut?.rest ? <Message key={`${reply.stepId}-rest`} m={reply} text={cut.rest} /> : null}
-                  </ul>
-                </details>
-              </li>
-            ) : null}
-          </ul>
-        ) : null}
-        {refused ? (
-          <div className="mt-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" data-testid="guard-refusal" role="status">
-            <ShieldX className="mt-0.5 size-5 shrink-0 text-red-600" aria-hidden />
-            <div className="min-w-0">
-              <p className="font-semibold">The Guard refused this payment{askedFor ? ` of ${askedFor}` : ""}</p>
-              <p className="mt-0.5" data-testid="guard-reason">{refused.detail}</p>
-              <p className="mt-1 text-xs text-red-800">No PayPal order was created and no approval was asked for. Only a confirmed contract term can be paid.</p>
-            </div>
-          </div>
-        ) : null}
-        {run?.status === "failed" ? (
-          <p className="mt-3 text-sm text-red-700" data-testid="agent-error">
-            {`${run.detail} The agent has stopped, and it can't pay anyone without your approval. You can still pay from the timeline.`}
-          </p>
-        ) : null}
-        {pending?.approval ? (
-          <PayApproval key={pending.approval.id} className="mt-3" item={pending} approval={pending.approval} cash={cash} sandbox={sandbox} onDecided={onDecided} />
-        ) : null}
-        {checkout ? <PayPalCheckout className="mt-3" item={checkout} sandbox={sandbox} onPaid={onDecided} /> : null}
       </CardBody>
     </Card>
   );

@@ -4,6 +4,7 @@
  * labelled fixtures.
  */
 import { devices, expect, test } from "@playwright/test";
+import { openCashCheck } from "./open-cash";
 import { SAMPLES } from "../../src/lib/wedding/samples";
 
 const planCookie = async (context: import("@playwright/test").BrowserContext) => (await context.cookies()).find((c) => c.name === "vt_plan")?.value;
@@ -13,6 +14,8 @@ test("a new visitor lands on the labelled sample plan, and can start their own",
   await expect(page.getByTestId("sample-plan")).toContainText("Sample plan");
   await expect(page.getByTestId("timeline-item")).toHaveCount(SAMPLES.length * 2);
   await expect(page.getByTestId("agent-panel")).toBeVisible();
+  await expect(page.getByTestId("cash-chart")).toBeVisible();
+  await openCashCheck(page);
   await expect(page.getByTestId("cash-warning").first()).toBeVisible();
 
   const { contracts, samplePlan } = await (await page.request.get("/api/contracts")).json();

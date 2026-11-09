@@ -13,6 +13,8 @@ import type { CashPlan } from "@/lib/wedding/types";
 
 const pct = (cents: number, top: number) => `${Math.min(100, (cents / top) * 100)}%`;
 const short = (cents: number) => formatCents(cents).replace(/\.00$/, "");
+/** "$10.8k": the over-budget label on a phone, where a bar is too narrow for "$10,800". */
+const compact = (cents: number) => (cents >= 100_000 ? `$${Number((cents / 100_000).toFixed(cents >= 1_000_000 ? 0 : 1))}k` : short(cents));
 
 /** The months as last drawn, and what changed from the drawing before. Kept across refreshes. */
 function useChanges(months: ChartMonth[]) {
@@ -33,7 +35,6 @@ export function CashChart({ cash, className }: { cash: CashPlan; className?: str
   if (!months.length) return null;
   const budget = cash.monthlyBudgetCents;
   const top = chartTopCents(months, budget);
-  const over = months.filter((m) => m.overByCents > 0);
   return (
     <figure className={className} data-testid="cash-chart">
       <figcaption className="sr-only">
@@ -41,7 +42,7 @@ export function CashChart({ cash, className }: { cash: CashPlan; className?: str
       </figcaption>
       <div className="relative h-28" aria-hidden>
         <div className="absolute inset-x-0 z-10 border-t border-dashed border-zinc-500" style={{ bottom: pct(budget, top) }} data-testid="cash-chart-budget">
-          <span className="absolute -top-4 left-0 bg-white px-1 text-[10px] font-medium text-zinc-600">Budget {short(budget)}</span>
+          <span className="absolute -top-4 left-0 whitespace-nowrap bg-white px-1 text-[10px] font-medium text-zinc-600" data-testid="cash-chart-label">Budget {short(budget)}</span>
         </div>
         <div className="absolute inset-0 flex items-end gap-1 border-b border-zinc-200">
           {months.map((m) => {
@@ -64,8 +65,9 @@ export function CashChart({ cash, className }: { cash: CashPlan; className?: str
                   {m.overByCents ? <div className="absolute inset-x-0 top-0 bg-red-500/85 transition-[height] duration-700 ease-out" style={{ height: `${(m.overByCents / m.totalCents) * 100}%` }} /> : null}
                 </div>
                 {m.overByCents ? (
-                  <span className="absolute inset-x-0 z-20 text-center text-[10px] font-semibold leading-none text-red-700" style={{ bottom: `calc(${pct(m.totalCents, top)} + 3px)` }} data-testid="cash-chart-over">
-                    +{short(m.overByCents)}
+                  <span className="absolute left-1/2 z-20 -translate-x-1/2 whitespace-nowrap text-center text-[10px] font-semibold leading-none text-red-700" style={{ bottom: `calc(${pct(m.totalCents, top)} + 3px)` }} data-testid="cash-chart-over-label">
+                    <span className="sm:hidden">+{compact(m.overByCents)}</span>
+                    <span className="hidden sm:inline" data-testid="cash-chart-over">+{short(m.overByCents)}</span>
                   </span>
                 ) : null}
               </div>
@@ -78,20 +80,29 @@ export function CashChart({ cash, className }: { cash: CashPlan; className?: str
           <span key={m.month} className={`min-w-0 flex-1 truncate text-center text-[10px] leading-tight ${m.overByCents ? "font-semibold text-red-700" : "text-zinc-500"}`}>{m.short}</span>
         ))}
       </div>
-      <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500" aria-hidden>
-        <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm bg-brand-300" /> To pay</span>
-        <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm bg-emerald-500" /> Paid</span>
-        <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm bg-red-500" /> Over budget</span>
-        <span className="inline-flex items-center gap-1"><span className="w-3 border-t border-dashed border-zinc-500" /> Monthly budget</span>
-      </p>
-      <p className={`mt-1 text-xs ${over.length ? "text-red-700" : "text-emerald-700"}`} data-testid="cash-chart-summary">
-        {over.length ? `Over budget: ${over.map((m) => `${m.label} by ${formatCents(m.overByCents)}`).join(", ")}.` : "Every month fits your budget."}
-      </p>
       {changes.length ? (
         <p className="mt-1 rounded-md bg-brand-50 px-2 py-1 text-xs text-brand-900" data-testid="cash-chart-change">
           Just changed: {changes.map((c) => `${c.label} ${formatCents(c.fromCents)} → ${formatCents(c.toCents)}`).join(", ")}.
         </p>
       ) : null}
     </figure>
+  );
+}
+
+/** The one line under the chart: which months go over, and by how much. */
+export function chartSummary(cash: CashPlan) {
+  const over = chartMonths(cash).filter((m) => m.overByCents > 0);
+  return over.length ? `Over budget: ${over.map((m) => `${m.label} by ${formatCents(m.overByCents)}`).join(", ")}.` : "Every month fits your budget.";
+}
+
+/** What the chart's colours mean. */
+export function ChartLegend({ className }: { className?: string }) {
+  return (
+    <p className={`flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${className ?? ""}`} aria-hidden>
+      <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm bg-brand-300" /> To pay</span>
+      <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm bg-emerald-500" /> Paid</span>
+      <span className="inline-flex items-center gap-1"><span className="size-2 rounded-sm bg-red-500" /> Over budget</span>
+      <span className="inline-flex items-center gap-1"><span className="w-3 border-t border-dashed border-zinc-500" /> Monthly budget</span>
+    </p>
   );
 }
