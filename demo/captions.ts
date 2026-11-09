@@ -6,6 +6,8 @@
  *   await caption(page, "The buyer approves a $120 hold with PayPal");
  *   await highlight(page, page.getByTestId("run-agent"));
  */
+import fs from "node:fs";
+import path from "node:path";
 import type { Locator, Page } from "@playwright/test";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -43,7 +45,7 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
 }
 
 /** Full-screen title card (intro/outro). */
-export async function titleCard(page: Page, title: string, subtitle = "", ms = 3200) {
+export async function titleCard(page: Page, title: string, subtitle = "", ms = 3200, opts: { stay?: boolean } = {}) {
   await page.evaluate(
     ({ title, subtitle }) => {
       const el = document.createElement("div");
@@ -60,6 +62,8 @@ export async function titleCard(page: Page, title: string, subtitle = "", ms = 3
     { title, subtitle },
   );
   await sleep(ms);
+  // The closing card stays up; the edit ends the video on it.
+  if (opts.stay) return;
   await page.evaluate(() => {
     const el = document.getElementById("__demo_title");
     if (el) {
@@ -93,16 +97,124 @@ export async function highlight(page: Page, target: Locator, ms = 1600) {
   await sleep(Math.min(ms, 900));
 }
 
+/** Lights up the element itself (a sentence, a figure) in yellow for `ms`, as a reader's marker would. */
+export async function mark(target: Locator, ms = 6000) {
+  await target.evaluate((el: HTMLElement, ms) => {
+    const before = { background: el.style.background, boxShadow: el.style.boxShadow, transition: el.style.transition, color: el.style.color };
+    Object.assign(el.style, { transition: "background .3s, box-shadow .3s", background: "#fef08a", boxShadow: "0 0 0 4px #fef08a", color: "#18181b" });
+    setTimeout(() => Object.assign(el.style, before), ms);
+  }, ms);
+}
+
+/**
+ * What counts as "busy" on screen: a spinner, a skeleton, a loading line, or PayPal's own spinner.
+ * Checked in every page and frame, ten times a second, and only while it's on screen.
+ */
+function busyProbe() {
+  const SELECTOR = '.animate-spin, .animate-pulse, [aria-busy="true"], [data-testid$="-loading"], [data-testid="receipt-reading"], [role="progressbar"], [class*="spinner" i], [class*="loader" i]';
+  const w = window as unknown as { __demoBusy?: (on: boolean, what: string) => void };
+  let last = "";
+  const seen = (el: Element) => {
+    if (document.getElementById("__demo_title")) return false;
+    // Inside a closed <details>, it's in the DOM but not drawn.
+    const closed = el.closest("details:not([open])");
+    if (closed && !el.closest("summary")) return false;
+    const check = (el as Element & { checkVisibility?: (o: object) => boolean }).checkVisibility;
+    if (check && !check.call(el, { contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true })) return false;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) return false;
+    const style = getComputedStyle(el);
+    return style.visibility !== "hidden" && style.opacity !== "0";
+  };
+  setInterval(() => {
+    const found = [...document.querySelectorAll(SELECTOR)].find(seen);
+    const what = found ? `${location.host} ${found.getAttribute("data-testid") ?? (found.getAttribute("class") ?? found.tagName).slice(0, 60)}` : "";
+    if (what !== last && w.__demoBusy) {
+      if (last) w.__demoBusy(false, last);
+      if (what) w.__demoBusy(true, what);
+      last = what;
+    }
+  }, 100);
+}
+
 /**
  * Keeps the cut video under its limit. A wait that the edit cuts (PayPal's page loading, a webhook
  * on its way) is marked with `cut()`: it doesn't count, and its start and end in the raw recording
  * are printed so the editor knows where to cut.
  */
+export interface Span {
+  label: string;
+  from: number;
+  to: number;
+}
+
 export class DemoClock {
   private readonly start = Date.now();
   private cutMs = 0;
-  readonly cuts: { label: string; from: number; to: number }[] = [];
+  readonly cuts: Span[] = [];
+  /** Every moment a spinner, skeleton or page load was on screen, in raw seconds. */
+  readonly busy: Span[] = [];
+  private readonly open = new Map<string, number>();
+  /** When the first title card was half faded in, in raw seconds: the edit finds it in the video to line the cuts up. */
+  private syncAt?: number;
   constructor(private readonly limitSeconds = 100) {}
+
+  /** Call just before the opening title card (a white page turning dark). */
+  sync() {
+    this.syncAt = this.raw + 0.2;
+  }
+
+  /** Watches the page (and PayPal's) for anything busy on screen, so the edit can cut it. */
+  async watchBusy(page: Page) {
+    const set = (key: string, on: boolean) => {
+      if (on && !this.open.has(key)) this.open.set(key, this.raw);
+      if (!on && this.open.has(key)) {
+        this.busy.push({ label: key, from: this.open.get(key)!, to: this.raw });
+        this.open.delete(key);
+      }
+    };
+    await page.exposeBinding("__demoBusy", (_source, on: boolean, what: string) => set(`spinner ${what}`, on));
+    await page.addInitScript(busyProbe);
+    // A full page load shows a blank or half-drawn page until it's done.
+    page.on("request", (r) => {
+      if (r.isNavigationRequest() && r.frame() === page.mainFrame()) set("page load", true);
+    });
+    // A new document starts its probe afresh, so whatever the old one showed has gone.
+    page.on("framenavigated", (frame) => {
+      if (frame === page.mainFrame()) for (const key of [...this.open.keys()]) if (key.startsWith("spinner ")) set(key, false);
+    });
+    page.on("load", () => setTimeout(() => set("page load", false), 250));
+  }
+
+  /** Ends the video here: everything after this moment is cut. */
+  end() {
+    this.cuts.push({ label: "after the end card", from: this.raw, to: this.raw + 3600 });
+  }
+
+  /** Seconds of `[from, to]` (raw) that stay in the cut video. */
+  onCamera(from: number, to: number) {
+    const cut = merge(this.allCuts()).reduce((sum, c) => sum + Math.max(0, Math.min(to, c.to) - Math.max(from, c.from)), 0);
+    return to - from - cut;
+  }
+
+  /** The cuts the edit makes: the waits marked with cut(), and every busy moment. */
+  allCuts(): Span[] {
+    for (const key of [...this.open.keys()]) {
+      this.busy.push({ label: key, from: this.open.get(key)!, to: this.raw });
+      this.open.delete(key);
+    }
+    // The video starts a moment before this clock, and frames land late: pad each busy cut.
+    return [...this.cuts, ...this.busy.map((b) => ({ ...b, from: Math.max(0, b.from - 0.1), to: b.to + 0.3 }))];
+  }
+
+  /** Writes the edit list webm-to-mp4.sh applies: raw-second spans to cut, merged and sorted. */
+  writeCuts(file: string) {
+    const cuts = merge(this.allCuts());
+    const cutSeconds = cuts.reduce((sum, c) => sum + Math.max(0, Math.min(c.to, this.raw) - c.from), 0);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ rawSeconds: this.raw, cutSeconds, syncAt: this.syncAt, cuts, waits: this.cuts, busy: this.busy }, null, 2));
+    return { cuts, videoSeconds: this.raw - cutSeconds };
+  }
   /** Seconds into the raw recording. */
   get raw() {
     return (Date.now() - this.start) / 1000;
@@ -128,4 +240,17 @@ export class DemoClock {
     console.log(`[demo] ${label} at ${s}s (raw ${Math.round(this.raw)}s)`);
     if (s > this.limitSeconds) throw new Error(`Demo is ${s}s at "${label}" (limit ${this.limitSeconds}s). Cut scenes or shorten captions.`);
   }
+}
+
+/** Overlapping spans joined into one, in order. */
+function merge(spans: Span[]): Span[] {
+  const out: Span[] = [];
+  for (const s of [...spans].sort((a, b) => a.from - b.from)) {
+    const last = out.at(-1);
+    if (last && s.from <= last.to) {
+      last.to = Math.max(last.to, s.to);
+      last.label = `${last.label} + ${s.label}`;
+    } else out.push({ ...s });
+  }
+  return out;
 }

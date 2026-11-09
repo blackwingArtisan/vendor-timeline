@@ -56,3 +56,4 @@ test-results-limits/
 playwright-report/
 screenshots/
 .env.shared
+videos/*.cuts.json
