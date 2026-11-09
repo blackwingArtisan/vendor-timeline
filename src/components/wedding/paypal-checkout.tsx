@@ -18,15 +18,15 @@ import type { TimelineItem } from "@/lib/wedding/types";
  * In sandbox the payee is a test business account, so say plainly which one and whose place it
  * takes: a separate vendor account for some vendors, the app's own for the rest.
  */
-export function StandInLine({ item, className }: { item: TimelineItem; className?: string }) {
+export function StandInLine({ item, className, extra }: { item: TimelineItem; className?: string; extra?: string }) {
   const email = item.payment?.payee ?? item.sandboxPayee?.email;
   const own = item.sandboxPayee?.own ?? true;
   const id = `stand-in-${item.id}`;
-  // One small chip; the sentence is its tooltip, on hover or keyboard focus.
+  // One small "Sandbox" chip per row; every sandbox sentence is its tooltip, on hover or keyboard focus.
   return (
     <span className={`group/standin relative inline-flex align-middle ${className ?? ""}`}>
       <button type="button" aria-describedby={id} className="inline-flex cursor-help items-center gap-1 rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-600" data-testid="stand-in-chip">
-        <Info className="size-3" aria-hidden /> Sandbox payee
+        <Info className="size-3" aria-hidden /> Sandbox
       </button>
       <span
         id={id}
@@ -42,6 +42,7 @@ export function StandInLine({ item, className }: { item: TimelineItem; className
           : item.sandboxPayee?.shared
           ? `In the sandbox, PayPal pays a vendor test business account${email ? ` (${email})` : ""}, not this app's, standing in for ${item.vendorName}. The same test account stands in for the other sample vendors until each has its own.`
           : `In the sandbox, PayPal pays ${item.vendorName}'s own vendor test business account${email ? ` (${email})` : ""}, not this app's.`}
+        {extra ? ` ${extra}` : null}
       </span>
     </span>
   );

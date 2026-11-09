@@ -47,6 +47,21 @@ function whenLabel(item: TimelineItem) {
 
 const itemName = (item: TimelineItem) => `${item.vendorName} ${item.kind}`;
 
+/**
+ * An icon-only button's label, shown as a tooltip on hover or keyboard focus. The button keeps its
+ * own aria-label; this is for sighted users, so screen readers don't hear it twice.
+ */
+function IconTip({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+  return (
+    <span className={`group/tip relative inline-flex ${className ?? ""}`}>
+      {children}
+      <span role="tooltip" aria-hidden className={`pointer-events-none invisible max-md:hidden absolute bottom-full right-0 z-30 mb-1 whitespace-nowrap rounded-md bg-zinc-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow group-hover/tip:visible group-hover/tip:opacity-100 group-focus-within/tip:visible group-focus-within/tip:opacity-100`} data-testid="icon-tip">
+        {label}
+      </span>
+    </span>
+  );
+}
+
 /** PayPal's own record of the payment: its order, its capture, and what confirmed it. */
 function PayPalProof({ item, standIn }: { item: TimelineItem; standIn: boolean }) {
   const p = item.payment;
@@ -74,6 +89,8 @@ function PayPalProof({ item, standIn }: { item: TimelineItem; standIn: boolean }
             Paid to <span data-testid="paypal-payee">{p.payee}</span>
           </>
         )}
+        {/* Every sandbox note for this row sits in this one chip's tooltip. */}
+        {standIn ? <StandInLine item={item} className="ml-1.5" extra={p.paidBy === "re-read" && !p.webhookLate ? "PayPal can't send webhooks to this copy of the app, so it was confirmed by re-reading the capture." : undefined} /> : null}
       </p>
       {p.paidBy === "webhook" ? (
         <p className="mt-0.5" data-testid="paid-by">
@@ -84,10 +101,11 @@ function PayPalProof({ item, standIn }: { item: TimelineItem; standIn: boolean }
         <p className="mt-0.5" data-testid="paid-by">
           {p.webhookLate
             ? "Confirmed by re-reading the capture from PayPal. PayPal's webhook hadn't come after a minute; it shows here when it does."
+            : standIn
+            ? "Confirmed by re-reading the capture from PayPal."
             : "Confirmed by re-reading the capture from PayPal. PayPal can't send webhooks to this copy of the app."}
         </p>
       ) : null}
-      {standIn ? <StandInLine item={item} className="mt-0.5 text-zinc-500" /> : null}
     </div>
   );
 }
@@ -182,7 +200,8 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
         <div className="order-5 flex flex-wrap items-center justify-end gap-1 md:order-none md:col-span-full md:flex-nowrap xl:col-span-1">
           {canPay ? (
             <>
-              <Button size="sm" variant="ghost" className="px-2 md:hidden" icon={<MoreHorizontal className="size-4" />} onClick={() => setMore((m) => !m)} aria-label={`More for the ${item.vendorName} ${item.kind}`} aria-expanded={more} data-testid="row-more">
+              {/* Phone only. A tooltip here would sit over the row on a tap, so it has the native one. */}
+              <Button size="sm" variant="ghost" className="px-2 md:hidden" icon={<MoreHorizontal className="size-4" />} onClick={() => setMore((m) => !m)} aria-label={`More for the ${item.vendorName} ${item.kind}`} title="More actions" aria-expanded={more} data-testid="row-more">
                 <span className="sr-only">More</span>
               </Button>
               <Button size="sm" icon={<Send className="size-3.5" />} onClick={() => onPay(item)} loading={busy} disabled={busy} aria-label={payLabel(item.vendorRole)} className="md:order-last" data-testid="pay-item">
@@ -190,15 +209,22 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
                 <span className="hidden md:inline">{payLabel(item.vendorRole)}</span>
               </Button>
               <div className={`${more ? "flex" : "hidden"} w-full flex-wrap justify-end gap-1 md:flex md:w-auto md:shrink-0 md:flex-nowrap`} data-testid="row-tools">
-              <Button size="sm" variant="ghost" className="px-2" icon={paidOutsideIcon} onClick={() => setOutside((o) => !o)} aria-label={`Mark the ${item.vendorName} ${item.kind} paid outside PayPal`} title="Paid outside PayPal (cash or cheque)" aria-expanded={outside} data-testid="paid-outside-open">
-                <span className="md:sr-only">Paid outside PayPal</span>
-              </Button>
-              <Button size="sm" variant="ghost" className="px-2" icon={<UserPlus className="size-3.5" />} onClick={() => setAssigning((a) => !a)} aria-label={`Assign the ${item.vendorName} ${item.kind} to someone else to pay`} title="Assign to a parent or someone else to pay" aria-expanded={assigning} data-testid="assign-open">
-                <span className="md:sr-only">Assign to someone else</span>
-              </Button>
-              <Button size="sm" variant="ghost" className="px-2" icon={<CalendarDays className="size-3.5" />} onClick={() => setMoving((m) => !m)} aria-label={`Change the date of the ${item.vendorName} ${item.kind}`} title="Change date" data-testid="move-date">
-                <span className="md:sr-only">Change date</span>
-              </Button>
+              {/* On a phone each tool shows its label; from md up it's an icon with the label as its tooltip. */}
+              <IconTip label="Paid outside PayPal (cash or cheque)">
+                <Button size="sm" variant="ghost" className="px-2" icon={paidOutsideIcon} onClick={() => setOutside((o) => !o)} aria-label={`Mark the ${item.vendorName} ${item.kind} paid outside PayPal`} aria-expanded={outside} data-testid="paid-outside-open">
+                  <span className="md:sr-only">Paid outside PayPal</span>
+                </Button>
+              </IconTip>
+              <IconTip label="Assign to a parent or someone else to pay">
+                <Button size="sm" variant="ghost" className="px-2" icon={<UserPlus className="size-3.5" />} onClick={() => setAssigning((a) => !a)} aria-label={`Assign the ${item.vendorName} ${item.kind} to someone else to pay`} aria-expanded={assigning} data-testid="assign-open">
+                  <span className="md:sr-only">Assign to someone else</span>
+                </Button>
+              </IconTip>
+              <IconTip label="Change the date">
+                <Button size="sm" variant="ghost" className="px-2" icon={<CalendarDays className="size-3.5" />} onClick={() => setMoving((m) => !m)} aria-label={`Change the date of the ${item.vendorName} ${item.kind}`} data-testid="move-date">
+                  <span className="md:sr-only">Change date</span>
+                </Button>
+              </IconTip>
               </div>
             </>
           ) : null}

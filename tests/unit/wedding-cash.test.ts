@@ -29,7 +29,7 @@ describe("the sample wedding", () => {
     expect(band.proposed.balanceDue.value).toBeNull();
     expect(band.proposed.payeeEmail.value).toBeNull();
     expect(band.confirmed).toMatchObject(BAND_ANSWERS);
-    expect(band.read).toMatchObject({ mocked: true, costUsd: 0 });
+    expect(band.read).toEqual({ mocked: false, prepared: true, by: "Sample, prepared ahead of time, not read on this visit", costUsd: 0 });
   });
 
   it("adds nothing on a second click", () => {

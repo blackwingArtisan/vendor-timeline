@@ -54,9 +54,28 @@ describe("the cash plan", () => {
     expect(ask.message).toContain("the balance of $1,740.00 due Sat, May 29, 2027. Could we move it to Sat, Jun 5, 2027, still before the wedding on Sat, Jun 12, 2027?");
     expect(fix.summary).toMatch(/^No plan fits every month in your \$5,000\.00 monthly budget, but two moves your contracts allow bring it closer: /);
     expect(fix.stillOver).toBe(`Still over: April 2027 by $1,000.00 and May 2027 by $5,460.00. The ${VENUE.vendorName} balance ($6,000.00) and the ${CATERER.vendorName} balance ($10,460.00) are each more than your monthly budget on their own.`);
-    expect(cashPlanSentence(fix)).toBe(`${fix.summary} ${fix.stillOver}`);
+    const raise = `$10,500.00 a month is the smallest budget that fits every month, once you pay the ${PHOTOGRAPHER.vendorName} balance ($3,600.00) now and pay the ${FLORIST.vendorName} balance ($1,740.00) now. Code works this out from the same rules as the plan.`;
+    expect(fix.budgetToFit).toEqual({ cents: 1_050_000, why: raise });
+    expect(cashPlanSentence(fix)).toBe(`${fix.summary} ${fix.stillOver} Or raise the monthly budget: ${raise}`);
     // The May 29 week no longer clashes once both are made.
     expect(cashPlan(withMoves(view.items, fix.moves), TODAY, 500_000).warnings.map((w) => w.kind)).toEqual(["over_month", "over_month"]);
+  });
+
+  it("names the smallest budget its own plan fits, and at that budget the plan's moves leave every month under", async () => {
+    const view = await sample("plan_fix_raise");
+    const { cents } = view.cashFix!.budgetToFit!;
+    expect(cents).toBe(1_050_000);
+    const at = cashFix(view.items, TODAY, cents)!;
+    expect(at.fits).toBe(true);
+    expect(at.budgetToFit).toBeNull();
+    expect(at.stillOver).toBeNull();
+    expect(cashPlan(withMoves(view.items, at.moves), TODAY, cents).warnings).toEqual([]);
+    // $100 less doesn't fit, whatever the moves.
+    const below = cashFix(view.items, TODAY, cents - 10_000)!;
+    expect(below.fits).toBe(false);
+    expect(below.budgetToFit!.cents).toBe(cents);
+    // A plan that fits names no budget.
+    expect(cashFix(view.items, TODAY, 1_500_000)!.budgetToFit).toBeNull();
   });
 
   it("asks a vendor when this month has no room to pay early", () => {

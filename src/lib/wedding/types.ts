@@ -107,7 +107,14 @@ export interface PaymentWebhook {
 }
 
 export interface ContractRead {
+  /** AI mock mode returned a fixture for this read. False for a sample (prepared ahead) and a live read. */
   mocked: boolean;
+  /** Said plainly: who or what read it, and when. */
+  by?: string;
+  /** A fictional sample whose read was prepared ahead of time, not made on this visit. */
+  prepared?: true;
+  /** When it was read, for a read made in the app. */
+  readAt?: string;
   /** No AI saw this one. The couple typed its terms in. */
   skipped?: boolean;
   model?: string;
@@ -309,6 +316,11 @@ export interface CashFix {
   summary: string;
   /** What is still over budget after the moves, or null. */
   stillOver: string | null;
+  /**
+   * When no plan fits: the smallest monthly budget (in $100 steps) at which code's own plan fits
+   * every month, with why, for the couple to set in one tap. Null when the plan fits.
+   */
+  budgetToFit?: { cents: number; why: string } | null;
 }
 
 export interface TimelineView {
