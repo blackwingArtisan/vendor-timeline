@@ -60,9 +60,14 @@ function PayPalProof({ item, standIn }: { item: TimelineItem; standIn: boolean }
         Capture <span className="font-mono" data-testid="paypal-capture-id">{p.captureId}</span>
         {" · "}Order <span className="font-mono" data-testid="paypal-order-id">{p.orderId}</span>
         {" · "}
-        {item.payeeGiven ? (
-          <span data-testid="paid-to-own">
+        {item.payeeGiven && item.payeeOwn ? (
+          <span data-testid="paid-to-vendor" data-own="true">
             Paid to the {item.vendorRole}&apos;s own PayPal (<span data-testid="paypal-payee">{p.payee}</span>)
+          </span>
+        ) : item.payeeGiven ? (
+          // The account the vendor gave is also paid for other vendors: never call it theirs alone.
+          <span data-testid="paid-to-vendor" data-own="false">
+            Paid to the {item.vendorRole}&apos;s PayPal ({standIn ? "sandbox stand-in: " : ""}<span data-testid="paypal-payee">{p.payee}</span>)
           </span>
         ) : (
           <>

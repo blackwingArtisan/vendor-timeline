@@ -12,7 +12,7 @@ import { timeline } from "@/lib/events/bus";
 
 import { resetEnvCache } from "@/lib/env";
 import { DEFAULT_SANDBOX_VENDOR_EMAIL } from "@/lib/env-core";
-import { captureCheckout, captureWebhook, checkoutAfterApproval, orderPayee, sandboxPayee, planChannel, planPayPalIds, webhookPlanChannel, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
+import { captureCheckout, captureWebhook, checkoutAfterApproval, orderPayee, ownGivenPayees, sandboxPayee, planChannel, planPayPalIds, webhookPlanChannel, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
 import { readReceipt } from "@/lib/wedding/receipt";
 import { BAND, BAND_ANSWERS, CATERER, FLORIST, PHOTOGRAPHER, VENUE } from "@/lib/wedding/samples";
 import type { Contract } from "@/lib/wedding/types";
@@ -230,6 +230,38 @@ describe("paying", () => {
       expect(orderPayee(BAND_ANSWERS.payeeEmail)).toBe("sb-band@business.example.com");
       expect(sandboxPayee(FLORIST.payeeEmail!)).toEqual({ email: DEFAULT_SANDBOX_VENDOR_EMAIL, own: false });
       expect(sandboxPayee(PHOTOGRAPHER.payeeEmail!)).toEqual({ email: "sb-photo@business.example.com", own: false });
+    } finally {
+      vi.unstubAllEnvs();
+      resetEnvCache();
+    }
+  });
+
+  it("calls a given account a vendor's own only when no other vendor is paid there", () => {
+    const vendor = (id: string, payeeEmail: string, given?: string, paidTo?: string) =>
+      ({ id, confirmed: { payeeEmail }, payments: paidTo ? { deposit: { payee: paidTo } } : {}, ...(given ? { vendorPayees: { balance: given } } : {}) }) as unknown as Contract;
+    // Outside sandbox: the florist's own address, used by no one else, is theirs.
+    expect([...ownGivenPayees([vendor("photo", "photo@x.example.com"), vendor("florist", "florist@x.example.com", "pay@florist.example.com")])]).toEqual(["florist.balance"]);
+    // The address the photographer is already paid at is not the florist's own.
+    expect(ownGivenPayees([vendor("photo", "photo@x.example.com"), vendor("florist", "florist@x.example.com", "photo@x.example.com")]).size).toBe(0);
+    // Two vendors giving one address: neither is labelled "own".
+    expect(ownGivenPayees([vendor("photo", "photo@x.example.com", "shared@x.example.com"), vendor("florist", "florist@x.example.com", "shared@x.example.com")]).size).toBe(0);
+    // A payment already sent there counts too.
+    expect(ownGivenPayees([vendor("photo", "photo@x.example.com", undefined, "pay@florist.example.com"), vendor("florist", "florist@x.example.com", "pay@florist.example.com")]).size).toBe(0);
+
+    vi.stubEnv("PAYPAL_MODE", "sandbox");
+    vi.stubEnv("PAYPAL_CLIENT_ID", "test-client");
+    vi.stubEnv("PAYPAL_CLIENT_SECRET", "test-secret");
+    vi.stubEnv("PAYPAL_SANDBOX_SELLER_EMAIL", "own-app@business.example.com");
+    resetEnvCache();
+    try {
+      // The one shared vendor test account stands in for every sample vendor: never anyone's own,
+      // even with the florist alone in the plan.
+      expect(ownGivenPayees([vendor("florist", FLORIST.payeeEmail!, DEFAULT_SANDBOX_VENDOR_EMAIL)]).size).toBe(0);
+      expect(ownGivenPayees([vendor("photo", PHOTOGRAPHER.payeeEmail!), vendor("florist", FLORIST.payeeEmail!, DEFAULT_SANDBOX_VENDOR_EMAIL)]).size).toBe(0);
+      // A test account set for the florist alone is theirs.
+      vi.stubEnv("PAYPAL_SANDBOX_VENDOR_EMAILS", "florist=sb-florist@business.example.com");
+      resetEnvCache();
+      expect([...ownGivenPayees([vendor("photo", PHOTOGRAPHER.payeeEmail!), vendor("florist", FLORIST.payeeEmail!, "sb-florist@business.example.com")])]).toEqual(["florist.balance"]);
     } finally {
       vi.unstubAllEnvs();
       resetEnvCache();

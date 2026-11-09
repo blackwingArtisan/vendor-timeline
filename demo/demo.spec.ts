@@ -390,10 +390,13 @@ test("demo", async ({ page, context, browser }) => {
     await scrollTo(page, balance, 150);
   });
   await expect(balance.getByTestId("item-payer")).toHaveText(`Paid by ${PARENT}'s PayPal`);
-  await expect(balance.getByTestId("paid-to-own")).toContainText("Paid to the florist's own PayPal");
-  clock.say(17, `${PARENT} pays in her own PayPal, to the florist's own account.`);
+  // "Own" only when no other vendor is paid at that account; the shared sandbox stand-in is said as one.
+  const paidTo = balance.getByTestId("paid-to-vendor");
+  const own = (await paidTo.getAttribute("data-own")) === "true";
+  await expect(paidTo).toContainText(own ? "Paid to the florist's own PayPal" : "Paid to the florist's PayPal (sandbox stand-in: ");
+  clock.say(17, `${PARENT} pays in her own PayPal, to the account the florist gave.`);
   await highlight(page, balance, 5000);
-  await caption(page, `Paid by ${PARENT}'s PayPal, to the florist's own account, not the app's.`, { ms: 3600, over: balance, position: "top" });
+  await caption(page, own ? `Paid by ${PARENT}'s PayPal, to the florist's own account, not the app's.` : `Paid by ${PARENT}'s PayPal, to the account the florist gave: a sandbox stand-in.`, { ms: 3600, over: balance, position: "top" });
   await check("parent");
 
   // The end card: who it's for and what happened, on a clear screen.

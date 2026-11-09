@@ -72,7 +72,7 @@ export function sandboxPayee(vendorEmail: string, given = false): SandboxPayee |
   const env = getEnv();
   if (env.paypalMode !== "sandbox") return undefined;
   const email = orderPayee(vendorEmail);
-  const shared = !given && standsInFor(email) > 1;
+  const shared = standsInFor(email) > 1;
   return { email, own: email.toLowerCase() === env.sandboxSellerEmail.toLowerCase(), ...(given ? { given: true } : {}), ...(shared ? { shared: true } : {}) };
 }
 
@@ -446,6 +446,41 @@ async function syncOpenPayments(planId: string) {
 }
 
 /** The payment went to the PayPal account the vendor gave on the couple's link. */
+/**
+ * Which given accounts are truly the vendor's own, by contract and kind. An account counts only if
+ * no other vendor in the plan is paid there and, in sandbox, it isn't a test account standing in
+ * for several sample vendors. Only those may be called the vendor's "own PayPal" on screen.
+ */
+export function ownGivenPayees(contracts: Contract[]): Set<string> {
+  const users = new Map<string, Set<string>>();
+  const note = (email: string | undefined, contractId: string) => {
+    if (!email) return;
+    const key = email.toLowerCase();
+    if (!users.has(key)) users.set(key, new Set());
+    users.get(key)!.add(contractId);
+  };
+  const kinds: ItemKind[] = ["deposit", "balance"];
+  for (const c of contracts) {
+    if (!c.confirmed) continue;
+    for (const kind of kinds) {
+      note(c.payments[kind]?.payee ?? orderPayee(termPayee(c, kind)), c.id);
+      const given = c.vendorPayees?.[kind];
+      if (given) note(orderPayee(given), c.id);
+    }
+  }
+  const sandbox = getEnv().paypalMode === "sandbox";
+  const own = new Set<string>();
+  for (const c of contracts) {
+    for (const kind of kinds) {
+      const given = c.vendorPayees?.[kind];
+      if (!given) continue;
+      const account = orderPayee(given).toLowerCase();
+      if (users.get(account)?.size === 1 && !(sandbox && standsInFor(account) > 1)) own.add(itemId(c.id, kind));
+    }
+  }
+  return own;
+}
+
 function paidToGiven(contract: Contract | undefined, item: TimelineItem): boolean {
   const given = contract?.vendorPayees?.[item.kind];
   const payee = contract?.payments[item.kind]?.payee;
@@ -500,9 +535,10 @@ export async function viewTimeline(planId: string, today = utcToday()): Promise<
   await syncOpenPayments(planId);
   const view = buildTimeline(listContracts(planId), today, monthlyBudget(planId));
   const byId = new Map(listContracts(planId).map((c) => [c.id, c]));
+  const own = ownGivenPayees(listContracts(planId));
   const items = view.items.map((item) => {
     const contract = byId.get(item.contractId);
-    return { ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(contract?.confirmed ? termPayee(contract, item.kind) : "", !!contract?.vendorPayees?.[item.kind]), ask: askState(contract, item), contributor: contributorOf(contract, item), payeeGiven: paidToGiven(contract, item) };
+    return { ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(contract?.confirmed ? termPayee(contract, item.kind) : "", !!contract?.vendorPayees?.[item.kind]), ask: askState(contract, item), contributor: contributorOf(contract, item), payeeGiven: paidToGiven(contract, item), payeeOwn: own.has(item.id) };
   });
   const same = (item: TimelineItem | null) => items.find((i) => i.id === item?.id) ?? null;
   return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId), planMix: planMix(listContracts(planId)) };

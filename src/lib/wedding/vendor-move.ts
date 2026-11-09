@@ -1,6 +1,6 @@
 /**
  * From a vendor's reply to a moved date: read the reply (Claude), check the date (code), and, only
- * once the couple approve, move it and pay the vendor's own PayPal email if they gave one. Server only.
+ * once the couple approve, move it and pay the PayPal email the vendor gave, if they gave one. Server only.
  */
 import { HttpError } from "@/lib/http";
 import { moveDueDate, requirePlanContract, saveContract } from "./contracts";
@@ -42,7 +42,7 @@ export function mockVerdict(planId: string, contractId: string, kind: ItemKind, 
   }
 }
 
-/** After the couple approve: the date moves, and the vendor's own PayPal email becomes who this contract pays. */
+/** After the couple approve: the date moves, and the PayPal email the vendor gave becomes who this contract pays. */
 export function applyVendorReply(planId: string, contractId: string, kind: ItemKind, due: string, today: string): Contract {
   const { ask } = requireReply(planId, contractId, kind);
   if (!ask.verdict?.ok || ask.verdict.date !== due) throw new HttpError(409, "That date isn't the one the vendor's reply allows. Nothing moved.", "conflict");

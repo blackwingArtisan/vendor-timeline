@@ -149,7 +149,13 @@ export function AskVendor({ move, item, onDone, onRun }: { move: CashMove; item?
     return (
       <div className="mt-2 space-y-1 text-sm text-emerald-800" data-testid="move-done">
         <p className="flex items-center gap-2"><CircleCheck className="size-4 shrink-0" /> Moved to {formatDay(ask?.movedTo ?? move.to)}{by}. The contract said {formatDay(item?.movedFrom ?? move.due)}.</p>
-        {ask?.reply?.paypalEmail ? <p className="pl-6 text-xs text-emerald-900" data-testid="move-payee">Now paid to {move.vendorName}&apos;s own PayPal: {ask.reply.paypalEmail}</p> : null}
+        {ask?.reply?.paypalEmail ? (
+          <p className="pl-6 text-xs text-emerald-900" data-testid="move-payee" data-own={item?.payeeOwn ? "true" : "false"}>
+            {item?.payeeOwn
+              ? `Now paid to ${move.vendorName}'s own PayPal: ${ask.reply.paypalEmail}`
+              : `Now paid to ${move.vendorName}'s PayPal (${item?.sandboxPayee ? "sandbox stand-in: " : ""}${ask.reply.paypalEmail})`}
+          </p>
+        ) : null}
       </div>
     );
   }
