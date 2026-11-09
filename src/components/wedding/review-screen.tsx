@@ -12,6 +12,7 @@ import { PageLoading } from "./page-loading";
 import { amountText, balanceCents, formatCents } from "@/lib/wedding/cents";
 import { formatDay, localToday } from "@/lib/wedding/dates";
 import { contractDayRange, dayProblem, readAmount } from "@/lib/wedding/limits";
+import { readLabel } from "@/lib/wedding/plan-mix";
 import { VENDOR_ROLES, type Contract, type ProposedTerm } from "@/lib/wedding/types";
 
 function Term({ name, label, term, byHand, children }: { name: string; label: string; term: Pick<ProposedTerm<unknown>, "sentence" | "basis" | "flags">; byHand?: boolean; children: ReactNode }) {
@@ -205,14 +206,21 @@ export function ReviewScreen() {
 
   const name = contract.confirmed?.vendorName ?? contract.proposed.vendorName.value ?? "This contract";
   const { read } = contract;
+  const label = readLabel(contract);
   return (
     <>
       <PageHeader
         eyebrow={<Link href="/contracts" className="hover:underline">Contracts</Link>}
         title={name}
         description={read.skipped ? "Fill in the terms from your copy of the contract." : contract.proposed.eventDate.value ? `Wedding day in this contract: ${formatDay(contract.proposed.eventDate.value)}` : "This contract doesn't give a clear wedding day."}
-        actions={<span data-testid="read-by"><Badge tone={read.mocked || read.skipped ? "neutral" : "brand"}>{read.skipped ? "Not read by AI" : read.mocked ? "Simulated read, no AI" : `Read by ${read.model}`}</Badge></span>}
+        actions={<span data-testid="read-by"><Badge tone={label.live ? "brand" : "neutral"}>{label.badge}</Badge></span>}
       />
+      {label.note ? (
+        <p className="-mt-4 mb-6 text-sm text-zinc-600" data-testid="read-note">
+          {label.note}{" "}
+          <Link href="/contracts" className="font-medium text-brand hover:underline" data-testid="read-live-link">To see a live read, add a contract: paste its text or upload a PDF.</Link>
+        </p>
+      ) : null}
       {contract.confirmed ? <ConfirmedSummary contract={contract} /> : <ReviewForm contract={contract} />}
       <details className="mt-6 rounded-2xl border border-zinc-200/80 bg-white px-5 py-4">
         <summary className="cursor-pointer text-sm font-medium text-zinc-700">The whole contract</summary>
