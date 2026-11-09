@@ -8,7 +8,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { Locator, Page } from "@playwright/test";
+import type { BrowserContext, CDPSession, Locator, Page } from "@playwright/test";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -75,52 +75,80 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
   return place;
 }
 
+/** A real phone's screen: 390 CSS px wide, as an iPhone 13/14 lays a page out. */
+export const PHONE_VIEWPORT = { width: 390, height: 844 };
+
+let onCamera: { context: BrowserContext; cdp: CDPSession; page: Page } | null = null;
+
 /**
- * A phone beside the page: an iframe at a phone's width, framed like a handset, showing another
- * person's screen (the vendor's link) while the couple's page stays as it was underneath. It stays
- * hidden until `ready` (a test id in the phone's page) is on screen, so no blank phone is ever
- * filmed, and it fits the frame's height. With `clock`, the wait for its page is cut from the video.
- * Returns the frame to act in.
+ * Shows a phone beside the couple's page. The phone is its own browser context, with no couple
+ * cookies, at a real 390x844 phone viewport; its screen is streamed (CDP screencast) into an opaque
+ * phone frame on the recorded page. The frame appears whole once the first screen has arrived and
+ * goes in one step, so no frame shows it half-transparent over the page. Returns the phone's page
+ * to tap and type on. `watch` installs the demo's probes (spinners, mock text) on it too.
  */
-export async function phone(page: Page, url: string, opts: { side?: "left" | "right"; ready: string; clock?: DemoClock }) {
+export async function phone(page: Page, url: string, opts: { side?: "left" | "right"; ready: string; clock?: DemoClock; watch?: (phone: Page) => Promise<void> }): Promise<Page> {
+  await closePhone(page);
+  const context = await page.context().browser()!.newContext({ viewport: PHONE_VIEWPORT, screen: PHONE_VIEWPORT, deviceScaleFactor: 2, isMobile: true, hasTouch: true, baseURL: new URL(page.url()).origin });
+  const screen = await context.newPage();
+  await opts.watch?.(screen);
+  if (opts.clock) await opts.clock.watchBusy(screen);
   await page.evaluate(
-    ({ url, side }) => {
+    ({ side, ratio }) => {
       document.getElementById("__demo_phone")?.remove();
+      const height = innerHeight - 24;
       const shell = document.createElement("div");
       shell.id = "__demo_phone";
       Object.assign(shell.style, {
-        position: "fixed", top: "50%", [side]: "40px", transform: "translateY(-50%) scale(.96)", width: "372px", height: `${Math.min(812, innerHeight - 24)}px`, zIndex: "2147483646",
-        borderRadius: "48px", background: "#111", padding: "14px", boxShadow: "0 30px 80px rgba(0,0,0,.45)", opacity: "0", transition: "opacity .35s, transform .35s",
+        position: "fixed", top: "12px", [side]: "40px", height: `${height}px`, width: `${Math.round((height - 20) * ratio) + 20}px`, boxSizing: "border-box", zIndex: "2147483646",
+        borderRadius: "40px", background: "#111", padding: "10px", boxShadow: "0 30px 80px rgba(0,0,0,.45)", visibility: "hidden",
       });
-      const frame = document.createElement("iframe");
-      frame.src = url;
-      frame.title = "Phone";
-      Object.assign(frame.style, { width: "100%", height: "100%", border: "0", borderRadius: "36px", background: "#fafafa" });
-      shell.appendChild(frame);
+      const img = document.createElement("img");
+      img.alt = "Phone";
+      Object.assign(img.style, { display: "block", width: "100%", height: "100%", borderRadius: "30px", background: "#fafafa", objectFit: "cover" });
+      shell.appendChild(img);
       document.body.appendChild(shell);
     },
-    { url, side: opts.side ?? "right" },
+    { side: opts.side ?? "right", ratio: PHONE_VIEWPORT.width / PHONE_VIEWPORT.height },
   );
-  const frame = page.frameLocator("#__demo_phone iframe");
-  const ready = () => frame.getByTestId(opts.ready).waitFor({ state: "visible", timeout: 30_000 });
-  await (opts.clock ? opts.clock.cut("phone page loading", ready) : ready());
+  const cdp = await context.newCDPSession(screen);
+  cdp.on("Page.screencastFrame", ({ data, sessionId }) => {
+    cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => undefined);
+    page
+      .evaluate((d) => {
+        const img = document.querySelector<HTMLImageElement>("#__demo_phone img");
+        if (img) img.src = `data:image/jpeg;base64,${d}`;
+      }, data)
+      .catch(() => undefined);
+  });
+  onCamera = { context, cdp, page: screen };
+  const load = async () => {
+    await screen.goto(url);
+    await screen.getByTestId(opts.ready).waitFor({ state: "visible", timeout: 30_000 });
+    await cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, maxWidth: PHONE_VIEWPORT.width * 2, maxHeight: PHONE_VIEWPORT.height * 2, everyNthFrame: 1 });
+    await page.waitForFunction(() => (document.querySelector<HTMLImageElement>("#__demo_phone img")?.naturalWidth ?? 0) > 0, undefined, { timeout: 10_000 });
+  };
+  await (opts.clock ? opts.clock.cut("phone page loading", load) : load());
   await page.evaluate(() => {
     const shell = document.getElementById("__demo_phone");
-    if (shell) Object.assign(shell.style, { opacity: "1", transform: "translateY(-50%) scale(1)" });
+    if (shell) shell.style.visibility = "visible";
   });
   await sleep(400);
-  return frame;
+  return screen;
 }
 
-/** Puts the phone away. */
+/** The phone shown now, if any: for checks on its real viewport. */
+export const phoneOnCamera = () => onCamera?.page ?? null;
+
+/** Puts the phone away, in one step, and closes its context. */
 export async function closePhone(page: Page) {
-  await page.evaluate(() => {
-    const shell = document.getElementById("__demo_phone");
-    if (!shell) return;
-    shell.style.opacity = "0";
-    setTimeout(() => shell.remove(), 400);
-  });
-  await sleep(450);
+  await page.evaluate(() => document.getElementById("__demo_phone")?.remove()).catch(() => undefined);
+  const shown = onCamera;
+  onCamera = null;
+  if (!shown) return;
+  await shown.cdp.send("Page.stopScreencast").catch(() => undefined);
+  await shown.context.close().catch(() => undefined);
+  await sleep(150);
 }
 
 /** Takes any caption and highlight off the screen at once, so nothing sits on the next frame. */
@@ -245,19 +273,26 @@ export const MOCK_TEXT = /\bmock\b|simulated/i;
  */
 export async function watchMockText(page: Page, requireLive = process.env.DEMO_REQUIRE_LIVE === "1") {
   const seen: string[] = [];
-  await page.exposeBinding("__demoMockText", (_source, line: string) => {
-    if (!seen.includes(line)) {
-      seen.push(line);
-      console.log(`[demo] visible mock text: "${line}"`);
-    }
-  });
-  await page.addInitScript(mockTextProbe);
+  const pages: Page[] = [];
+  const watch = async (p: Page) => {
+    await p.exposeBinding("__demoMockText", (_source, line: string) => {
+      if (!seen.includes(line)) {
+        seen.push(line);
+        console.log(`[demo] visible mock text: "${line}"`);
+      }
+    });
+    await p.addInitScript(mockTextProbe);
+    pages.push(p);
+  };
+  await watch(page);
   return {
     seen,
     requireLive,
+    /** Watches another page the demo films, such as the phone. */
+    watch,
     async check(where: string) {
       // One more look now, in case the page changed since the probe's last pass.
-      await page.evaluate(mockTextProbe).catch(() => undefined);
+      for (const p of pages) if (!p.isClosed()) await p.evaluate(mockTextProbe).catch(() => undefined);
       if (requireLive && seen.length) throw new Error(`DEMO_REQUIRE_LIVE=1: mock text on screen by "${where}": ${seen.map((t) => `"${t}"`).join(", ")}`);
     },
   };

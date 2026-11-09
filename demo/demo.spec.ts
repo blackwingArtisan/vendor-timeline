@@ -18,7 +18,7 @@
  *   Then the cut MP4 (newest recording and its .cuts.json): npm run demo:mp4
  */
 import { devices, expect, test, type Browser, type Page } from "@playwright/test";
-import { caption, clearOverlays, closePhone, coveredCaptions, DemoClock, highlight, mark, phone, titleCard, watchMockText } from "./captions";
+import { caption, clearOverlays, closePhone, coveredCaptions, DemoClock, highlight, mark, phone, PHONE_VIEWPORT, titleCard, watchMockText } from "./captions";
 import { openCardForm, payAsGuest } from "../tests/e2e/pay-in-checkout";
 import { sandboxPayeeFor } from "../tests/e2e/paypal-reread";
 import { amountText, formatCents } from "../src/lib/wedding/cents";
@@ -70,6 +70,19 @@ async function parentPays(browser: Browser, url: string, sandbox: boolean, baseU
   } finally {
     await context.close();
   }
+}
+
+/** The phone on camera is a real 390-wide page of its own, fully opaque: never a see-through overlay. */
+async function phoneIsReal(page: Page, screen: Page) {
+  expect(await screen.evaluate(() => innerWidth)).toBe(PHONE_VIEWPORT.width);
+  expect(screen.context()).not.toBe(page.context());
+  const shell = await page.evaluate(() => {
+    const el = document.getElementById("__demo_phone");
+    if (!el) return null;
+    const style = getComputedStyle(el);
+    return { opacity: style.opacity, visibility: style.visibility, transition: style.transitionDuration };
+  });
+  expect(shell).toEqual({ opacity: "1", visibility: "visible", transition: "0s" });
 }
 
 test("demo", async ({ page, context, browser }) => {
@@ -260,7 +273,8 @@ test("demo", async ({ page, context, browser }) => {
   await scrollTo(page, ask, 150);
   await caption(page, "The couple send the vendor a link themselves. The app doesn't email it.", { ms: 2600, over: ask, position: "top" });
   // The florist's phone comes up on the left once its page is drawn, beside the couple's card.
-  const vendor = await phone(page, new URL(link).pathname, { side: "left", ready: "vendor-ask", clock });
+  const vendor = await phone(page, new URL(link).pathname, { side: "left", ready: "vendor-ask", clock, watch: live.watch });
+  await phoneIsReal(page, vendor);
   clock.say(11, "The florist taps Another date, types the 8th, and adds a PayPal email.");
   await page.waitForTimeout(400);
   await vendor.getByTestId("vendor-answer-other").click();
@@ -368,7 +382,8 @@ test("demo", async ({ page, context, browser }) => {
   const parentLink = await clock.cut("making Linda's link", () => balance.getByTestId("assign-link").inputValue({ timeout: 10_000 }), 400);
   await highlight(page, balance, 1800);
   await caption(page, `${PARENT} (an illustrative parent) gets a link for the florist's balance only.`, { ms: 1600, over: balance, position: "top" });
-  const parentPhone = await phone(page, new URL(parentLink).pathname, { side: "left", ready: "contrib-ask", clock });
+  const parentPhone = await phone(page, new URL(parentLink).pathname, { side: "left", ready: "contrib-ask", clock, watch: live.watch });
+  await phoneIsReal(page, parentPhone);
   await page.waitForTimeout(500);
   await parentPhone.getByTestId("contrib-start").click({ timeout: 10_000 });
   await expect(parentPhone.getByTestId("contrib-waiting")).toBeVisible();
