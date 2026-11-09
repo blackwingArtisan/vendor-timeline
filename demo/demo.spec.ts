@@ -143,7 +143,7 @@ test("demo", async ({ page, context, browser }) => {
   const source = page.getByTestId("source-deposit");
   await scrollTo(page, page.getByTestId("term-deposit"), 150);
   await mark(source, 5600);
-  clock.say(4, `${aiLive ? "Claude reads the terms. " : ""}Each amount sits beside its sentence; nothing counts until confirmed.`);
+  clock.say(4, `${aiLive ? "Claude reads the terms. " : ""}Each amount sits beside its sentence, and nothing counts until you confirm it.`);
   await highlight(page, source, 5600);
   await caption(page, aiLive ? "Claude reads the payment terms. Each amount and date sits beside the sentence it came from." : "The payment terms, each amount and date beside the sentence it came from.", { ms: 2600, over: source, position: "top" });
   await caption(page, "Nothing reaches the timeline until you confirm it.", { ms: 1800, over: source, position: "top" });
@@ -260,8 +260,8 @@ test("demo", async ({ page, context, browser }) => {
   await scrollTo(page, ask, 150);
   await caption(page, "The couple send the vendor a link themselves. The app doesn't email it.", { ms: 2600, over: ask, position: "top" });
   // The florist's phone comes up on the left once its page is drawn, beside the couple's card.
-  const vendor = await phone(page, new URL(link).pathname, { side: "left", ready: "vendor-ask", clock });
-  clock.say(11, "The florist taps Another date, types the 8th, and adds a PayPal email.");
+  const vendor = await phone(page, new URL(link).pathname, { side: "left", ready: "vendor-ask" });
+  clock.say(11, "On a phone, the florist taps Another date, types the 8th, and adds a PayPal email.");
   await page.waitForTimeout(400);
   await vendor.getByTestId("vendor-answer-other").click();
   await page.waitForTimeout(400);
@@ -273,26 +273,17 @@ test("demo", async ({ page, context, browser }) => {
   await expect(vendor.getByTestId("vendor-sent")).toBeVisible();
   await page.waitForTimeout(500);
   await closePhone(page);
+  await expect(ask.getByTestId("vendor-reply-text")).toBeVisible({ timeout: 15_000 });
+  await ask.getByTestId("move-read").click();
   const move = ask.getByTestId("approval-prompt");
-  // The reply reaches the couple's page on its next poll, then is read: both waits are cut.
-  await clock.cut("reply read", async () => {
-    await expect(ask.getByTestId("vendor-reply-text")).toBeVisible({ timeout: 15_000 });
-    await ask.getByTestId("move-read").click();
-    // Claude's read on the hosted copy has taken over 90 s once; the wait is cut either way.
-    await expect(move).toBeVisible({ timeout: 150_000 }).catch(async (e) => {
-      // Say what the reply agent did, so a stalled read can be told from a refused one.
-      const { runs } = await (await page.request.get("/api/agent/runs")).json();
-      console.log(`[demo] reply read stalled; runs: ${JSON.stringify(runs.slice(0, 3).map((r: { goal?: string; status: string; error?: string; summary?: string; startedAt: string }) => ({ goal: r.goal, status: r.status, error: r.error, summary: r.summary, startedAt: r.startedAt })))}`);
-      throw e;
-    });
-  }, 600);
+  await clock.cut("reply read", () => expect(move).toBeVisible({ timeout: 90_000 }), 600);
   await scrollTo(page, move, 150);
   const moveTo = (await move.innerText()).match(/to (\w{3}, \w{3} \d{1,2}, \d{4})/)?.[1];
   clock.say(12, `${aiLive ? "Claude" : "The app"} reads the 8th, code checks it, and the couple approve the move.`);
   await highlight(page, move, 2600);
   await caption(page, `${aiLive ? "Claude read" : "The app read"} "the 8th"; code checked it's before the wedding.`, { ms: 2000, over: move, position: "top" });
   await move.getByTestId("approve-button").click();
-  await clock.cut("move saved", () => expect(ask.getByTestId("move-done")).toBeVisible({ timeout: 30_000 }), 600);
+  await expect(ask.getByTestId("move-done")).toBeVisible({ timeout: 30_000 });
   await expect(may).not.toHaveAttribute("data-total-cents", String(mayBefore));
   const card = page.getByTestId("cash-card");
   await scrollTo(page, card, 20);
@@ -346,13 +337,13 @@ test("demo", async ({ page, context, browser }) => {
   }
   await deposit.getByTestId("receipt-open").click();
   const receipt = deposit.getByTestId("receipt");
-  await clock.cut("receipt from PayPal", () => expect(receipt.getByTestId("receipt-capture-id")).toHaveText(/\S/, { timeout: 30_000 }), 600);
-  await scrollTo(page, deposit, 190);
+  await expect(receipt.getByTestId("receipt-capture-id")).toHaveText(/\S/, { timeout: 30_000 });
+  await scrollTo(page, deposit, 170);
   const confirmedBy = await deposit.getByTestId("paid-by").innerText();
   const byWebhook = confirmedBy.startsWith("Confirmed by PayPal webhook");
   clock.say(15, sandbox ? `Paid${byWebhook ? ", and PayPal's webhook confirmed it" : ""}. The receipt is read back from PayPal.` : "Paid, with its receipt.");
   await highlight(page, deposit, 5400);
-  await caption(page, sandbox ? `Paid: COMPLETED${byWebhook ? ", and PayPal's webhook arrived" : ""}. The receipt is read back from PayPal.` : "Paid. The capture reads COMPLETED, with its receipt.", { ms: 4000, over: deposit, position: "top" });
+  await caption(page, sandbox ? `Paid: PayPal's capture reads COMPLETED${byWebhook ? " and its webhook arrived" : ""}. The receipt is read back from PayPal.` : "Paid. The capture reads COMPLETED, with its receipt.", { ms: 4000, over: deposit, position: "top" });
   await receipt.getByTestId("receipt-close").click({ timeout: 5_000 }).catch(() => undefined);
   await check("paid");
 
@@ -365,22 +356,21 @@ test("demo", async ({ page, context, browser }) => {
   await balance.getByTestId("assign-open").click({ timeout: 10_000 });
   await balance.getByTestId("assign-name").pressSequentially(PARENT, { delay: 60, timeout: 10_000 });
   await balance.getByTestId("assign-save").click({ timeout: 10_000 });
-  const parentLink = await clock.cut("making Linda's link", () => balance.getByTestId("assign-link").inputValue({ timeout: 10_000 }), 400);
+  const parentLink = await balance.getByTestId("assign-link").inputValue({ timeout: 10_000 });
   await highlight(page, balance, 1800);
   await caption(page, `${PARENT} (an illustrative parent) gets a link for the florist's balance only.`, { ms: 1600, over: balance, position: "top" });
-  const parentPhone = await phone(page, new URL(parentLink).pathname, { side: "left", ready: "contrib-ask", clock });
+  const parentPhone = await phone(page, new URL(parentLink).pathname, { side: "left", ready: "contrib-ask" });
   await page.waitForTimeout(500);
   await parentPhone.getByTestId("contrib-start").click({ timeout: 10_000 });
   await expect(parentPhone.getByTestId("contrib-waiting")).toBeVisible();
   await page.waitForTimeout(500);
   await closePhone(page);
   const parentPrompt = balance.getByTestId("approval-prompt");
-  // The couple's page picks up her request on its next poll; the wait is cut.
-  await clock.cut(`${PARENT}'s request arriving`, () => expect(parentPrompt).toBeVisible({ timeout: 30_000 }), 300);
+  await expect(parentPrompt).toBeVisible({ timeout: 30_000 });
   await scrollTo(page, balance, 150);
   await highlight(page, parentPrompt.getByTestId("approve-button"), 900);
   await parentPrompt.getByTestId("approve-button").click({ timeout: 10_000 });
-  await clock.cut("approval saved", () => expect(balance.getByTestId("contributor-checkout")).toBeVisible({ timeout: 30_000 }), 600);
+  await expect(balance.getByTestId("contributor-checkout")).toBeVisible({ timeout: 30_000 });
   await clock.cut(`${PARENT} pays in PayPal, off camera`, async () => {
     await parentPays(browser, parentLink, sandbox, test.info().project.use.baseURL);
     await expect(balance.getByTestId("item-status")).toHaveText("Paid", { timeout: 200_000 });

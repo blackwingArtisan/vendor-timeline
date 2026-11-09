@@ -79,10 +79,9 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
  * A phone beside the page: an iframe at a phone's width, framed like a handset, showing another
  * person's screen (the vendor's link) while the couple's page stays as it was underneath. It stays
  * hidden until `ready` (a test id in the phone's page) is on screen, so no blank phone is ever
- * filmed, and it fits the frame's height. With `clock`, the wait for its page is cut from the video.
- * Returns the frame to act in.
+ * filmed, and it fits the frame's height. Returns the frame to act in.
  */
-export async function phone(page: Page, url: string, opts: { side?: "left" | "right"; ready: string; clock?: DemoClock }) {
+export async function phone(page: Page, url: string, opts: { side?: "left" | "right"; ready: string }) {
   await page.evaluate(
     ({ url, side }) => {
       document.getElementById("__demo_phone")?.remove();
@@ -102,8 +101,7 @@ export async function phone(page: Page, url: string, opts: { side?: "left" | "ri
     { url, side: opts.side ?? "right" },
   );
   const frame = page.frameLocator("#__demo_phone iframe");
-  const ready = () => frame.getByTestId(opts.ready).waitFor({ state: "visible", timeout: 30_000 });
-  await (opts.clock ? opts.clock.cut("phone page loading", ready) : ready());
+  await frame.getByTestId(opts.ready).waitFor({ state: "visible", timeout: 30_000 });
   await page.evaluate(() => {
     const shell = document.getElementById("__demo_phone");
     if (shell) Object.assign(shell.style, { opacity: "1", transform: "translateY(-50%) scale(1)" });
@@ -290,6 +288,7 @@ export interface Span {
 
 export class DemoClock {
   private readonly start = Date.now();
+  private cutMs = 0;
   readonly cuts: Span[] = [];
   /** Every moment a spinner, skeleton or page load was on screen, in raw seconds. */
   readonly busy: Span[] = [];
@@ -395,12 +394,9 @@ export class DemoClock {
   get raw() {
     return (Date.now() - this.start) / 1000;
   }
-  /**
-   * Seconds into the cut video: the raw time less every cut the edit makes, the marked waits and
-   * the spinners and page loads alike (a hosted copy's slower loads are cut, so they don't count).
-   */
+  /** Seconds into the cut video. */
   get seconds() {
-    return Math.round(this.editedAt(this.raw));
+    return Math.round((Date.now() - this.start - this.cutMs) / 1000);
   }
   async cut<T>(label: string, wait: () => Promise<T>, keepMs = 0): Promise<T> {
     const from = this.raw;
@@ -408,6 +404,7 @@ export class DemoClock {
     const to = this.raw;
     const cut = Math.max(0, (to - from) * 1000 - keepMs);
     if (cut > 0) {
+      this.cutMs += cut;
       this.cuts.push({ label, from: from + keepMs / 1000, to });
       console.log(`[demo] cut "${label}": raw ${(from + keepMs / 1000).toFixed(1)}s to ${to.toFixed(1)}s`);
     }
