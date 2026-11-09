@@ -404,16 +404,15 @@ export class DemoClock {
 
   /**
    * Writes the voiceover as [{ shot, at, text }], `at` in seconds of the cut video (the edit's own
-   * small clock offset aside; `raw` is kept for that). Lines that can't be read at about 2.6 words a
-   * second before the next line starts are returned, so the take can say which line to trim.
+   * small clock offset aside; `raw` is kept for that). Lines that can't be read at `charsPerSecond`
+   * before the next line starts are returned, so the take can say which line to trim.
    */
-  writeVoiceover(file: string, wordsPerSecond = 2.6, minSeconds = 4) {
+  writeVoiceover(file: string, charsPerSecond = 15, minSeconds = 4) {
     const end = this.editedAt(this.raw);
     const lines = this.voice.map((v) => ({ shot: v.shot, at: Math.round(this.editedAt(v.raw) * 10) / 10, text: v.text, raw: Math.round(v.raw * 10) / 10 }));
     const tooLong = lines.flatMap((l, i) => {
       const room = (lines[i + 1]?.at ?? end) - l.at;
-      // "$2,500" is read as three or four words.
-      const needs = l.text.split(" ").reduce((n, w) => n + (/^\$\d/.test(w) ? 3 : 1), 0) / wordsPerSecond;
+      const needs = l.text.length / charsPerSecond;
       return needs > room ? [`shot ${l.shot}: needs ${needs.toFixed(1)}s, has ${room.toFixed(1)}s`] : [];
     });
     // Each narrated beat stays on screen long enough to be seen, not only heard.
