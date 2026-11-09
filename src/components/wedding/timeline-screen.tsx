@@ -2,12 +2,12 @@
 
 import { retryIfDropped } from "@/lib/gateway-retry";
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CalendarClock, CalendarDays, CircleCheck, FileText, ReceiptText, Send, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarDays, CalendarPlus, CircleCheck, FileText, ReceiptText, Send, Wallet } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
 import { useToast } from "@/components/toast";
-import { Badge, Button, ButtonLink, Card, EmptyState, Input, type Tone } from "@/components/ui";
+import { Badge, Button, ButtonLink, buttonClass, Card, EmptyState, Input, type Tone } from "@/components/ui";
 import { formatCents, sumCents } from "@/lib/wedding/cents";
 import { formatDay, localToday } from "@/lib/wedding/dates";
 import { dayProblem, moveDayRange } from "@/lib/wedding/limits";
@@ -210,7 +210,19 @@ function TimelineHeader() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Your timeline</h1>
       </div>
-      <ButtonLink href="/contracts" variant="secondary" size="sm">Add a contract</ButtonLink>
+      <div className="flex flex-wrap gap-2">
+        {/* A plain link: the browser downloads the .ics, with this plan's cookie, and the calendar app opens it. */}
+        <a
+          href="/api/timeline.ics"
+          download="wedding-payments.ics"
+          className={buttonClass("secondary", "sm")}
+          data-testid="add-to-calendar"
+          title="Every unpaid deposit and balance as an all-day event, with the vendor and the amount"
+        >
+          <CalendarPlus className="size-3.5" aria-hidden /> Add to calendar
+        </a>
+        <ButtonLink href="/contracts" variant="secondary" size="sm">Add a contract</ButtonLink>
+      </div>
     </div>
   );
 }
