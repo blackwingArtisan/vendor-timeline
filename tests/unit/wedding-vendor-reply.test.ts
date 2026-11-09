@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { startOwnPlan } from "@/lib/wedding/budget";
-import { listContracts } from "@/lib/wedding/contracts";
+import { listContracts, termPayee } from "@/lib/wedding/contracts";
 import { loadSampleWedding } from "@/lib/wedding/demo";
 import { FLORIST } from "@/lib/wedding/samples";
 import { findAsk, openAsk, saveReply, vendorView } from "@/lib/wedding/vendor-ask";
 import { applyVendorReply, readAskReply } from "@/lib/wedding/vendor-move";
+import { requestPayment, vendorOrder } from "@/lib/wedding/pay";
 import { boundReply, mockReadReply, type AskFacts } from "@/lib/wedding/vendor-reply";
 
 const TODAY = "2026-11-09";
@@ -74,10 +75,30 @@ describe("code decides whether a date read from a reply may be used", () => {
     // Only the date code allowed can be applied.
     expect(() => applyVendorReply(plan, florist.id, "balance", "2027-06-09", TODAY)).toThrow(/Nothing moved/);
     const moved = applyVendorReply(plan, florist.id, "balance", "2027-06-08", TODAY);
-    expect(moved.confirmed).toMatchObject({ balanceDue: "2027-06-08", payeeEmail: "payments@bramble-vetch.example.com" });
+    expect(moved.confirmed).toMatchObject({ balanceDue: "2027-06-08", payeeEmail: FLORIST.payeeEmail });
+    expect(moved.vendorPayees).toEqual({ balance: "payments@bramble-vetch.example.com" });
     expect(moved.movedFrom?.balance).toBe("2027-05-29");
-    expect(moved.payeeGivenBy).toBe("vendor");
+    // Only the balance pays the account the vendor gave; the deposit still pays the contract's payee.
+    expect(termPayee(moved, "balance")).toBe("payments@bramble-vetch.example.com");
+    expect(termPayee(moved, "deposit")).toBe(FLORIST.payeeEmail);
     expect(() => saveReply(ask.token, { answer: "agreed" })).toThrow(/already moved/);
+  });
+
+  it("a deposit already waiting for approval still pays the contract's payee after the balance moves to the vendor's account", async () => {
+    const plan = `plan_test${Math.random().toString(36).slice(2, 10)}`;
+    startOwnPlan(plan);
+    loadSampleWedding(plan);
+    const florist = listContracts(plan).find((c) => c.confirmed?.vendorRole === "florist")!;
+    const { contract: asked } = requestPayment(plan, florist.id, "deposit", "test");
+    const ask = openAsk(plan, florist.id, "balance", "2027-06-05", TODAY);
+    saveReply(ask.token, { answer: "other", text: "The 5th is tight, the 8th is fine", paypalEmail: "payments@bramble-vetch.example.com" });
+    await readAskReply(plan, florist.id, "balance", TODAY);
+    const moved = applyVendorReply(plan, florist.id, "balance", "2027-06-08", TODAY);
+    // The deposit's order is still the contract's payee, so the Guard's payee check passes.
+    const deposit = asked.payments.deposit!;
+    expect(deposit.payee).toBe(FLORIST.payeeEmail);
+    expect(vendorOrder(moved, "deposit", { cents: deposit.cents, payee: deposit.payee }).purchase_units[0].payee?.email_address).toBe(FLORIST.payeeEmail);
+    expect(vendorOrder(moved, "balance", { cents: moved.confirmed!.balanceCents, payee: "payments@bramble-vetch.example.com" }).purchase_units[0].payee?.email_address).toBe("payments@bramble-vetch.example.com");
   });
 
   it("refuses a PayPal email the app could never pay, and an unknown link", () => {
