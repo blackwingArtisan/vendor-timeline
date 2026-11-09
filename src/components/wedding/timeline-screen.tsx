@@ -59,7 +59,16 @@ function PayPalProof({ item, standIn }: { item: TimelineItem; standIn: boolean }
       <p className="mt-0.5 break-all">
         Capture <span className="font-mono" data-testid="paypal-capture-id">{p.captureId}</span>
         {" · "}Order <span className="font-mono" data-testid="paypal-order-id">{p.orderId}</span>
-        {" · "}Paid to <span data-testid="paypal-payee">{p.payee}</span>
+        {" · "}
+        {item.payeeGiven ? (
+          <span data-testid="paid-to-own">
+            Paid to the {item.vendorRole}&apos;s own PayPal (<span data-testid="paypal-payee">{p.payee}</span>)
+          </span>
+        ) : (
+          <>
+            Paid to <span data-testid="paypal-payee">{p.payee}</span>
+          </>
+        )}
       </p>
       {p.paidBy === "webhook" ? (
         <p className="mt-0.5" data-testid="paid-by">

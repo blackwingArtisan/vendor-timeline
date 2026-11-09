@@ -100,7 +100,9 @@ export const sampleUrl = (sample: SampleFacts) => `/sample-contracts/${sample.fi
 export const SAMPLE_PDF = "photographer.pdf";
 
 /**
- * In sandbox these two vendors are paid to a separate test business account, not the app's own,
- * so a payment visibly reaches a vendor's account (KitEnv.sandboxVendorEmail).
+ * Which sample vendor a contract's payee email belongs to. In sandbox each sample vendor is paid to
+ * its own test business account (KitEnv.sandboxVendorEmails), never the app's own.
  */
-export const PAID_TO_VENDOR_ACCOUNT: ReadonlySet<string> = new Set([FLORIST.payeeEmail!, CATERER.payeeEmail!].map((e) => e.toLowerCase()));
+export const SAMPLE_ROLE_BY_PAYEE: ReadonlyMap<string, VendorRole> = new Map(
+  [...SAMPLES.filter((s) => s.payeeEmail).map((s) => [s.payeeEmail!, s.vendorRole] as const), [BAND_ANSWERS.payeeEmail, BAND.vendorRole] as const].map(([email, role]) => [email.toLowerCase(), role]),
+);

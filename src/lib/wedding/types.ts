@@ -201,6 +201,8 @@ export interface SandboxPayee {
   own: boolean;
   /** The vendor gave this account themselves, on the couple's link. */
   given?: boolean;
+  /** One sandbox account stands in for more than one sample vendor (too few test accounts yet). */
+  shared?: boolean;
 }
 
 export interface TimelineItem {
@@ -209,6 +211,8 @@ export interface TimelineItem {
   kind: ItemKind;
   vendorName: string;
   vendorRole: VendorRole;
+  /** This payment goes to the PayPal account the vendor gave on the couple's link. */
+  payeeGiven?: boolean;
   cents: number;
   due: string;
   /** Days from today. Negative means overdue. */
