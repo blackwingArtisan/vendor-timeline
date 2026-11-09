@@ -3,71 +3,20 @@
 /**
  * The cash plan's moves, one card each, for the couple to approve one at a time. "Pay early" sends
  * the payment to the same approval and PayPal checkout as the timeline's Pay button. "Ask to move"
- * gives a drafted note to copy, and moves the date only when the couple say the vendor agreed. Every
+ * gives the couple a link to share with the vendor (ask-vendor.tsx); the date moves only on the
+ * vendor's reply, checked by code and approved by the couple. Every
  * move, amount, date and sentence comes from code (cash-moves.ts).
  */
 import { useState } from "react";
-import { CalendarClock, CircleCheck, Copy, Send, Wallet } from "lucide-react";
+import { CalendarClock, CircleCheck, Send, Wallet } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
-import { Badge, Button, Textarea } from "@/components/ui";
-import { retryIfDropped } from "@/lib/gateway-retry";
+import { Badge, Button } from "@/components/ui";
 import { formatCents } from "@/lib/wedding/cents";
-import { formatDay, localToday } from "@/lib/wedding/dates";
 import type { CashFix, CashMove, CashPlan, TimelineItem } from "@/lib/wedding/types";
 import { PayApproval } from "./pay-approval";
 import { PayPalCheckout } from "./paypal-checkout";
-
-function AskVendor({ move, item, onDone }: { move: CashMove; item?: TimelineItem; onDone: () => void }) {
-  const { kitFetch } = useKit();
-  const { toast } = useToast();
-  const [copied, setCopied] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const moved = item?.due === move.to;
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(move.message ?? "");
-      setCopied(true);
-    } catch {
-      toast({ title: "Couldn't copy the message", description: "Select the message and copy it yourself." });
-    }
-  }
-
-  async function agreed() {
-    setSaving(true);
-    try {
-      // Moving to the same date twice changes nothing, so a request the hosting proxy dropped is sent again.
-      await retryIfDropped(() => kitFetch(`/api/contracts/${move.contractId}/move`, { json: { kind: move.itemKind, due: move.to, today: localToday() } }));
-      onDone();
-    } catch (e) {
-      toast({ title: "Could not move that date", description: (e as Error).message, variant: "error" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (moved) {
-    return (
-      <p className="mt-2 flex items-center gap-2 text-sm text-emerald-800" data-testid="move-done">
-        <CircleCheck className="size-4 shrink-0" /> Moved to {formatDay(move.to)}. The contract said {formatDay(item?.movedFrom ?? move.due)}.
-      </p>
-    );
-  }
-  return (
-    <>
-      <Textarea readOnly aria-label={`Message to ${move.vendorName}`} className="mt-2 min-h-32 text-xs" value={move.message} data-testid="move-message" />
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Button size="sm" variant="secondary" icon={<Copy className="size-3.5" />} onClick={() => void copy()} data-testid="move-copy">
-          {copied ? "Copied" : "Copy message"}
-        </Button>
-        <Button size="sm" icon={<CalendarClock className="size-3.5" />} loading={saving} disabled={saving || !item} onClick={() => void agreed()} data-testid="move-approve">
-          They agreed: move it to {formatDay(move.to)}
-        </Button>
-      </div>
-    </>
-  );
-}
+import { AskVendor } from "./ask-vendor";
 
 function PayEarly({ move, item, cash, sandbox, onStarted, onDone }: { move: CashMove; item?: TimelineItem; cash: CashPlan; sandbox: boolean; onStarted: (runId: string) => void; onDone: () => void }) {
   const { kitFetch } = useKit();
@@ -140,7 +89,7 @@ export function CashPlanMoves({ fix, started, items, cash, sandbox, onStarted, o
                 {move.kind === "pay_now" ? (
                   <PayEarly move={move} item={item} cash={cash} sandbox={sandbox} onStarted={(runId) => onStarted(move, runId)} onDone={onDone} />
                 ) : (
-                  <AskVendor move={move} item={item} onDone={() => {
+                  <AskVendor move={move} item={item} onRun={(runId) => onStarted(move, runId)} onDone={() => {
                     onStarted(move);
                     onDone();
                   }} />

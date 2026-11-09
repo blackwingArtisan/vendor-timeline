@@ -6,7 +6,9 @@
  *
  * "Paid" takes PayPal's own record of that capture, read back with GET, plus the verified
  * PAYMENT.CAPTURE.COMPLETED webhook for that capture id. A copy of the app PayPal can't call back
- * (a local one) takes the re-read alone, and the screen says which of the two it was.
+ * (a local one) takes the re-read alone, and the screen says which of the two it was. A copy PayPal
+ * can call back takes the re-read too if the webhook is over a minute late (PayPal's sandbox has taken
+ * 58 s to create one), and a webhook that comes after that still becomes the confirmation.
  */
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -25,12 +27,13 @@ import { singleton } from "@/lib/singleton";
 import { isSamplePlan, monthlyBudget } from "./budget";
 import { planMix } from "./plan-mix";
 import { centsToDollars, dollarsToCents, formatCents } from "./cents";
-import { contractWithPayPalId, findContract, listContracts, requireContract, requirePlanContract, saveContract } from "./contracts";
+import { contractWithPayPalId, findContract, listContracts, requireContract, requirePlanContract, saveContract, termPayee } from "./contracts";
 import { formatDay, isCalendarDay, utcToday } from "./dates";
 import { PAID_TO_VENDOR_ACCOUNT } from "./samples";
 import { appOrigin, isPublicOrigin } from "./origin";
 import { buildTimeline, captureState, itemId } from "./timeline";
-import type { Contract, ItemKind, OutsideMethod, Payment, PendingApproval, SandboxPayee, TimelineItem, TimelineView } from "./types";
+import { MOVE_TOOL } from "./tool-names";
+import type { AskState, Contract, ItemKind, OutsideMethod, Payment, PendingApproval, SandboxPayee, TimelineItem, TimelineView } from "./types";
 
 const RECHECK_MS = 2500;
 /** PayPal's webhook took about 15 seconds in the sandbox. A re-read stands on its own after this. */
@@ -49,15 +52,20 @@ const activePayments = () => singleton("wedding:active-payments", () => new Set<
 export function orderPayee(vendorEmail: string): string {
   const env = getEnv();
   if (env.paypalMode !== "sandbox") return vendorEmail;
+  // A sandbox business account the vendor gave on the couple's link is paid as it is.
+  if (SANDBOX_BUSINESS.test(vendorEmail.trim())) return vendorEmail.trim();
   return env.sandboxVendorEmail && PAID_TO_VENDOR_ACCOUNT.has(vendorEmail.trim().toLowerCase()) ? env.sandboxVendorEmail : env.sandboxSellerEmail;
 }
 
-/** In sandbox: which test account an item pays, and whether it is the app's own. */
-export function sandboxPayee(vendorEmail: string): SandboxPayee | undefined {
+/** A PayPal sandbox business account's address. */
+const SANDBOX_BUSINESS = /^[^@\s]+@business\.example\.com$/i;
+
+/** In sandbox: which test account an item pays, whether it is the app's own, and whether the vendor gave it. */
+export function sandboxPayee(vendorEmail: string, given = false): SandboxPayee | undefined {
   const env = getEnv();
   if (env.paypalMode !== "sandbox") return undefined;
   const email = orderPayee(vendorEmail);
-  return { email, own: email.toLowerCase() === env.sandboxSellerEmail.toLowerCase() };
+  return { email, own: email.toLowerCase() === env.sandboxSellerEmail.toLowerCase(), ...(given ? { given: true } : {}) };
 }
 
 const termCents = (contract: Contract, kind: ItemKind) => (kind === "deposit" ? contract.confirmed!.depositCents : contract.confirmed!.balanceCents);
@@ -96,7 +104,7 @@ export function vendorOrder(contract: Contract, kind: ItemKind, ask: { cents: nu
   const terms = contract.confirmed;
   if (!terms) throw new HttpError(409, "Confirm this contract before paying it.", "conflict");
   requireTermAmount(contract, kind, ask.cents);
-  const payee = orderPayee(terms.payeeEmail);
+  const payee = orderPayee(termPayee(contract, kind));
   if (ask.payee.trim().toLowerCase() !== payee.toLowerCase()) throw new HttpError(422, `${ask.payee} isn't who this contract pays. Nothing was sent.`, "rule");
   const id = itemId(contract.id, kind);
   return {
@@ -125,7 +133,7 @@ function claimPayment(contract: Contract, kind: ItemKind, runId: string): Contra
     cents: termCents(contract, kind),
     attempt: previous ? previous.attempt + (previous.orderId ? 1 : 0) : 1,
     state: "awaiting_approval",
-    payee: orderPayee(contract.confirmed!.payeeEmail),
+    payee: orderPayee(termPayee(contract, kind)),
   };
   activePayments().add(itemId(contract.id, kind));
   return saveContract({ ...contract, payments: { ...contract.payments, [kind]: payment } });
@@ -312,6 +320,7 @@ export async function syncPayment(contractId: string, kind: ItemKind): Promise<v
   const state = reported === "paid" && !paidBy ? "sending" : reported;
   patchPayment(contractId, kind, {
     state,
+    webhookLate: paidBy === "re-read" && webhookExpected() ? true : undefined,
     captureStatus: capture.status,
     error: amountOff ? `${amountOff}.` : state === "failed" ? `PayPal reports the capture ${capture.status}${capture.status_details?.reason ? ` (${capture.status_details.reason})` : ""}.` : undefined,
     checkedAt: now,
@@ -372,7 +381,10 @@ export async function captureWebhook(event: WebhookEventEnvelope<string, Capture
     return false;
   }
   if (event.event_type === "PAYMENT.CAPTURE.COMPLETED") {
-    patchPayment(contract.id, kind, { webhook: { eventId: event.id, eventType: event.event_type, captureId: capture.id, receivedAt: new Date().toISOString() } });
+    const webhook = { eventId: event.id, eventType: event.event_type, captureId: capture.id, receivedAt: new Date().toISOString() };
+    // Already paid on the re-read because the webhook was late: the webhook still confirms it.
+    const late = payment.state === "paid" && payment.paidBy === "re-read" && payment.captureId === capture.id;
+    patchPayment(contract.id, kind, late ? { webhook, paidBy: "webhook", webhookLate: undefined } : { webhook });
   }
   await syncPayment(contract.id, kind);
   return true;
@@ -415,6 +427,24 @@ async function syncOpenPayments(planId: string) {
   }
 }
 
+/** The couple's view of a later-date ask: the vendor's reply, code's verdict, and a move waiting for approval. */
+function askState(contract: Contract | undefined, item: TimelineItem): AskState | null {
+  const ask = contract?.asks?.[item.kind];
+  if (!ask) return null;
+  const pending = getApprovals()
+    .list({ state: "pending" })
+    .find((a) => a.tool === MOVE_TOOL && (a.input as { contract_id?: string; kind?: string } | null)?.contract_id === item.contractId && (a.input as { kind?: string }).kind === item.kind);
+  return {
+    token: ask.token,
+    askedTo: ask.askedTo,
+    fromDue: ask.fromDue,
+    reply: ask.reply ?? null,
+    verdict: ask.verdict ?? null,
+    movedTo: ask.movedTo ?? null,
+    approval: pending ? { id: pending.id, summary: pending.summary, reason: pending.reason } : null,
+  };
+}
+
 function pendingApproval(item: TimelineItem): PendingApproval | null {
   const runId = item.payment?.runId;
   const pending = runId ? getApprovals().list({ runId, state: "pending" })[0] : undefined;
@@ -439,7 +469,10 @@ export async function viewTimeline(planId: string, today = utcToday()): Promise<
   await syncOpenPayments(planId);
   const view = buildTimeline(listContracts(planId), today, monthlyBudget(planId));
   const byId = new Map(listContracts(planId).map((c) => [c.id, c]));
-  const items = view.items.map((item) => ({ ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(byId.get(item.contractId)?.confirmed?.payeeEmail ?? "") }));
+  const items = view.items.map((item) => {
+    const contract = byId.get(item.contractId);
+    return { ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(contract?.confirmed ? termPayee(contract, item.kind) : "", !!contract?.vendorPayees?.[item.kind]), ask: askState(contract, item) };
+  });
   const same = (item: TimelineItem | null) => items.find((i) => i.id === item?.id) ?? null;
   return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId), planMix: planMix(listContracts(planId)) };
 }

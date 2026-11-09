@@ -64,11 +64,16 @@ export interface Payment {
   /** The verified PAYMENT.CAPTURE.COMPLETED webhook for this payment's capture. */
   webhook?: PaymentWebhook;
   /**
-   * What made this paid. "re-read" means PayPal's status arrived but no webhook could reach this copy.
+   * What made this paid. "re-read" means PayPal's status arrived and no webhook had (see webhookLate).
    * "outside" means the couple paid it outside PayPal (cash or cheque) and recorded it here: no PayPal
    * order or capture exists, and none ever will.
    */
   paidBy?: "webhook" | "re-read" | "outside";
+  /**
+   * Set with paidBy "re-read" on a copy PayPal can call back: the webhook was expected but hadn't come
+   * within WEBHOOK_WAIT_MS. If it comes later, paidBy becomes "webhook".
+   */
+  webhookLate?: boolean;
   /** Set only when paidBy is "outside": how and when the couple say they paid. */
   outside?: PaidOutside;
 }
@@ -113,6 +118,61 @@ export interface Contract {
   payments: Partial<Record<ItemKind, Payment>>;
   /** The contract's date for any payment the couple moved. */
   movedFrom?: Partial<Record<ItemKind, string>>;
+  /** Later-date asks the couple shared with the vendor, one per payment. */
+  asks?: Partial<Record<ItemKind, VendorAsk>>;
+  /**
+   * The PayPal email a vendor gave on their reply, for that one payment only. The contract's own
+   * payee still pays every other payment, including one already waiting for approval.
+   */
+  vendorPayees?: Partial<Record<ItemKind, string>>;
+}
+
+/** The vendor's answers on the link the couple shared. */
+export const REPLY_ANSWERS = ["agreed", "declined", "other"] as const;
+export type ReplyAnswerValue = (typeof REPLY_ANSWERS)[number];
+
+/** What the vendor sent from their phone. */
+export interface VendorReplyRecord {
+  answer: ReplyAnswerValue;
+  /** Their own words, if they typed any. */
+  text: string;
+  paypalEmail?: string;
+  at: string;
+}
+
+/** Code's verdict on the date read from a reply. Only an `ok` verdict's date can be moved to. */
+export interface ReplyVerdictRecord {
+  ok: boolean;
+  date?: string;
+  reason?: string;
+  answer: string;
+  quote: string;
+  mocked: boolean;
+}
+
+/** One "could this move to a later date?" link, kept on its contract. */
+export interface VendorAsk {
+  token: string;
+  askedTo: string;
+  /** The date due when the couple asked. */
+  fromDue: string;
+  createdAt: string;
+  reply?: VendorReplyRecord;
+  verdict?: ReplyVerdictRecord;
+  /** Set once the couple approved the move. */
+  movedTo?: string;
+}
+
+/** What the couple's screen sees of an ask. */
+export interface AskState {
+  token: string;
+  askedTo: string;
+  fromDue: string;
+  reply: VendorReplyRecord | null;
+  verdict: ReplyVerdictRecord | null;
+  movedTo: string | null;
+  /** The move_due_date approval waiting for the couple, if any. */
+  approval: PendingApproval | null;
 }
 
 export interface PendingApproval {
@@ -128,6 +188,8 @@ export interface SandboxPayee {
   email: string;
   /** True for the app's own business account, false for the separate vendor account. */
   own: boolean;
+  /** The vendor gave this account themselves, on the couple's link. */
+  given?: boolean;
 }
 
 export interface TimelineItem {
@@ -151,6 +213,8 @@ export interface TimelineItem {
   weddingDay?: string;
   /** The contract's own sentence for this payment's date, when it has one. */
   dueSentence?: string;
+  /** The later-date ask shared with the vendor for this payment, if any. */
+  ask?: AskState | null;
 }
 
 /** One payment as the cash check sees it. */

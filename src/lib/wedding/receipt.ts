@@ -31,6 +31,8 @@ export interface Receipt {
   /** The verified PAYMENT.CAPTURE.COMPLETED event, when one reached this copy of the app. */
   webhook?: { eventId: string; eventType: string; receivedAt: string };
   paidBy?: Payment["paidBy"];
+  /** The webhook was expected here but hadn't come when the re-read made it paid. */
+  webhookLate?: boolean;
   /** Each call made to PayPal for this receipt, with PayPal's debug_id. */
   calls: ReceiptCall[];
   readAt: string;
@@ -60,6 +62,7 @@ export async function readReceipt(planId: string, contractId: string, kind: Item
     payee: order.purchase_units?.[0]?.payee?.email_address,
     webhook: payment.webhook ? { eventId: payment.webhook.eventId, eventType: payment.webhook.eventType, receivedAt: payment.webhook.receivedAt } : undefined,
     paidBy: payment.paidBy,
+    webhookLate: payment.webhookLate,
     calls: calls.map((c) => ({ operation: c.operation, debugId: c.debugId, httpStatus: c.httpStatus })),
     readAt: new Date().toISOString(),
   };
