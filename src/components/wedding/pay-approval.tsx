@@ -42,12 +42,17 @@ export function PayApproval({ item, approval, cash, sandbox, onDecided, classNam
       }}
       onDecided={onDecided}
       details={
-        <div className="mt-3 space-y-1 border-t border-amber-200 pt-3 text-sm text-zinc-700">
-          <dl className="grid grid-cols-[3rem_1fr] gap-x-2 gap-y-1">
-            <dt className="text-zinc-500">From</dt>
-            <dd className="font-medium text-zinc-900" data-testid="approval-from">Your PayPal, in PayPal&apos;s checkout</dd>
-            <dt className="text-zinc-500">To</dt>
-            <dd className="font-medium text-zinc-900" data-testid="approval-to">{item.vendorName}</dd>
+        <div className="mt-2 space-y-1 border-t border-amber-200 pt-2 text-sm text-zinc-700">
+          {/* From and to on one line, so the card stays short enough to sit at the top of a phone screen. */}
+          <dl className="flex flex-wrap gap-x-4 gap-y-0.5">
+            <div className="flex gap-1.5">
+              <dt className="text-zinc-500">From</dt>
+              <dd className="font-medium text-zinc-900" data-testid="approval-from">Your PayPal, in PayPal&apos;s checkout</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt className="text-zinc-500">To</dt>
+              <dd className="font-medium text-zinc-900" data-testid="approval-to">{item.vendorName}</dd>
+            </div>
           </dl>
           <p data-testid="approval-budget">{budgetLine(item, cash)}</p>
           {sandbox ? <StandInLine item={item} /> : null}

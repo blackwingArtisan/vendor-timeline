@@ -54,7 +54,7 @@ export function ApprovalPrompt({
   }
 
   return (
-    <div data-testid="approval-prompt" className={cn("animate-pulse-ring rounded-xl border border-amber-300 bg-gradient-to-b from-amber-50 to-white p-4", className)}>
+    <div data-testid="approval-prompt" className={cn("animate-pulse-ring rounded-xl border border-amber-300 bg-gradient-to-b from-amber-50 to-white p-3 sm:p-4", className)}>
       <div className="flex items-start gap-3">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
           <ShieldAlert className="size-5" />
@@ -67,7 +67,7 @@ export function ApprovalPrompt({
         {amount ? <MoneyBadge amount={amount} direction="neutral" size="lg" /> : null}
       </div>
       {details}
-      <div className="mt-3 flex justify-end gap-2">
+      <div className="mt-2.5 flex justify-end gap-2">
         <Button variant="secondary" size="sm" icon={<X className="size-4" />} loading={busy === "denied"} disabled={!!busy} onClick={() => decide("denied")}>
           Decline
         </Button>

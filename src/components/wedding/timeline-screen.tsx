@@ -326,11 +326,15 @@ export function TimelineScreen() {
   const firstUpcoming = items.findIndex((i) => i.daysUntil >= 0);
   const todayBefore = firstUpcoming > 0 ? items[firstUpcoming].id : undefined;
   const axis = SPONSOR_UI || !items.length ? null : axisFor(view);
+  // An approval the agent is waiting on leads the page on a phone, above the banner and the stats.
+  const approvalUp = !!agentRun && items.some((i) => i.approval && i.payment?.runId === agentRun);
   const cols = axis ? "xl:grid-cols-[8.75rem_minmax(0,12rem)_5.75rem_minmax(0,1fr)_9.5rem_11rem]" : "xl:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_9.5rem_11rem]";
 
   return (
     <>
       <TimelineHeader />
+      {/* A column, so on a phone a waiting approval can move above the banner and the stats. */}
+      <div className="flex flex-col">
       {view.samplePlan ? <SamplePlanBanner className="mb-4" /> : null}
       {capturing ? <p className="mb-4 rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-900" data-testid="capturing">Back from PayPal. Capturing your payment and reading it back from PayPal…</p> : null}
       {items.length === 0 ? (
@@ -355,10 +359,10 @@ export function TimelineScreen() {
             <StatTile testId="stat-overdue" label="Overdue" icon={<AlertTriangle className="size-3.5" />} value={formatCents(overdueCents)} hint={overdue.length ? overdue.map(itemName).join(", ") : "Nothing overdue"} className={overdue.length ? "border-red-200 bg-red-50/40" : undefined} />
             <StatTile testId="stat-paid" label="Paid" icon={<CircleCheck className="size-3.5" />} value={formatCents(view.paidCents)} hint={`of ${formatCents(view.contractedCents)} in contracts`} />
           </div>
-          <div className="mb-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+          <div className={`mb-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] ${approvalUp ? "max-xl:order-first" : ""}`} data-testid="agent-row">
             <AgentPanel steps={steps} items={items} cash={view.cash} fix={view.cashFix} sandbox={view.sandboxStandIn} onRun={setAgentRun} onPlanned={setPlanned} onRunning={setAgentRunning} onDecided={() => void refresh().catch(() => undefined)} />
             <div className="grid gap-4">
-              <CashCard key={view.cash.monthlyBudgetCents} cash={view.cash} onChanged={() => void refresh().catch(() => undefined)} />
+              <CashCard cash={view.cash} onChanged={() => void refresh().catch(() => undefined)} />
               {planned || planStarted.length ? (
                 <CashPlanMoves
                   fix={view.cashFix}
@@ -404,6 +408,7 @@ export function TimelineScreen() {
           </details>
         </>
       )}
+      </div>
     </>
   );
 }

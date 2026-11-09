@@ -137,6 +137,48 @@ function busyProbe() {
   }, 100);
 }
 
+/** Text a judge must never see in a take meant as the real thing. */
+export const MOCK_TEXT = /\bmock\b|simulated/i;
+
+/**
+ * Watches every page the demo shows for visible text matching MOCK_TEXT ("AI mock", "Simulated
+ * read"), across navigations. `check()` throws when DEMO_REQUIRE_LIVE=1 and any was seen; without it,
+ * it only logs, so a local mock run still records.
+ */
+export async function watchMockText(page: Page, requireLive = process.env.DEMO_REQUIRE_LIVE === "1") {
+  const seen: string[] = [];
+  await page.exposeBinding("__demoMockText", (_source, line: string) => {
+    if (!seen.includes(line)) {
+      seen.push(line);
+      console.log(`[demo] visible mock text: "${line}"`);
+    }
+  });
+  await page.addInitScript(mockTextProbe);
+  return {
+    seen,
+    requireLive,
+    async check(where: string) {
+      // One more look now, in case the page changed since the probe's last pass.
+      await page.evaluate(mockTextProbe).catch(() => undefined);
+      if (requireLive && seen.length) throw new Error(`DEMO_REQUIRE_LIVE=1: mock text on screen by "${where}": ${seen.map((t) => `"${t}"`).join(", ")}`);
+    },
+  };
+}
+
+/** In the page: reports each visible line (innerText skips hidden and closed content) that reads as mock. */
+function mockTextProbe() {
+  const report = (window as unknown as { __demoMockText?: (line: string) => void }).__demoMockText;
+  const scan = () => {
+    const text = document.body?.innerText ?? "";
+    for (const line of text.split("\n")) if (/\bmock\b|simulated/i.test(line)) report?.(line.trim().slice(0, 160));
+  };
+  const w = window as unknown as { __demoMockProbe?: boolean };
+  if (w.__demoMockProbe) return scan();
+  w.__demoMockProbe = true;
+  setInterval(scan, 250);
+  scan();
+}
+
 /**
  * Keeps the cut video under its limit. A wait that the edit cuts (PayPal's page loading, a webhook
  * on its way) is marked with `cut()`: it doesn't count, and its start and end in the raw recording

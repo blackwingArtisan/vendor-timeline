@@ -6,7 +6,7 @@
  * PayPal it is the kit's simulated approval, which follows the same server flow.
  */
 import { useEffect, useSyncExternalStore } from "react";
-import { ShieldCheck } from "lucide-react";
+import { Info, ShieldCheck } from "lucide-react";
 import { CheckoutButton } from "@/components/paypal/checkout-button";
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
@@ -21,12 +21,25 @@ import type { TimelineItem } from "@/lib/wedding/types";
 export function StandInLine({ item, className }: { item: TimelineItem; className?: string }) {
   const email = item.payment?.payee ?? item.sandboxPayee?.email;
   const own = item.sandboxPayee?.own ?? true;
+  const id = `stand-in-${item.id}`;
+  // One small chip; the sentence is its tooltip, on hover or keyboard focus.
   return (
-    <p className={className ?? "text-xs text-zinc-500"} data-testid="stand-in" data-account={own ? "app" : "vendor"}>
-      {own
-        ? `In the sandbox, this app's own test business account${email ? ` (${email})` : ""} stands in for ${item.vendorName}.`
-        : `In the sandbox, PayPal pays a separate vendor test business account${email ? ` (${email})` : ""}, standing in for ${item.vendorName}.`}
-    </p>
+    <span className={`group/standin relative inline-flex align-middle ${className ?? ""}`}>
+      <button type="button" aria-describedby={id} className="inline-flex cursor-help items-center gap-1 rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-600" data-testid="stand-in-chip">
+        <Info className="size-3" aria-hidden /> Sandbox payee
+      </button>
+      <span
+        id={id}
+        role="tooltip"
+        className="invisible absolute bottom-full left-0 z-30 mb-1 w-72 max-w-[80vw] rounded-lg bg-zinc-900 px-3 py-2 text-xs font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover/standin:visible group-hover/standin:opacity-100 group-focus-within/standin:visible group-focus-within/standin:opacity-100"
+        data-testid="stand-in"
+        data-account={own ? "app" : "vendor"}
+      >
+        {own
+          ? `In the sandbox, this app's own test business account${email ? ` (${email})` : ""} stands in for ${item.vendorName}.`
+          : `In the sandbox, PayPal pays a separate vendor test business account${email ? ` (${email})` : ""}, standing in for ${item.vendorName}.`}
+      </span>
+    </span>
   );
 }
 
@@ -58,7 +71,7 @@ export function PayPalCheckout({ item, sandbox, onPaid, className }: { item: Tim
         <dt className="text-zinc-500">Order</dt>
         <dd className="break-all font-mono text-xs text-zinc-900" data-testid="checkout-order-id">{orderId}</dd>
       </dl>
-      {sandbox ? <StandInLine item={item} className="mt-2 text-xs text-zinc-600" /> : null}
+      {sandbox ? <StandInLine item={item} className="mt-2" /> : null}
       <div className="mt-3">
         {sandbox && payment.checkoutUrl ? (
           <>

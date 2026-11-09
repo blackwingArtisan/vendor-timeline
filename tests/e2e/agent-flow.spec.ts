@@ -6,6 +6,7 @@
  * Against the hosted copy (E2E_BASE_URL) a real PayPal webhook must be what marks the payment paid.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { openCashCheck } from "./open-cash";
 import { approveAndPay } from "./pay-in-checkout";
 import { readCapture, readCaptureEvent, readOrder, sandboxSellerEmail, sandboxVendorEmail } from "./paypal-reread";
 import { formatCents, sumCents } from "../../src/lib/wedding/cents";
@@ -61,6 +62,7 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   await expect(clash).not.toContainText("monthly budget");
 
   // Each warning opens to the payments, their pay dates and the sum.
+  await openCashCheck(page);
   await clash.getByText("Show the sums").click();
   const sums = clash.getByTestId("cash-sums");
   await expect(sums).toContainText("Pays Sat, May 29, 2027");
@@ -246,6 +248,7 @@ test("a moved date is saved, changes the cash check and survives a reload", asyn
 
 test("a new budget changes the warnings and is saved", async ({ page }) => {
   await fiveContracts(page);
+  await openCashCheck(page);
   await page.getByTestId("monthly-budget").fill("20,000");
   await page.getByTestId("save-budget").click();
   await expect(page.getByTestId("cash-clear")).toBeVisible();
@@ -254,5 +257,6 @@ test("a new budget changes the warnings and is saved", async ({ page }) => {
   await page.getByTestId("cash-months").getByText("Month by month").click();
   await expect(page.getByTestId("cash-month").filter({ hasText: "June 2027" })).toContainText("Left");
   await page.reload();
+  await openCashCheck(page);
   await expect(page.getByTestId("cash-clear")).toBeVisible();
 });
