@@ -21,7 +21,8 @@ const SETUP = "rm -rf .data-demo && ";
 
 export default defineConfig({
   testDir: "demo",
-  timeout: 240_000,
+  // A hosted take (Render, live AI, PayPal's sandbox) waits far longer off camera than a local one.
+  timeout: 480_000,
   expect: { timeout: 20_000 },
   workers: 1,
   reporter: [["list"]],
