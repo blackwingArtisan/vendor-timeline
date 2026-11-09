@@ -16,15 +16,17 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export const coveredCaptions: string[] = [];
 
 /**
- * Bottom-centre caption. Waits `ms` (reading time) unless wait=false. It moves to the top of the
- * screen when, at the bottom, it would cover what it describes: `over`, or whatever is highlighted
- * or marked on screen. Returns where it went.
+ * Centred caption pill. Waits `ms` (reading time) unless wait=false. `position` puts it at the top or
+ * the bottom of the frame; without it, it sits at the bottom and moves to the top when there it would
+ * cover what it describes: `over`, or whatever is highlighted or marked on screen. Either way, a
+ * caption that still covers what it describes is recorded in coveredCaptions. Returns where it went.
  */
-export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean; over?: Locator } = {}): Promise<{ place: "top" | "bottom"; covers: boolean }> {
+export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean; over?: Locator; position?: "top" | "bottom" } = {}): Promise<{ place: "top" | "bottom"; covers: boolean }> {
   const ms = opts.ms ?? Math.min(6000, 1400 + text.length * 45);
   const over = opts.over ? await opts.over.boundingBox() : null;
+  const position = opts.position ?? null;
   const place = await page.evaluate(
-    ({ text, ms, over }) => {
+    ({ text, ms, over, position }) => {
       let el = document.getElementById("__demo_caption");
       if (!el) {
         el = document.createElement("div");
@@ -38,17 +40,18 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
         document.body.appendChild(el);
       }
       el.textContent = text;
-      // Measured at the bottom; if that covers the thing it's about, it goes to the top instead.
-      Object.assign(el.style, { bottom: "36px", top: "auto" });
-      const at = el.getBoundingClientRect();
+      el.style.display = text ? "block" : "none";
       const targets = [...document.querySelectorAll("[data-demo-highlight], [data-demo-mark]")].map((t) => t.getBoundingClientRect());
       if (over) targets.push(new DOMRect(over.x, over.y, over.width, over.height));
-      const covers = targets.some((r) => r.width && r.height && r.left < at.right && at.left < r.right && r.top < at.bottom + 12 && at.top - 12 < r.bottom);
-      if (covers) Object.assign(el.style, { top: "28px", bottom: "auto" });
-      el.dataset.place = covers ? "top" : "bottom";
-      // Still on top of the thing it describes, even at the top? The scene should scroll it clear.
-      const now = el.getBoundingClientRect();
-      const still = !!over && over.x < now.right && now.left < over.x + over.width && over.y < now.bottom && now.top < over.y + over.height;
+      const hits = (at: DOMRect) => targets.some((r) => r.width && r.height && r.left < at.right && at.left < r.right && r.top < at.bottom + 12 && at.top - 12 < r.bottom);
+      const top = () => Object.assign(el!.style, { top: "28px", bottom: "auto" });
+      // Measured at the bottom; unless told where, if that covers the thing it's about it goes to the top.
+      Object.assign(el.style, { bottom: "36px", top: "auto" });
+      const goTop = position ? position === "top" : hits(el.getBoundingClientRect());
+      if (goTop) top();
+      el.dataset.place = goTop ? "top" : "bottom";
+      // Still on top of the thing it describes where it ended up? The scene should scroll it clear.
+      const still = !!text && hits(el.getBoundingClientRect());
       requestAnimationFrame(() => {
         el!.style.opacity = "1";
         el!.style.transform = "translateX(-50%) translateY(0)";
@@ -57,9 +60,9 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
       (window as unknown as { __demoCaptionTimer?: number }).__demoCaptionTimer = window.setTimeout(() => {
         el!.style.opacity = "0";
       }, ms);
-      return { place: covers ? ("top" as const) : ("bottom" as const), covers: still };
+      return { place: goTop ? ("top" as const) : ("bottom" as const), covers: still };
     },
-    { text, ms, over },
+    { text, ms, over, position },
   );
   if (place.covers) {
     coveredCaptions.push(text);
@@ -67,6 +70,45 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
   }
   if (opts.wait !== false) await sleep(ms);
   return place;
+}
+
+/**
+ * A phone beside the page: an iframe at a phone's width, framed like a handset, showing another
+ * person's screen (the vendor's link) while the couple's page stays as it was underneath. Returns
+ * the frame to act in.
+ */
+export async function phone(page: Page, url: string, opts: { side?: "left" | "right" } = {}) {
+  await page.evaluate(
+    ({ url, side }) => {
+      document.getElementById("__demo_phone")?.remove();
+      const shell = document.createElement("div");
+      shell.id = "__demo_phone";
+      Object.assign(shell.style, {
+        position: "fixed", top: "50%", [side]: "48px", transform: "translateY(-50%) scale(.96)", width: "402px", height: "812px", zIndex: "2147483646",
+        borderRadius: "48px", background: "#111", padding: "14px", boxShadow: "0 30px 80px rgba(0,0,0,.45)", opacity: "0", transition: "opacity .35s, transform .35s",
+      });
+      const frame = document.createElement("iframe");
+      frame.src = url;
+      frame.title = "Phone";
+      Object.assign(frame.style, { width: "100%", height: "100%", border: "0", borderRadius: "36px", background: "#fafafa" });
+      shell.appendChild(frame);
+      document.body.appendChild(shell);
+      requestAnimationFrame(() => Object.assign(shell.style, { opacity: "1", transform: "translateY(-50%) scale(1)" }));
+    },
+    { url, side: opts.side ?? "right" },
+  );
+  return page.frameLocator("#__demo_phone iframe");
+}
+
+/** Puts the phone away. */
+export async function closePhone(page: Page) {
+  await page.evaluate(() => {
+    const shell = document.getElementById("__demo_phone");
+    if (!shell) return;
+    shell.style.opacity = "0";
+    setTimeout(() => shell.remove(), 400);
+  });
+  await sleep(450);
 }
 
 /** Takes any caption and highlight off the screen at once, so nothing sits on the next frame. */
