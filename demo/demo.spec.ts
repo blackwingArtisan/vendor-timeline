@@ -3,9 +3,9 @@
  * to videos/, with its edit list beside it (.cuts.json): the waits to cut (PayPal's page loading, the
  * webhook on its way) and every moment a spinner, skeleton or page load was on screen.
  * `npm run demo:mp4` applies the cuts, so the video has none of those frames and stays under 2:30.
- * It opens on a contract's text. PayPal's checkout is on camera for at most 8 s, the caterer's
- * mismatch flag for at least 4 s, and a caption that would cover what it describes moves to the
- * top. No pinned clock: every date on screen is the recording date.
+ * It opens on a contract's text. PayPal's checkout is on camera for 5 to 8 s, the Guard's refusal
+ * for at least 5 s, the caterer's mismatch flag for at least 4 s, and a caption that would cover
+ * what it describes moves to the top. No pinned clock: every date on screen is the recording date.
  *
  * The captions follow /api/kit/status: they name Claude or PayPal only when the app really uses
  * them. With DEMO_REQUIRE_LIVE=1 the take fails on any visible "mock" or "simulated" text, and
@@ -17,6 +17,7 @@
  *   Then the cut MP4 (newest recording and its .cuts.json): npm run demo:mp4
  */
 import { expect, test, type Page } from "@playwright/test";
+import { expectRepeatsFolded, paypalCallsOnScreen } from "../tests/e2e/activity-calls";
 import { caption, clearOverlays, coveredCaptions, DemoClock, highlight, mark, titleCard, watchMockText } from "./captions";
 import { openCardForm, payAsGuest } from "../tests/e2e/pay-in-checkout";
 import { formatCents } from "../src/lib/wedding/cents";
@@ -29,6 +30,8 @@ const FLAG_ON_CAMERA_S = 4;
 
 /** PayPal's checkout gets at most this long on camera. */
 const CHECKOUT_ON_CAMERA_MS = 8_000;
+/** The Guard's refusal and PayPal's checkout each hold at least this long in the cut, or the take fails. */
+const HOLD_ON_CAMERA_S = 5;
 
 const scrollTo = async (page: Page, target: ReturnType<Page["getByTestId"]>) => {
   await target.evaluate((el) => window.scrollBy({ top: el.getBoundingClientRect().top - 96, behavior: "smooth" }));
@@ -131,8 +134,12 @@ test("demo", async ({ page, context }) => {
   await page.getByTestId("ask-agent").click();
   const refusal = panel.getByTestId("guard-refusal");
   await clock.cut("agent", () => expect(refusal).toBeVisible({ timeout: 90_000 }), 1000);
-  await highlight(page, refusal, 2400);
-  await caption(page, "Asked to pay the caterer $5,000, the Guard checks the signed contract in code and refuses. Nothing is sent.", { ms: 4200 });
+  const refusalFrom = clock.raw;
+  await highlight(page, refusal, 5400);
+  await caption(page, "Asked to pay the caterer $5,000, the Guard checks the signed contract in code and refuses. Nothing is sent.", { ms: 5400 });
+  const refusalShown = clock.onCamera(refusalFrom, clock.raw);
+  console.log(`[demo] Guard refusal on camera ${refusalShown.toFixed(1)}s`);
+  expect(refusalShown, "the Guard's refusal holds on camera").toBeGreaterThanOrEqual(HOLD_ON_CAMERA_S);
   await check("guard");
 
   // Scene 5: the real ask. Urgent first, with code's cash plan.
@@ -161,7 +168,7 @@ test("demo", async ({ page, context }) => {
   await caption(page, "The vendor agreed, so the date moves and that crowded week clears from the cash check.", { ms: 3000 });
   await check("cash plan");
 
-  // Scene 7: one approval, then PayPal's checkout, at most 8 s of it on camera.
+  // Scene 7: one approval, then PayPal's checkout, 5 to 8 s of it on camera.
   await scrollTo(page, prompt);
   await highlight(page, prompt.getByTestId("approve-button"), 1200);
   await caption(page, "Nothing moves without you. One approval, then pay it yourself in PayPal.", { ms: 2400 });
@@ -176,17 +183,22 @@ test("demo", async ({ page, context }) => {
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.waitForTimeout(400);
     });
-    await caption(page, `PayPal's own checkout, for exactly the confirmed ${formatCents(FLORIST.depositCents)} (sandbox).`, { ms: 3200 });
+    await caption(page, `PayPal's own checkout, for exactly the confirmed ${formatCents(FLORIST.depositCents)} (sandbox).`, { ms: 5600 });
     await clock.cut("PayPal checkout", async () => {
       await payAsGuest(page, { typingDelay: 0 });
       await page.waitForURL(/\/timeline/, { timeout: 120_000 });
     });
     const shown = clock.onCamera(paypalFrom, clock.raw);
     console.log(`[demo] PayPal checkout on camera ${shown.toFixed(1)}s`);
+    expect(shown, "PayPal's checkout holds on camera").toBeGreaterThanOrEqual(HOLD_ON_CAMERA_S);
     expect(shown).toBeLessThanOrEqual(CHECKOUT_ON_CAMERA_MS / 1000);
   } else {
     await expect(page.getByTestId("mock-order-id")).toHaveText(/\S/, { timeout: 60_000 });
-    await caption(page, "Checkout, for exactly the confirmed amount.", { ms: 2200 });
+    const checkoutFrom = clock.raw;
+    await caption(page, "Checkout, for exactly the confirmed amount.", { ms: 5400 });
+    const shown = clock.onCamera(checkoutFrom, clock.raw);
+    console.log(`[demo] checkout on camera ${shown.toFixed(1)}s`);
+    expect(shown, "the checkout holds on camera").toBeGreaterThanOrEqual(HOLD_ON_CAMERA_S);
     await page.getByTestId("mock-approve").click();
   }
   await check("checkout");
@@ -217,7 +229,10 @@ test("demo", async ({ page, context }) => {
   await page.waitForTimeout(700);
   const list = activity.getByTestId("tool-call-timeline");
   await highlight(page, list, 3200);
-  await caption(page, sandbox ? `What's happening: every call to PayPal behind it, in order, ${await calls.count()} in all.` : "What's happening: every call behind it, in order.", { ms: 3200, over: list });
+  // The count is what the panel shows: each card plus each folded row's own count.
+  const onScreen = await paypalCallsOnScreen(list);
+  await expectRepeatsFolded(list);
+  await caption(page, sandbox ? `What's happening: every call to PayPal behind it, in order, ${onScreen.calls} in all${onScreen.repeated ? ", repeated reads on one row with a count" : ""}.` : "What's happening: every call behind it, in order.", { ms: 3600, over: list });
   await check("calls");
 
   // The end card comes up on a clear screen: no caption or outline left over the receipt.

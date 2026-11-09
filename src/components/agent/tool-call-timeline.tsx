@@ -25,6 +25,7 @@ import { cn } from "../ui/cn";
 import { EmptyState } from "../ui/empty-state";
 import { ApprovalPrompt } from "./approval-prompt";
 import { plainText } from "@/lib/plain-text";
+import { foldRepeats } from "@/lib/events/repeats";
 
 const KIND_ICON = {
   run: Bot,
@@ -110,15 +111,21 @@ function Details({ step }: { step: TimelineStep }) {
   );
 }
 
-function CompactRow({ step }: { step: TimelineStep }) {
+function CompactRow({ step, count = 1, reason }: { step: TimelineStep; count?: number; reason?: string }) {
   const Icon = KIND_ICON[step.kind] ?? CircleDot;
   return (
-    <li className="relative flex animate-fade-in items-center gap-3 py-1 pl-1 text-xs text-zinc-500">
+    <li className="relative flex animate-fade-in items-center gap-3 py-1 pl-1 text-xs text-zinc-500" data-testid="timeline-quiet" data-kind={step.kind} data-count={count} data-call={step.paypal ? `${step.status} ${step.title} ${step.paypal.operation} ${step.paypal.path}` : undefined}>
       <span className="z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-white ring-1 ring-zinc-200">
         {step.status === "running" ? <Loader2 className="size-3 animate-spin" /> : <Icon className="size-3" />}
       </span>
       <span className="truncate">
         <span className="font-medium text-zinc-600">{step.title}</span>
+        {count > 1 ? (
+          <span className="ml-1.5 rounded bg-zinc-100 px-1 font-medium tabular-nums text-zinc-600" data-testid="repeat-count">
+            ×{count}
+          </span>
+        ) : null}
+        {reason ? <span className="ml-2" data-testid="repeat-reason">{reason}</span> : null}
         {step.paypal ? <span className="ml-2 font-mono">{step.paypal.method} {step.paypal.path}</span> : step.detail ? <span className="ml-2">{plainText(step.detail).slice(0, 140)}</span> : null}
       </span>
       <span className="ml-auto shrink-0 tabular-nums text-zinc-400">{time(step.updatedAt)}</span>
@@ -218,7 +225,7 @@ export function ToolCallTimeline({
   return (
     <div ref={ref} className={cn("scrollbar-thin overflow-y-auto pr-1", className)} data-testid="tool-call-timeline">
       <ol className="relative before:absolute before:bottom-4 before:left-[17px] before:top-2 before:w-px before:bg-zinc-200">
-        {visible.map((s) => (isQuiet(s) ? <CompactRow key={s.stepId} step={s} /> : <StepCard key={s.stepId} step={s} />))}
+        {foldRepeats(visible, isQuiet).map(({ key, step: s, count, reason }) => (isQuiet(s) ? <CompactRow key={key} step={s} count={count} reason={reason} /> : <StepCard key={key} step={s} />))}
       </ol>
     </div>
   );
