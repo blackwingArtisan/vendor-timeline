@@ -1,5 +1,6 @@
 "use client";
 
+import { retryIfDropped } from "@/lib/gateway-retry";
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, CalendarClock, CalendarDays, CircleCheck, FileText, ReceiptText, Send, Wallet } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
@@ -308,7 +309,7 @@ export function TimelineScreen() {
 
   const move = useCallback(
     (item: TimelineItem, due: string) => {
-      kitFetch(`/api/contracts/${item.contractId}/move`, { json: { kind: item.kind, due, today: localToday() } })
+      retryIfDropped(() => kitFetch(`/api/contracts/${item.contractId}/move`, { json: { kind: item.kind, due, today: localToday() } }))
         .catch((e) => toast({ title: "Could not move that date", description: (e as Error).message, variant: "error" }))
         .finally(() => void refresh().catch(() => undefined)); // On a refusal this puts the bar back.
     },

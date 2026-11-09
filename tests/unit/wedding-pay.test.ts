@@ -399,6 +399,14 @@ describe("moving a payment date", () => {
     expect(moveDueDate(contract.planId, contract.id, "deposit", PHOTOGRAPHER.depositDue, "2026-11-20").movedFrom?.deposit).toBeUndefined();
   });
 
+  it("is the same move when sent twice, so a request the hosting proxy dropped can be sent again", async () => {
+    const contract = await confirmedContract();
+    const once = moveDueDate(contract.planId, contract.id, "deposit", "2026-12-28", "2026-11-20");
+    const twice = moveDueDate(contract.planId, contract.id, "deposit", "2026-12-28", "2026-11-20");
+    expect(twice.confirmed).toEqual(once.confirmed);
+    expect(twice.movedFrom).toEqual({ deposit: PHOTOGRAPHER.depositDue });
+  });
+
   it("refuses a date in the past or years away, in plain words", async () => {
     const contract = await confirmedContract();
     expect(() => moveDueDate(contract.planId, contract.id, "deposit", "2999-12-31", "2026-11-20")).toThrow(/^The new date must be from Fri, Nov 20, 2026 to /);

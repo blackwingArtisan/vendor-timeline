@@ -11,6 +11,7 @@ import { CalendarClock, CircleCheck, Copy, Send, Wallet } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Textarea } from "@/components/ui";
+import { retryIfDropped } from "@/lib/gateway-retry";
 import { formatCents } from "@/lib/wedding/cents";
 import { formatDay, localToday } from "@/lib/wedding/dates";
 import type { CashFix, CashMove, CashPlan, TimelineItem } from "@/lib/wedding/types";
@@ -36,7 +37,8 @@ function AskVendor({ move, item, onDone }: { move: CashMove; item?: TimelineItem
   async function agreed() {
     setSaving(true);
     try {
-      await kitFetch(`/api/contracts/${move.contractId}/move`, { json: { kind: move.itemKind, due: move.to, today: localToday() } });
+      // Moving to the same date twice changes nothing, so a request the hosting proxy dropped is sent again.
+      await retryIfDropped(() => kitFetch(`/api/contracts/${move.contractId}/move`, { json: { kind: move.itemKind, due: move.to, today: localToday() } }));
       onDone();
     } catch (e) {
       toast({ title: "Could not move that date", description: (e as Error).message, variant: "error" });
