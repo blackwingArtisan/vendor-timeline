@@ -12,6 +12,8 @@ export interface ProposedTerm<T> {
   sentence: string | null;
   /** How the app got the value, when it isn't word for word in the contract. */
   basis?: string;
+  /** For a deposit the contract states as a percentage of the total: that percentage. */
+  percent?: number;
   /** Things the couple must look at. */
   flags: string[];
 }
