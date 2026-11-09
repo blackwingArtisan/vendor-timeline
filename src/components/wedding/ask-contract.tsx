@@ -9,9 +9,9 @@ import { useState } from "react";
 import { CircleCheck, MessageCircleQuestion, Quote, SearchX } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { Badge, Button, Card, CardBody, CardHeader, Input } from "@/components/ui";
-import { MAX_QUESTION_CHARS, type QuestionResult } from "@/lib/wedding/question-result";
+import { MAX_QUESTION_CHARS, SAMPLE_QUESTION, type QuestionResult } from "@/lib/wedding/question-result";
 
-export const SAMPLE_QUESTION = "Is the deposit refundable if we cancel 60 days out?";
+export { SAMPLE_QUESTION };
 
 export function AskContract({ contractId }: { contractId: string }) {
   const { kitFetch } = useKit();

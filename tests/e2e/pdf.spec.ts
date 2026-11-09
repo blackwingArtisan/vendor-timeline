@@ -20,6 +20,8 @@ test("a PDF contract goes in, gets read into terms and reaches the timeline", as
   await expect(page.getByText("Nothing confirmed yet")).toBeVisible();
   await upload(page, "public/sample-contracts/photographer.pdf");
   await expect(page.getByTestId("contract-text")).toHaveValue(/Quillfeather/, { timeout: 30_000 });
+  // The screen says the text came from the uploaded PDF, by name; typing in the box takes that away.
+  await expect(page.getByTestId("pdf-loaded")).toHaveText("photographer.pdf uploaded. The text below was taken from the PDF.");
   await page.getByTestId("read-contract").click();
   await page.waitForURL(/\/contracts\/ctr_/, { timeout: 90_000 });
 
@@ -51,6 +53,11 @@ test("the sample PDF button fills the box", async ({ page }) => {
   await page.getByTestId("sample-pdf").click();
   await expect(page.getByTestId("contract-text")).toHaveValue(/Quillfeather/, { timeout: 30_000 });
   await expect(page.getByTestId("read-contract")).toBeEnabled();
+  await expect(page.getByTestId("pdf-loaded")).toHaveAttribute("data-file", "photographer.pdf");
+  // Edited by hand, it's no longer just the PDF's text.
+  await page.getByTestId("contract-text").press("End");
+  await page.getByTestId("contract-text").pressSequentially(" Added by hand.");
+  await expect(page.getByTestId("pdf-loaded")).toHaveCount(0);
 });
 
 test("a PDF with no text says why and still has a way forward", async ({ page }) => {

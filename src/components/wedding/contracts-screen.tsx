@@ -163,6 +163,14 @@ export function ContractsScreen() {
                 </Button>
               </div>
             </div>
+            {fileName?.toLowerCase().endsWith(".pdf") ? (
+              <p className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950" data-testid="pdf-loaded" data-file={fileName}>
+                <FileText className="size-4 shrink-0 text-sky-700" aria-hidden />
+                <span className="min-w-0 truncate">
+                  <span className="font-semibold">{fileName}</span> uploaded. The text below was taken from the PDF.
+                </span>
+              </p>
+            ) : null}
             <Field
               label="Contract text"
               htmlFor="contract-text"
