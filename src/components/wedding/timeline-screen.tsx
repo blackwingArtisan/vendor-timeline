@@ -170,7 +170,8 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
           {/* "Upcoming" says nothing a tag doesn't, so a tagged row shows the tag alone. */}
           <span data-testid="item-status" className={tag && item.status === "upcoming" ? "sr-only" : undefined}><Badge tone={status.tone}>{status.label}</Badge></span>
         </div>
-        <div className="order-5 flex items-center justify-end gap-1 md:order-none">
+        {/* Between md and xl the four columns are full, so the actions take their own line, at the right. */}
+        <div className="order-5 flex items-center justify-end gap-1 md:order-none md:col-span-full xl:col-span-1">
           {canPay ? (
             <>
               <Button size="sm" variant="ghost" className="px-2" icon={paidOutsideIcon} onClick={() => setOutside((o) => !o)} aria-label={`Mark the ${item.vendorName} ${item.kind} paid outside PayPal`} title="Paid outside PayPal (cash or cheque)" aria-expanded={outside} data-testid="paid-outside-open">
