@@ -12,7 +12,7 @@
  */
 import { devices, expect, test, type Browser, type Page } from "@playwright/test";
 import { approveAndPay } from "./pay-in-checkout";
-import { readOrder, sandboxVendorEmail } from "./paypal-reread";
+import { readOrder, sandboxPayeeFor } from "./paypal-reread";
 import { FLORIST } from "../../src/lib/wedding/samples";
 
 const TODAY = "2026-11-20";
@@ -68,7 +68,11 @@ for (const couple of ["desktop", "phone"] as const) {
     expect(copied).toContain(`Answer here: ${link}`);
     await expect(ask.getByTestId("ask-stage")).toHaveText("Shared, waiting for a reply");
 
-    const vendorEmail = sandbox ? sandboxVendorEmail() : "payments@bramble-vetch.example.com";
+    const vendorEmail = sandbox ? sandboxPayeeFor("florist") : "payments@bramble-vetch.example.com";
+    // "Own" only if no other sample vendor is paid at that account. With one shared sandbox
+    // vendor account (today's setup) it is a stand-in, and the screen says so.
+    const own = !sandbox || ["photographer", "caterer", "venue", "band"].every((r) => sandboxPayeeFor(r).toLowerCase() !== vendorEmail.toLowerCase());
+    const paidTo = own ? `${FLORIST.vendorName}'s own PayPal: ${vendorEmail}` : `${FLORIST.vendorName}'s PayPal (sandbox stand-in: ${vendorEmail})`;
     const vendor = await vendorAnswers(browser, link, vendorEmail);
 
     // The couple's card picks the reply up by itself.
@@ -87,7 +91,7 @@ for (const couple of ["desktop", "phone"] as const) {
     await prompt.getByTestId("approve-button").click();
 
     await expect(ask.getByTestId("move-done")).toContainText(`Moved to Tue, Jun 8, 2027 on ${FLORIST.vendorName}'s reply. The contract said Sat, May 29, 2027.`, { timeout: 30_000 });
-    await expect(ask.getByTestId("move-payee")).toHaveText(`Now paid to ${FLORIST.vendorName}'s own PayPal: ${vendorEmail}`);
+    await expect(ask.getByTestId("move-payee")).toHaveText(`Now paid to ${paidTo}`);
     await expect(row(page, "florist", "balance").getByTestId("item-due")).toHaveText("Tue, Jun 8, 2027");
     // The $1,740.00 leaves May, and the crowded week clears.
     await expect(may).toHaveAttribute("data-total-cents", "1406000");
@@ -103,7 +107,13 @@ for (const couple of ["desktop", "phone"] as const) {
     await expect(pay.getByTestId("approval-to")).toHaveText(FLORIST.vendorName);
     const orderId = await approveAndPay(page, pay, sandbox);
     await expect(row(page, "florist", "balance").getByTestId("item-status")).toHaveText("Paid", { timeout: 120_000 });
-    await expect(row(page, "florist", "balance").getByTestId("paid-to-own")).toHaveText(`Paid to the florist's own PayPal (${vendorEmail})`);
+    const paid = row(page, "florist", "balance").getByTestId("paid-to-vendor");
+    await expect(paid).toHaveText(own ? `Paid to the florist's own PayPal (${vendorEmail})` : `Paid to the florist's PayPal (sandbox stand-in: ${vendorEmail})`);
+    await expect(paid).toHaveAttribute("data-own", String(own));
+    // No two vendors paid at one account are both called "own".
+    const owned = (await page.locator('[data-testid="paid-to-vendor"][data-own="true"] [data-testid="paypal-payee"]').allInnerTexts()).map((e) => e.toLowerCase());
+    expect(new Set(owned).size).toBe(owned.length);
+    if (!own) await expect(page.getByText(/own PayPal \(/)).toHaveCount(0);
     if (sandbox) {
       const order = await readOrder(orderId);
       const capture = order.purchase_units[0].payments?.captures?.[0];

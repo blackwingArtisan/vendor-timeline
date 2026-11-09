@@ -36,7 +36,7 @@ export function StandInLine({ item, className }: { item: TimelineItem; className
         data-account={own ? "app" : "vendor"}
       >
         {item.sandboxPayee?.given
-          ? `${item.vendorName} gave this PayPal sandbox account (${email}) on the couple's link, so PayPal pays it directly.`
+          ? `${item.vendorName} gave this PayPal sandbox account (${email}) on the couple's link, so PayPal pays it directly.${item.sandboxPayee.shared ? " It's the same test account that stands in for the other sample vendors." : ""}`
           : own
           ? `In the sandbox, this app's own test business account${email ? ` (${email})` : ""} stands in for ${item.vendorName}.`
           : item.sandboxPayee?.shared

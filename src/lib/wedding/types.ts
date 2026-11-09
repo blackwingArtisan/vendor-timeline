@@ -215,6 +215,8 @@ export interface TimelineItem {
   vendorRole: VendorRole;
   /** This payment goes to the PayPal account the vendor gave on the couple's link. */
   payeeGiven?: boolean;
+  /** The account the vendor gave is theirs alone: no other vendor is paid there, and it isn't a shared sandbox stand-in. Only then is it called their "own PayPal". */
+  payeeOwn?: boolean;
   cents: number;
   due: string;
   /** Days from today. Negative means overdue. */

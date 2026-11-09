@@ -75,7 +75,7 @@ export function vendorReplyAgent(planId: string, today: string) {
 
   const moveTool = defineTool({
     name: MOVE_TOOL,
-    description: "Move one payment to the date the vendor agreed to, and pay the vendor's own PayPal email if they gave one. Waits for the couple's approval. The date must be the one read_vendor_reply allowed.",
+    description: "Move one payment to the date the vendor agreed to, and pay the PayPal email the vendor gave, if they gave one. Waits for the couple's approval. The date must be the one read_vendor_reply allowed.",
     risk: "write",
     source: "app",
     schema: Target.extend({ due: z.string().max(10).describe("The date from read_vendor_reply, YYYY-MM-DD") }),
