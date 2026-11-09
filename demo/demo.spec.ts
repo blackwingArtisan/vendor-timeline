@@ -17,6 +17,7 @@
  *   Then the cut MP4 (newest recording and its .cuts.json): npm run demo:mp4
  */
 import { expect, test, type Page } from "@playwright/test";
+import { expectRepeatsFolded, paypalCallsOnScreen } from "../tests/e2e/activity-calls";
 import { caption, clearOverlays, coveredCaptions, DemoClock, highlight, mark, titleCard, watchMockText } from "./captions";
 import { openCardForm, payAsGuest } from "../tests/e2e/pay-in-checkout";
 import { formatCents } from "../src/lib/wedding/cents";
@@ -217,7 +218,10 @@ test("demo", async ({ page, context }) => {
   await page.waitForTimeout(700);
   const list = activity.getByTestId("tool-call-timeline");
   await highlight(page, list, 3200);
-  await caption(page, sandbox ? `What's happening: every call to PayPal behind it, in order, ${await calls.count()} in all.` : "What's happening: every call behind it, in order.", { ms: 3200, over: list });
+  // The count is what the panel shows: each card plus each folded row's own count.
+  const onScreen = await paypalCallsOnScreen(list);
+  await expectRepeatsFolded(list);
+  await caption(page, sandbox ? `What's happening: every call to PayPal behind it, in order, ${onScreen.calls} in all${onScreen.repeated ? ", repeated reads on one row with a count" : ""}.` : "What's happening: every call behind it, in order.", { ms: 3600, over: list });
   await check("calls");
 
   // The end card comes up on a clear screen: no caption or outline left over the receipt.

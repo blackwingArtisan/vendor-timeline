@@ -6,6 +6,7 @@
  */
 import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expectRepeatsFolded, paypalCallsOnScreen } from "./activity-calls";
 import { approveAndPay } from "./pay-in-checkout";
 import { readCapture, readCaptureEvent, readOrder, sandboxSellerEmail } from "./paypal-reread";
 import { amountText, formatCents, sumCents } from "../../src/lib/wedding/cents";
@@ -205,6 +206,21 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   expect(captureId).toBeTruthy();
   await deposit.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `screenshots/timeline-after-payment-${sandbox ? "sandbox" : "mock"}.png`, fullPage: true });
+
+  // "What's happening" lists every PayPal call behind it. The capture re-reads made while waiting
+  // for PayPal's webhook fold into one row with a count, so the calls can be added up on screen.
+  const activity = page.getByTestId("activity-panel");
+  await activity.locator("summary").click();
+  const calls = activity.getByTestId("tool-call-timeline");
+  await expect(calls.locator('[data-testid="timeline-step"][data-kind="paypal"]').first()).toBeVisible();
+  await expectRepeatsFolded(calls);
+  const onScreen = await paypalCallsOnScreen(calls);
+  expect(onScreen.calls).toBeGreaterThanOrEqual(2);
+  // How many re-reads it took depends on when PayPal's webhook landed; any repeat says why.
+  for (const row of await calls.locator('[data-testid="timeline-quiet"][data-call*="payments.getCapture"]').all()) {
+    if (Number(await row.getAttribute("data-count")) > 1) await expect(row.getByTestId("repeat-reason")).toHaveText("re-read while waiting for PayPal's webhook for the payment");
+  }
+  console.log(`Activity panel: ${onScreen.calls} PayPal calls in ${onScreen.rows} rows`);
 
   // A paid item stays paid after a reload, and can't be paid twice.
   await page.reload();
