@@ -356,7 +356,7 @@ export function TimelineScreen() {
       <TimelineHeader />
       {/* A column, so on a phone a waiting approval can move above the banner and the stats. */}
       <div className="flex flex-col">
-      {view.samplePlan ? <SamplePlanBanner className="mb-4" /> : null}
+      {view.samplePlan ? <SamplePlanBanner mix={view.planMix} className="mb-4" /> : null}
       {capturing ? <p className="mb-4 rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-900" data-testid="capturing">Back from PayPal. Capturing your payment and reading it back from PayPal…</p> : null}
       {items.length === 0 ? (
         <EmptyState

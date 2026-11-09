@@ -1,7 +1,8 @@
 /**
- * Loads the five fictional sample contracts into one wedding with no AI spend. Their reads are the
- * labelled mock fixtures, so the review page says "Simulated read". The band's contract leaves its
- * email and balance date blank on purpose, so the sample couple's answers fill those in here.
+ * Loads the five fictional sample contracts into one wedding with no AI spend. Their reads are
+ * fixtures made ahead of time, marked `sample`, so the review page and the banner say so. The
+ * band's contract leaves its email and balance date blank on purpose, so the sample couple's
+ * answers fill those in here.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -19,7 +20,7 @@ export function loadSampleWedding(planId: string): { added: number } {
   const missing = SAMPLES.filter((s) => !present.has(s.vendorName));
   for (const sample of missing) {
     const text = sampleText(sample);
-    const contract = saveContract({ id: `ctr_${randomUUID().slice(0, 8)}`, planId, createdAt: new Date().toISOString(), payments: {}, proposed: toProposedTerms(mockExtraction(text), text), read: { mocked: true, costUsd: 0 }, text, fileName: sample.file });
+    const contract = saveContract({ id: `ctr_${randomUUID().slice(0, 8)}`, planId, sample: true, createdAt: new Date().toISOString(), payments: {}, proposed: toProposedTerms(mockExtraction(text), text), read: { mocked: true, costUsd: 0 }, text, fileName: sample.file });
     confirmContract(planId, contract.id, {
       vendorName: sample.vendorName,
       vendorRole: sample.vendorRole,

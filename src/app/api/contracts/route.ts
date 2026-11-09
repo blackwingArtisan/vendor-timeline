@@ -3,6 +3,7 @@ import { readJson, route } from "@/lib/http";
 import { isSamplePlan } from "@/lib/wedding/budget";
 import { addContract, listContracts } from "@/lib/wedding/contracts";
 import { MAX_CONTRACT_CHARS } from "@/lib/wedding/limits";
+import { planMix } from "@/lib/wedding/plan-mix";
 import { currentPlanId } from "@/lib/wedding/plan";
 
 const Body = z.object({
@@ -12,7 +13,8 @@ const Body = z.object({
 
 export const GET = route(async () => {
   const planId = await currentPlanId();
-  return { contracts: listContracts(planId), samplePlan: isSamplePlan(planId) };
+  const contracts = listContracts(planId);
+  return { contracts, samplePlan: isSamplePlan(planId), planMix: planMix(contracts) };
 });
 
 export const POST = route(async (req) => addContract(await currentPlanId(), await readJson(req, Body)), { rateLimit: "ai" });

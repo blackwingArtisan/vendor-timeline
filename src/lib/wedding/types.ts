@@ -102,6 +102,8 @@ export interface Contract {
   id: string;
   planId: string;
   createdAt: string;
+  /** One of the five fictional samples, loaded with a read made ahead of time, not on this visit. */
+  sample?: true;
   fileName?: string;
   text: string;
   proposed: ProposedTerms;
@@ -241,4 +243,16 @@ export interface TimelineView {
   sandboxStandIn: boolean;
   /** The labelled sample plan a new visitor starts with. */
   samplePlan?: boolean;
+  /** What the plan is made of, for the banner to say only what's true. Set with samplePlan. */
+  planMix?: PlanMix;
+}
+
+/** Which of a plan's contracts are the fictional samples and which the couple added on this visit. */
+export interface PlanMix {
+  /** Vendor names of the fictional samples, read ahead of time. */
+  samples: string[];
+  /** Added on this visit and read by AI (Claude). */
+  readLive: string[];
+  /** Added on this visit without an AI read: typed in, or read with AI switched off. */
+  readWithoutAi: string[];
 }

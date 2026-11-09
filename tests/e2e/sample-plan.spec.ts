@@ -36,7 +36,7 @@ test("a new visitor lands on the labelled sample plan, and can start their own",
   await page.reload();
   await expect(page.getByText("Nothing confirmed yet")).toBeVisible();
   const own = await (await page.request.get("/api/contracts")).json();
-  expect(own).toEqual({ contracts: [], samplePlan: false });
+  expect(own).toEqual({ contracts: [], samplePlan: false, planMix: { samples: [], readLive: [], readWithoutAi: [] } });
 
   // The samples are still one click away, and labelled again.
   await page.getByTestId("load-samples").click();
