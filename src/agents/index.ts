@@ -4,7 +4,10 @@
  */
 import type { AgentDefinition } from "@/lib/agent/define";
 import { paymentAgent } from "./payments";
+import { REPLY_AGENT_ID, vendorReplyAgent } from "./vendor-reply";
 
 export function agentFor(agentId: string, planId: string, today: string): AgentDefinition | null {
-  return agentId === "payments" ? paymentAgent(planId, today) : null;
+  if (agentId === "payments") return paymentAgent(planId, today);
+  if (agentId === REPLY_AGENT_ID) return vendorReplyAgent(planId, today);
+  return null;
 }
