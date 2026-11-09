@@ -14,6 +14,7 @@ import { centsToDollars, dollarFigures, formatCents } from "@/lib/wedding/cents"
 import { listContracts } from "@/lib/wedding/contracts";
 import { formatDay } from "@/lib/wedding/dates";
 import { VENDOR_ORDER_TOOL, vendorOrderTool, viewTimeline } from "@/lib/wedding/pay";
+import { REVIEW_TOOL } from "@/lib/wedding/tool-names";
 import { buildTimeline } from "@/lib/wedding/timeline";
 import { askedMismatch, namedIn } from "@/lib/wedding/asked-payment";
 import { cashPlanSentence } from "@/lib/wedding/cash-moves";
@@ -96,7 +97,7 @@ function guardPrecheck(planId: string, today: string, input: AgentInput): Script
 
 export function paymentAgent(planId: string, today: string) {
   const reviewPayments = defineTool({
-    name: "review_payments",
+    name: REVIEW_TOOL,
     description: "Read this couple's confirmed payments: what to pay first, the next one due, anything overdue, the unpaid list, the cash warnings and the cash plan. All figures and dates are worked out by the app.",
     risk: "read",
     source: "app",

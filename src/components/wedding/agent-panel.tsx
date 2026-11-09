@@ -13,7 +13,8 @@ import type { TimelineStep } from "@/lib/events/types";
 import { localToday } from "@/lib/wedding/dates";
 import type { CashFix, CashPlan, TimelineItem } from "@/lib/wedding/types";
 import { agentChain, firstSentences } from "@/lib/wedding/agent-chain";
-import { VENDOR_ORDER_TOOL } from "@/lib/wedding/tool-names";
+import { REVIEW_TOOL, VENDOR_ORDER_TOOL } from "@/lib/wedding/tool-names";
+import { reviewCards, type ReviewCard } from "@/lib/wedding/review-cards";
 import { dollarsToCents, formatCents } from "@/lib/wedding/cents";
 import { APP_MESSAGE_TITLES, CASH_PLAN_TITLE, PAY_FIRST_TITLE } from "@/lib/wedding/urgency";
 import { plainText } from "@/lib/plain-text";
@@ -49,6 +50,37 @@ function Chain({ links }: { links: string[] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+const TAG_TONE: Record<ReviewCard["tag"], Tone> = { "Pay first": "brand", Overdue: "danger", "Due next": "warning", Upcoming: "neutral" };
+
+/** What review_payments came back with, as cards: vendor, amount, due date and why. */
+function ReviewCards({ output }: { output: unknown }) {
+  const { cards, more } = reviewCards(output);
+  if (!cards.length) return null;
+  return (
+    <div className="mt-2" data-testid="review-cards">
+      <p className="mb-1.5 text-xs font-medium text-zinc-500">What the agent read, worked out by code</p>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {cards.map((c) => (
+          <li key={c.key} className="rounded-lg border border-zinc-200 bg-white px-3 py-2" data-testid="review-card" data-tag={c.tag}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="min-w-0 truncate font-medium text-zinc-900" title={c.vendor} data-testid="review-card-vendor">{c.vendor}</span>
+              <span className="shrink-0 font-semibold tabular-nums text-zinc-900" data-testid="review-card-amount">{c.amount}</span>
+            </div>
+            <p className="text-xs text-zinc-500">
+              <span className="capitalize" data-testid="review-card-kind">{c.kind}</span>, due <span data-testid="review-card-due">{c.due}</span>
+            </p>
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-zinc-700">
+              <Badge tone={TAG_TONE[c.tag]}>{c.tag}</Badge>
+              <span data-testid="review-card-why">{c.why}</span>
+            </p>
+          </li>
+        ))}
+      </ul>
+      {more ? <p className="mt-1.5 text-xs text-zinc-500" data-testid="review-cards-more">{more} more on the timeline below.</p> : null}
+    </div>
   );
 }
 
@@ -88,6 +120,8 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
   const running = !!runId && (!run || run.status === "running");
   const phase: Phase = !runId ? "idle" : pending ? "waiting" : running ? "working" : run?.status === "failed" ? "failed" : "finished";
 
+  // What review_payments returned, drawn as cards under Details.
+  const review = runSteps.findLast((s) => s.kind === "tool" && s.tool?.name === REVIEW_TOOL && s.tool.output !== undefined);
   // The payment tool's step: refused by the Guard (no approval was ever asked), or declined by a person.
   const order = runSteps.findLast((s) => s.kind === "tool" && s.tool?.name === VENDOR_ORDER_TOOL);
   const refused = order?.status === "denied" && !order.approval ? order : undefined;
@@ -171,6 +205,7 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
               </summary>
               <div className="mt-2 pl-6">
                 {links.length ? <Chain links={links} /> : null}
+                {review ? <ReviewCards output={review.tool?.output} /> : null}
                 <ul className="mt-2 space-y-1.5">
                   {reply && cut ? <Message key={reply.stepId} m={reply} text={cut.lead} testId="agent-reply" /> : null}
                   {details.map((m) => <Message key={m.stepId} m={m} />)}
