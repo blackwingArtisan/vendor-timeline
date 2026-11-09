@@ -44,6 +44,29 @@ test("a new visitor lands on the labelled sample plan, and can start their own",
   await expect(page.getByTestId("sample-plan")).toBeVisible();
 });
 
+test("the samples fill in only the vendors the couple don't have, however their own contract spells the name", async ({ page }) => {
+  // The hosted demo: Claude read the caterer's name in capitals, as its letterhead prints it, and the
+  // samples added a second caterer (12 rows, not 10). Typed in here, so it costs no AI anywhere.
+  const caterer = SAMPLES.find((s) => s.vendorRole === "caterer")!;
+  await page.goto("/timeline");
+  await page.getByTestId("start-own-plan").click();
+  await page.waitForURL(/\/timeline$/);
+  await expect(page.getByText("Nothing confirmed yet")).toBeVisible();
+  const added = await page.request.post("/api/contracts/manual", { data: { text: "Caterer contract, typed in.", fileName: "caterer.txt" } });
+  expect(added.ok()).toBe(true);
+  const { id } = await added.json();
+  const confirmed = await page.request.post(`/api/contracts/${id}/confirm`, {
+    data: { vendorName: caterer.vendorName.toUpperCase(), vendorRole: "caterer", payeeEmail: caterer.payeeEmail, totalCents: caterer.totalCents, depositCents: caterer.depositCents, depositDue: caterer.depositDue, balanceDue: caterer.balanceDue },
+  });
+  expect(confirmed.ok(), await confirmed.text()).toBe(true);
+  expect(await (await page.request.post("/api/contracts/samples")).json()).toEqual({ added: SAMPLES.length - 1 });
+  await page.reload();
+  await expect(page.getByTestId("timeline-item")).toHaveCount(SAMPLES.length * 2);
+  await expect(page.locator('[data-testid="timeline-item"][data-role="caterer"]')).toHaveCount(2);
+  // A second click adds nothing.
+  expect(await (await page.request.post("/api/contracts/samples")).json()).toEqual({ added: 0 });
+});
+
 test.describe("on a phone", () => {
   const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices["iPhone 13"];
   test.use({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
