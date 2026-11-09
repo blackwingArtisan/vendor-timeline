@@ -30,7 +30,7 @@ export function PayApproval({ item, approval, cash, sandbox, onDecided, classNam
       className={className}
       approvalId={approval.id}
       summary={approval.summary}
-      reason={payer ? `${payer} asked to pay this from their own PayPal. Approve it, and they pay it in PayPal's checkout from their link. Nothing moves before that.` : "This is your money. You pay it yourself in PayPal's checkout, and nothing moves before that."}
+      reason={payer ? `${payer} pays it in PayPal's checkout, from their link.` : "You pay it in PayPal's checkout."}
       amount={approval.amountValue ? { currency_code: "USD", value: approval.amountValue } : undefined}
       approveLabel={payer ? `Approve for ${payer}` : "Approve and pay"}
       onApproved={(response) => {
@@ -46,6 +46,7 @@ export function PayApproval({ item, approval, cash, sandbox, onDecided, classNam
       onDecided={onDecided}
       details={
         <div className="mt-2 space-y-1 border-t border-amber-200 pt-2 text-sm text-zinc-700">
+          <p data-testid="approval-why">{payer ? `${payer} asked to pay this from their own PayPal. Approve it, and they pay it in PayPal's checkout from their link. Nothing moves before that.` : "This is your money. You pay it yourself in PayPal's checkout, and nothing moves before that."}</p>
           {/* From and to on one line, so the card stays short enough to sit at the top of a phone screen. */}
           <dl className="flex flex-wrap gap-x-4 gap-y-0.5">
             <div className="flex gap-1.5">

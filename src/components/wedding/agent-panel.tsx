@@ -33,7 +33,7 @@ const PHASE: Record<Exclude<Phase, "idle">, { label: string; tone: Tone }> = {
 function Message({ m, text, testId = "agent-message", as: Tag = "li", before, className = "" }: { m: TimelineStep; text?: string; testId?: string; as?: "li" | "span"; before?: ReactNode; className?: string }) {
   const fromApp = APP_MESSAGE_TITLES.includes(m.title);
   return (
-    <Tag className={`${className} ${Tag === "span" ? "block " : ""}${fromApp ? "whitespace-pre-line font-medium text-zinc-900" : "whitespace-pre-line"}`} data-testid={testId} data-from={fromApp ? "app" : "agent"}>
+    <Tag className={`${className} ${Tag === "span" && !className.includes("line-clamp") ? "block " : ""}${fromApp ? "whitespace-pre-line font-medium text-zinc-900" : "whitespace-pre-line"}`} data-testid={testId} data-from={fromApp ? "app" : "agent"}>
       {before}
       {text ?? plainText(m.detail)}
     </Tag>
@@ -43,7 +43,7 @@ function Message({ m, text, testId = "agent-message", as: Tag = "li", before, cl
 /** A small label naming who wrote the line beside it. */
 function By({ who, testId }: { who: string; testId: string }) {
   return (
-    <span className="mr-1.5 inline-block rounded-full bg-zinc-100 px-1.5 py-px align-[1px] text-[11px] font-medium text-zinc-600" data-testid={testId}>
+    <span className="mr-1.5 inline-block rounded-full bg-zinc-100 px-1.5 py-px align-[1px] text-[11px] font-medium text-zinc-600" data-testid={testId} data-label>
       {who}
     </span>
   );
@@ -71,7 +71,7 @@ function ReviewCards({ output }: { output: unknown }) {
   if (!cards.length) return null;
   return (
     <div className="mt-2" data-testid="review-cards">
-      <p className="mb-1.5 text-xs font-medium text-zinc-500">What the agent read, worked out by code</p>
+      <p className="mb-1.5 text-sm font-medium text-zinc-500">What the agent read, worked out by code</p>
       <ul className="grid gap-2 sm:grid-cols-2">
         {cards.map((c) => (
           <li key={c.key} className="rounded-lg border border-zinc-200 bg-white px-3 py-2" data-testid="review-card" data-tag={c.tag}>
@@ -79,17 +79,17 @@ function ReviewCards({ output }: { output: unknown }) {
               <span className="min-w-0 truncate font-medium text-zinc-900" title={c.vendor} data-testid="review-card-vendor">{c.vendor}</span>
               <span className="shrink-0 font-semibold tabular-nums text-zinc-900" data-testid="review-card-amount">{c.amount}</span>
             </div>
-            <p className="text-xs text-zinc-500">
+            <p className="text-sm text-zinc-500">
               <span className="capitalize" data-testid="review-card-kind">{c.kind}</span>, due <span data-testid="review-card-due">{c.due}</span>
             </p>
-            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-zinc-700">
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-zinc-700">
               <Badge tone={TAG_TONE[c.tag]}>{c.tag}</Badge>
               <span data-testid="review-card-why">{c.why}</span>
             </p>
           </li>
         ))}
       </ul>
-      {more ? <p className="mt-1.5 text-xs text-zinc-500" data-testid="review-cards-more">{more} more on the timeline below.</p> : null}
+      {more ? <p className="mt-1.5 text-sm text-zinc-500" data-testid="review-cards-more">{more} more on the timeline below.</p> : null}
     </div>
   );
 }
@@ -192,7 +192,7 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
             <div className="min-w-0">
               <p className="font-semibold">The Guard refused this payment{askedFor ? ` of ${askedFor}` : ""}</p>
               <p className="mt-0.5" data-testid="guard-reason">{refused.detail}</p>
-              <p className="mt-1 text-xs text-red-800">No PayPal order was created and no approval was asked for. Only a confirmed contract term can be paid.</p>
+              <p className="mt-1 text-sm text-red-800">No PayPal order was created and no approval was asked for. Only a confirmed contract term can be paid.</p>
             </div>
           </div>
         ) : null}
@@ -212,16 +212,16 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
                   {reply && cut?.lead ? (
                     // On a phone each keeps to two lines, so the approval and both
                     // stay above the fold; the whole of each is under Details.
-                    <span className="block whitespace-pre-line text-zinc-800 max-sm:line-clamp-2" data-testid="agent-reply-line">
+                    <span className="whitespace-pre-line text-zinc-800 line-clamp-1" data-testid="agent-reply-line">
                       <By who={replyAuthor(run?.subtitle)} testId="agent-reply-by" />
                       <span data-testid="agent-reply">{cut.lead}</span>
                     </span>
                   ) : null}
                   {payFirst.map((m) => (
-                    <Message key={m.stepId} m={m} as="span" className="max-sm:line-clamp-2" before={<By who="Checked by code" testId="pay-first-by" />} />
+                    <Message key={m.stepId} m={m} as="span" className="line-clamp-2" before={<By who="Checked by code" testId="pay-first-by" />} />
                   ))}
                   {!payFirst.length && links.length ? <span className="block text-zinc-600">{links.at(-1)}</span> : null}
-                  <span className="block text-xs font-medium text-zinc-600 underline underline-offset-2">Details: what the agent did and said, the cash check in numbers</span>
+                  <span className="block text-sm font-medium text-zinc-600 underline underline-offset-2" data-label>Details: what the agent did and said, the cash check in numbers</span>
                 </span>
               </summary>
               <div className="mt-2 pl-6">

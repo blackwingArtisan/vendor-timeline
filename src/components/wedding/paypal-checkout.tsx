@@ -73,7 +73,7 @@ export function PayPalCheckout({ item, sandbox, onPaid, className }: { item: Tim
         <dt className="text-zinc-500">PayPal account</dt>
         <dd className="break-all text-zinc-900" data-testid="checkout-payee">{payment.payee}</dd>
         <dt className="text-zinc-500">Order</dt>
-        <dd className="break-all font-mono text-xs text-zinc-900" data-testid="checkout-order-id">{orderId}</dd>
+        <dd className="break-all font-mono text-sm text-zinc-900" data-testid="checkout-order-id">{orderId}</dd>
       </dl>
       {sandbox ? <StandInLine item={item} className="mt-2" /> : null}
       <div className="mt-3">
@@ -86,7 +86,7 @@ export function PayPalCheckout({ item, sandbox, onPaid, className }: { item: Tim
             >
               Pay {amount} with PayPal
             </a>
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-zinc-500">
+            <p className="mt-2 flex items-center gap-1.5 text-sm text-zinc-500">
               <ShieldCheck className="size-3.5" /> Opens PayPal&apos;s sandbox checkout. Log in as a sandbox buyer, or pay as a guest with PayPal&apos;s test card 4111 1111 1111 1111.
             </p>
           </>

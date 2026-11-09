@@ -150,7 +150,7 @@ export function AskVendor({ move, item, onDone, onRun }: { move: CashMove; item?
       <div className="mt-2 space-y-1 text-sm text-emerald-800" data-testid="move-done">
         <p className="flex items-center gap-2"><CircleCheck className="size-4 shrink-0" /> Moved to {formatDay(ask?.movedTo ?? move.to)}{by}. The contract said {formatDay(item?.movedFrom ?? move.due)}.</p>
         {ask?.reply?.paypalEmail ? (
-          <p className="pl-6 text-xs text-emerald-900" data-testid="move-payee" data-own={item?.payeeOwn ? "true" : "false"}>
+          <p className="pl-6 text-sm text-emerald-900" data-testid="move-payee" data-own={item?.payeeOwn ? "true" : "false"}>
             {item?.payeeOwn
               ? `Now paid to ${move.vendorName}'s own PayPal: ${ask.reply.paypalEmail}`
               : `Now paid to ${move.vendorName}'s PayPal (${item?.sandboxPayee ? "sandbox stand-in: " : ""}${ask.reply.paypalEmail})`}
@@ -163,21 +163,26 @@ export function AskVendor({ move, item, onDone, onRun }: { move: CashMove; item?
   const reply = ask?.reply;
   return (
     <div className="mt-2 space-y-2" data-testid="ask-vendor" data-stage={stage}>
-      <span data-testid="ask-stage"><Badge tone={stage === "approve" ? "warning" : stage === "replied" ? "brand" : "neutral"}>{STAGE_LABEL[stage]}</Badge></span>
-      {stage === "draft" ? <Textarea readOnly aria-label={`Message to ${move.vendorName}`} className="min-h-32 text-xs" value={move.message} data-testid="move-message" /> : null}
+      <span data-testid="ask-stage" data-label><Badge tone={stage === "approve" ? "warning" : stage === "replied" ? "brand" : "neutral"}>{STAGE_LABEL[stage]}</Badge></span>
+      {stage === "draft" ? (
+        <details>
+          <summary className="cursor-pointer text-sm text-zinc-600 underline underline-offset-2" data-label>The note to send</summary>
+          <Textarea readOnly aria-label={`Message to ${move.vendorName}`} className="mt-1 min-h-32 text-sm" value={move.message} data-testid="move-message" />
+        </details>
+      ) : null}
 
       {ask && !reply ? (
         <div className="space-y-1">
-          <Input readOnly aria-label={`Link for ${move.vendorName}`} value={link} className="text-xs" data-testid="move-link" />
-          <p className="text-xs text-zinc-600" data-testid="move-share-note">You send this link yourself, by text or email. The app doesn&apos;t send it. {move.vendorName} answers on their phone, and nothing moves until you approve.</p>
+          <Input readOnly aria-label={`Link for ${move.vendorName}`} value={link} className="text-sm" data-testid="move-link" />
+          <p className="text-sm text-zinc-600" data-testid="move-share-note">You send this link yourself, by text or email. The app doesn&apos;t send it. {move.vendorName} answers on their phone, and nothing moves until you approve.</p>
         </div>
       ) : null}
 
       {reply ? (
         <blockquote className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800" data-testid="vendor-reply">
-          <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-500"><MessageSquareText className="size-3.5" /> {move.vendorName} replied</span>
+          <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-500"><MessageSquareText className="size-3.5" /> {move.vendorName} replied</span>
           <span className="mt-0.5 block" data-testid="vendor-reply-text">&ldquo;{reply.text || (reply.answer === "agreed" ? `Yes, ${formatDay(ask!.askedTo)} works` : "No, keep the date")}&rdquo;</span>
-          {reply.paypalEmail ? <span className="mt-0.5 block text-xs text-zinc-600" data-testid="vendor-reply-email">Pay them at {reply.paypalEmail}</span> : null}
+          {reply.paypalEmail ? <span className="mt-0.5 block text-sm text-zinc-600" data-testid="vendor-reply-email">Pay them at {reply.paypalEmail}</span> : null}
         </blockquote>
       ) : null}
 

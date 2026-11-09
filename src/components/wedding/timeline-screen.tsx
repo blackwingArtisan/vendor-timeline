@@ -2,7 +2,7 @@
 
 import { retryIfDropped } from "@/lib/gateway-retry";
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CalendarClock, CalendarDays, CalendarPlus, CircleCheck, FileText, HandCoins, ReceiptText, Send, UserPlus, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarDays, CalendarPlus, CircleCheck, FileText, HandCoins, MoreHorizontal, ReceiptText, Send, UserPlus, Wallet } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
@@ -130,6 +130,8 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
   const [receipt, setReceipt] = useState(false);
   const [outside, setOutside] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  // On a phone the row's three small tools fold behind "More"; Pay stays the one button.
+  const [more, setMore] = useState(false);
   const payer = item.payment?.payer?.name;
   const status = item.payment?.paidBy === "outside" ? PAID_OUTSIDE : STATUS[item.status];
   const isNext = view.nextDue?.id === item.id;
@@ -144,15 +146,16 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
   const cols = axis ? "xl:grid-cols-[8.75rem_minmax(0,12rem)_5.75rem_minmax(0,1fr)_9.5rem_13rem]" : "xl:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_9.5rem_13rem]";
   return (
     <li className={`border-b border-zinc-100 px-4 py-1 last:border-b-0 ${isFirst ? "bg-brand-50/50" : item.status === "overdue" ? "bg-red-50/40" : ""}`} data-testid="timeline-item" data-role={item.vendorRole} data-kind={item.kind} data-status={item.status}>
-      <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 md:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_auto] ${cols}`}>
-        <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-sm font-medium text-zinc-900">
+      {/* On a phone, two lines: vendor and amount; then date, one status and Pay. From md up, columns. */}
+      <div className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 gap-y-1 md:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_auto] md:gap-x-3 ${cols}`}>
+        <div className="order-3 flex min-w-0 flex-wrap items-baseline gap-x-1.5 md:order-none md:block">
+          <p className="flex items-center gap-1.5 whitespace-nowrap text-sm font-medium text-zinc-900">
             <span className={`size-2 shrink-0 rounded-full ${status.dot}`} aria-hidden />
             <span data-testid="item-due">{formatDay(item.due)}</span>
           </p>
-          {when ? <p className="pl-3.5 text-xs text-zinc-500">{when}</p> : null}
+          {when ? <p className="whitespace-nowrap text-sm text-zinc-500 md:pl-3.5 md:leading-4">{when}</p> : null}
         </div>
-        <div className="order-3 col-span-2 min-w-0 md:order-none md:col-span-1">
+        <div className="order-1 col-span-2 min-w-0 md:order-none md:col-span-1">
           {/* On a phone the vendor's name gives way, never the deposit or balance. */}
           <p className="flex min-w-0 text-sm text-zinc-700" data-testid="item-name">
             <span className="truncate">{item.vendorName}</span>
@@ -161,36 +164,42 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
               {item.kind === "deposit" ? "Deposit" : "Balance"}
             </span>
           </p>
-          {item.movedFrom ? <p className="text-xs text-zinc-500" data-testid="item-moved">Contract says {formatDay(item.movedFrom)}</p> : null}
+          {item.movedFrom ? <p className="text-sm text-zinc-500" data-testid="item-moved">Contract says {formatDay(item.movedFrom)}</p> : null}
           {item.status === "paid" && payer ? (
-            <p className="flex items-center gap-1 text-xs font-medium text-emerald-800" data-testid="item-payer"><HandCoins className="size-3" aria-hidden />Paid by {payer}&apos;s PayPal</p>
+            <p className="flex items-center gap-1 text-sm font-medium text-emerald-800" data-testid="item-payer"><HandCoins className="size-3" aria-hidden />Paid by {payer}&apos;s PayPal</p>
           ) : item.contributor && item.payment?.paidBy !== "outside" && item.status !== "paid" ? (
-            <p className="text-xs text-zinc-500" data-testid="item-assignee">{item.contributor.name} pays this</p>
+            <p className="text-sm text-zinc-500" data-testid="item-assignee">{item.contributor.name} pays this</p>
           ) : null}
         </div>
-        <p className="text-right font-mono text-sm font-semibold tabular-nums text-zinc-900" data-testid="item-amount">{formatCents(item.cents)}</p>
+        <p className="order-2 text-right font-mono text-sm font-semibold tabular-nums text-zinc-900 md:order-none" data-testid="item-amount">{formatCents(item.cents)}</p>
         {axis ? <div className="hidden xl:block"><VendorBar item={item} axis={axis} today={view.today} /></div> : null}
-        <div className="order-4 flex flex-wrap gap-1 md:order-none xl:justify-start">
+        <div className="order-4 flex flex-wrap justify-end gap-1 md:order-none md:justify-start" data-label>
           {tag ? <span data-testid="item-tag"><Badge tone="brand">{tag}</Badge></span> : null}
           {/* "Upcoming" says nothing a tag doesn't, so a tagged row shows the tag alone. */}
-          <span data-testid="item-status" className={tag && item.status === "upcoming" ? "sr-only" : undefined}><Badge tone={status.tone}>{status.label}</Badge></span>
+          <span data-testid="item-status" className={tag && item.status === "upcoming" ? "sr-only" : item.status === "upcoming" ? "max-md:sr-only" : undefined}><Badge tone={status.tone}>{status.label}</Badge></span>
         </div>
         {/* Between md and xl the four columns are full, so the actions take their own line, at the right. */}
-        <div className="order-5 flex items-center justify-end gap-1 md:order-none md:col-span-full xl:col-span-1">
+        <div className="order-5 flex flex-wrap items-center justify-end gap-1 md:order-none md:col-span-full md:flex-nowrap xl:col-span-1">
           {canPay ? (
             <>
+              <Button size="sm" variant="ghost" className="px-2 md:hidden" icon={<MoreHorizontal className="size-4" />} onClick={() => setMore((m) => !m)} aria-label={`More for the ${item.vendorName} ${item.kind}`} aria-expanded={more} data-testid="row-more">
+                <span className="sr-only">More</span>
+              </Button>
+              <Button size="sm" icon={<Send className="size-3.5" />} onClick={() => onPay(item)} loading={busy} disabled={busy} aria-label={payLabel(item.vendorRole)} className="md:order-last" data-testid="pay-item">
+                <span className="md:hidden">Pay</span>
+                <span className="hidden md:inline">{payLabel(item.vendorRole)}</span>
+              </Button>
+              <div className={`${more ? "flex" : "hidden"} w-full flex-wrap justify-end gap-1 md:flex md:w-auto md:shrink-0 md:flex-nowrap`} data-testid="row-tools">
               <Button size="sm" variant="ghost" className="px-2" icon={paidOutsideIcon} onClick={() => setOutside((o) => !o)} aria-label={`Mark the ${item.vendorName} ${item.kind} paid outside PayPal`} title="Paid outside PayPal (cash or cheque)" aria-expanded={outside} data-testid="paid-outside-open">
-                <span className="sr-only">Paid outside PayPal</span>
+                <span className="md:sr-only">Paid outside PayPal</span>
               </Button>
               <Button size="sm" variant="ghost" className="px-2" icon={<UserPlus className="size-3.5" />} onClick={() => setAssigning((a) => !a)} aria-label={`Assign the ${item.vendorName} ${item.kind} to someone else to pay`} title="Assign to a parent or someone else to pay" aria-expanded={assigning} data-testid="assign-open">
-                <span className="sr-only">Assign to someone else</span>
+                <span className="md:sr-only">Assign to someone else</span>
               </Button>
               <Button size="sm" variant="ghost" className="px-2" icon={<CalendarDays className="size-3.5" />} onClick={() => setMoving((m) => !m)} aria-label={`Change the date of the ${item.vendorName} ${item.kind}`} title="Change date" data-testid="move-date">
-                <span className="sr-only">Change date</span>
+                <span className="md:sr-only">Change date</span>
               </Button>
-              <Button size="sm" icon={<Send className="size-3.5" />} onClick={() => onPay(item)} loading={busy} disabled={busy} data-testid="pay-item">
-                {payLabel(item.vendorRole)}
-              </Button>
+              </div>
             </>
           ) : null}
           {item.status === "paid" && item.payment?.captureId ? (
@@ -207,14 +216,14 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
       {item.status === "awaiting_approval" && approval ? (
         <PayApproval className="mt-2" item={item} approval={approval} cash={view.cash} sandbox={view.sandboxStandIn} onDecided={onDecided} />
       ) : null}
-      {item.status === "awaiting_approval" && !approval ? <p className="mt-1 text-xs text-zinc-500">{item.approval ? "Waiting for your approval in the agent panel." : "Working with PayPal."}</p> : null}
+      {item.status === "awaiting_approval" && !approval ? <p className="mt-1 text-sm text-zinc-500">{item.approval ? "Approve it in the agent panel." : "Working with PayPal."}</p> : null}
       {item.status === "awaiting_checkout" && !ownedByAgent && payer ? (
         <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2 text-sm text-zinc-700" data-testid="contributor-checkout">
           Approved. {payer} pays {formatCents(item.cents)} to {item.vendorName} in their own PayPal checkout, from their link.
         </p>
       ) : null}
       {item.status === "awaiting_checkout" && !ownedByAgent && !payer ? <PayPalCheckout className="mt-2" item={item} sandbox={view.sandboxStandIn} onPaid={onDecided} /> : null}
-      {item.status === "awaiting_checkout" && ownedByAgent ? <p className="mt-1 text-xs text-zinc-500">Pay it from the agent panel above.</p> : null}
+      {item.status === "awaiting_checkout" && ownedByAgent ? <p className="mt-1 text-sm text-zinc-500">Pay it from the agent panel above.</p> : null}
       {item.payment?.state === "failed" ? (
         <p className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="item-error">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {item.payment.error}
@@ -228,7 +237,7 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
 
 function TodayMarker({ day }: { day: string }) {
   return (
-    <li className="flex items-center gap-2 border-b border-zinc-100 bg-brand-50/30 px-4 py-1 text-xs font-semibold text-brand" data-testid="today-marker">
+    <li className="flex items-center gap-2 border-b border-zinc-100 bg-brand-50/30 px-4 py-1 text-sm font-semibold text-brand" data-testid="today-marker">
       <span className="h-px w-4 bg-brand" aria-hidden />
       Today, {formatDay(day)}
     </li>
@@ -459,7 +468,7 @@ export function TimelineScreen() {
               <span className="hidden xl:block">Status</span>
               <span className="hidden xl:block" />
             </div>
-            <ol>
+            <ol data-testid="timeline-list">
               {items.map((item) => (
                 <Fragment key={item.id}>
                   {item.id === todayBefore ? <TodayMarker day={view.today} /> : null}
