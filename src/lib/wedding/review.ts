@@ -38,29 +38,10 @@ function dayValue(t: Extraction["event_date"]): string | null {
   return t.value ? parseDay(t.value) : null;
 }
 
-/**
- * The figures the contract gives for its whole price: each paragraph that names the fee, total or
- * price with one dollar figure and isn't about a deposit or balance. Two different ones means the
- * contract states its price two ways, which code catches whatever the model read.
- */
-export function feeFigures(contract: string): number[] {
-  const paragraphs = contract.split(/\n\s*\n/).map((p) => p.replace(/\s+/g, " "));
-  const named = paragraphs.filter((p) => /\b(total|fee|price|guarantee)\b/i.test(p) && !/deposit|retainer|balance|booking payment|final|\brest\b|installment/i.test(p));
-  return [...new Set(named.map(dollarFigures).filter((f) => f.length === 1).map((f) => f[0]))];
-}
-
 function totalTerm(t: Extraction["total"], contract: string): ProposedTerm<number> {
   const read = t.written ? parseWrittenAmount(t.written) : null;
-  const readCents = read && "cents" in read ? read.cents : null;
-  const fees = feeFigures(contract);
-  const twoWays = fees.length > 1 || (fees.length === 1 && readCents !== null && fees[0] !== readCents);
-  const cents = twoWays ? null : readCents;
-  if (cents === null) {
-    // When the model already named both figures, its own words say it; one flag is enough.
-    const said = !!t.problem && new Set(dollarFigures(t.problem)).size > 1;
-    const both = twoWays && !said ? `The contract gives its price two ways: ${[...new Set([...fees, ...(readCents === null ? [] : [readCents])])].map(formatCents).join(" and ")}. Ask the vendor which is right, then enter it.` : null;
-    return term<number>(null, t.sentence, contract, [t.problem, both ?? (said ? "Ask the vendor which is right, then enter it." : "The contract's total isn't clear. Enter it from the contract.")]);
-  }
+  const cents = read && "cents" in read ? read.cents : null;
+  if (cents === null) return term<number>(null, t.sentence, contract, [t.problem, "The contract's total isn't clear. Enter it from the contract."]);
   return term(cents, t.sentence, contract, [t.problem, t.sentence && !dollarFigures(t.sentence).includes(cents) ? FIGURE_NOT_IN_SENTENCE : null]);
 }
 
@@ -69,9 +50,8 @@ function depositTerm(t: Extraction["deposit"], totalCents: number | null, contra
   if (!read) return term<number>(null, t.sentence, contract, [t.problem, "The deposit isn't clear. Enter it from the contract."]);
   if ("cents" in read) return term(read.cents, t.sentence, contract, [t.problem, t.sentence && !dollarFigures(t.sentence).includes(read.cents) ? FIGURE_NOT_IN_SENTENCE : null]);
   const figureFlag = t.sentence && !percentFigures(t.sentence).includes(read.percent) ? FIGURE_NOT_IN_SENTENCE : null;
-  const percent = { percent: read.percent };
-  if (totalCents === null) return { ...term<number>(null, t.sentence, contract, [t.problem, figureFlag, `The deposit is ${read.percent}% of a total that isn't clear. Enter the total and the app works it out.`]), ...percent };
-  return { ...term(percentOfCents(totalCents, read.percent), t.sentence, contract, [t.problem, figureFlag], `${read.percent}% of ${formatCents(totalCents)}, worked out by the app`), ...percent };
+  if (totalCents === null) return term<number>(null, t.sentence, contract, [t.problem, figureFlag, `The deposit is ${read.percent}% of a total that isn't clear. Enter it from the contract.`]);
+  return term(percentOfCents(totalCents, read.percent), t.sentence, contract, [t.problem, figureFlag], `${read.percent}% of ${formatCents(totalCents)}, worked out by the app`);
 }
 
 function balanceTerm(t: Extraction["balance"], totalCents: number | null, depositCents: number | null, contract: string): ProposedTerm<number> {

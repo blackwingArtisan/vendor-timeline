@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { expectRepeatsFolded, paypalCallsOnScreen } from "./activity-calls";
 import { approveAndPay } from "./pay-in-checkout";
-import { readCapture, readCaptureEvent, readOrder, sandboxPayeeFor, sandboxSellerEmail } from "./paypal-reread";
+import { readCapture, readCaptureEvent, readOrder, sandboxSellerEmail } from "./paypal-reread";
 import { amountText, formatCents, sumCents } from "../../src/lib/wedding/cents";
 import { formatDay } from "../../src/lib/wedding/dates";
 import { BAND, BAND_ANSWERS, CATERER, CATERER_STATED_BALANCE_CENTS, FLORIST, PHOTOGRAPHER, SAMPLES, VENUE, type SampleFacts } from "../../src/lib/wedding/samples";
@@ -176,11 +176,8 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   await expect(prompt.getByTestId("approval-to")).toHaveText(PHOTOGRAPHER.vendorName);
   await expect(prompt).not.toContainText("balance");
   await expect(prompt.getByTestId("stand-in")).toHaveCount(sandbox ? 1 : 0);
-  // In sandbox a vendor test account, never the app's own, stands in for the photographer, and says so.
-  if (sandbox) {
-    await expect(prompt.getByTestId("stand-in")).toHaveAttribute("data-account", "vendor");
-    await expect(prompt.getByTestId("stand-in")).toContainText(`(${sandboxPayeeFor("photographer")}), not this app's`);
-  }
+  // The photographer has no vendor test account, so the app's own business account stands in, and says so.
+  if (sandbox) await expect(prompt.getByTestId("stand-in")).toHaveText(`In the sandbox, this app's own test business account (${sandboxSellerEmail()}) stands in for ${PHOTOGRAPHER.vendorName}.`);
   await expect(deposit.getByTestId("item-status")).toHaveText("Waiting for your approval");
   await expect(deposit.getByTestId("paypal-proof")).toHaveCount(0);
   await expect(page.getByTestId("stat-paid")).toContainText("$0.00");
@@ -195,7 +192,7 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   await expect(deposit.getByTestId("paypal-order-id")).toHaveText(orderId);
   await expect(page.getByTestId("stat-paid")).toContainText(formatCents(PHOTOGRAPHER.depositCents));
   await expect(page.getByTestId("stat-total")).toContainText(formatCents(unpaidCents - PHOTOGRAPHER.depositCents));
-  if (sandbox) await expect(deposit.getByTestId("paypal-proof").getByTestId("stand-in")).toContainText(PHOTOGRAPHER.vendorName);
+  if (sandbox) await expect(deposit.getByTestId("paypal-proof").getByTestId("stand-in")).toContainText(`stands in for ${PHOTOGRAPHER.vendorName}`);
 
   // On mock and on the hosted copy a PayPal webhook for the capture is what marks it paid. A local
   // sandbox run has no public address for PayPal to call, so there the re-read stands in.
@@ -241,7 +238,7 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   if (!sandbox || HOSTED) await expect(page.getByTestId("webhook-row")).toContainText(captureId);
 
   if (sandbox) {
-    // Straight from PayPal: the couple's order, paid to the photographer's sandbox stand-in (not the app's own), for exactly the confirmed term.
+    // Straight from PayPal: the couple's order, paid to the app's sandbox business account, for exactly the confirmed term.
     const term = { currency_code: "USD", value: (PHOTOGRAPHER.depositCents / 100).toFixed(2) };
     const order = await readOrder(orderId);
     const capture = await readCapture(captureId);
@@ -250,8 +247,7 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
     expect(order.intent).toBe("CAPTURE");
     expect(order.purchase_units).toHaveLength(1);
     expect(order.purchase_units[0].amount).toMatchObject(term);
-    expect(order.purchase_units[0].payee.email_address?.toLowerCase()).toBe(sandboxPayeeFor("photographer").toLowerCase());
-    expect(order.purchase_units[0].payee.email_address?.toLowerCase()).not.toBe(sandboxSellerEmail().toLowerCase());
+    expect(order.purchase_units[0].payee.email_address?.toLowerCase()).toBe(sandboxSellerEmail().toLowerCase());
     expect(order.purchase_units[0].payments?.captures?.map((c) => c.id)).toEqual([captureId]);
     expect(capture.status).toBe("COMPLETED");
     expect(capture.amount).toEqual(term);

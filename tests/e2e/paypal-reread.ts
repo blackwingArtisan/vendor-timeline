@@ -1,5 +1,5 @@
 /** Reads the PayPal sandbox directly, so the checks don't depend on the app under test. */
-import { DEFAULT_SANDBOX_VENDOR_EMAIL, loadEnvFiles, parseVendorEmails } from "../../src/lib/env-core";
+import { DEFAULT_SANDBOX_VENDOR_EMAIL, loadEnvFiles } from "../../src/lib/env-core";
 
 const API = "https://api-m.sandbox.paypal.com";
 
@@ -94,16 +94,10 @@ export function sandboxSellerEmail(): string {
   return process.env.PAYPAL_SANDBOX_SELLER_EMAIL!;
 }
 
-/** The shared vendor test account: any sample vendor without its own account is paid here in sandbox. */
+/** The separate vendor account the florist and caterer are paid to in sandbox. */
 export function sandboxVendorEmail(): string {
   loadEnvFiles();
   return process.env.PAYPAL_SANDBOX_VENDOR_EMAIL?.trim() ?? DEFAULT_SANDBOX_VENDOR_EMAIL;
-}
-
-/** The sandbox account a sample vendor role is paid to: its own (PAYPAL_SANDBOX_VENDOR_EMAILS), else the shared vendor one. */
-export function sandboxPayeeFor(role: string): string {
-  loadEnvFiles();
-  return parseVendorEmails(process.env.PAYPAL_SANDBOX_VENDOR_EMAILS)[role] ?? sandboxVendorEmail();
 }
 
 export interface CaptureEvent {

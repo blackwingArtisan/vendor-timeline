@@ -103,7 +103,7 @@ for (const couple of ["desktop", "phone"] as const) {
     await expect(pay.getByTestId("approval-to")).toHaveText(FLORIST.vendorName);
     const orderId = await approveAndPay(page, pay, sandbox);
     await expect(row(page, "florist", "balance").getByTestId("item-status")).toHaveText("Paid", { timeout: 120_000 });
-    await expect(row(page, "florist", "balance").getByTestId("paid-to-own")).toHaveText(`Paid to the florist's own PayPal (${vendorEmail})`);
+    await expect(row(page, "florist", "balance").getByTestId("paypal-proof")).toContainText(`Paid to ${vendorEmail}`);
     if (sandbox) {
       const order = await readOrder(orderId);
       const capture = order.purchase_units[0].payments?.captures?.[0];

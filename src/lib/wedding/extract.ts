@@ -16,7 +16,6 @@ Rules:
 - The sentence for a term is the contract's whole sentence or line, copied character for character.
 - Dates: write every date as YYYY-MM-DD, however the contract writes it. Use fixed_date only for a date the contract states. If a payment is due a number of days or weeks before the wedding, use days_before_event with the number of days. Don't turn it into a date.
 - If a due date is a moment rather than a day, like "before load-in" or "on arrival", use unclear and say why in problem.
-- If the contract states a term two different ways, such as two different figures for the fee in two places, or words and figures that disagree, don't pick one. Its "written" is null, its sentence is one of them, and its problem names both.
 - If a term is missing, use null or not_stated. If it can be read in two ways, say so in problem. Leaving a term empty is always better than guessing.`;
 
 export async function readContract(text: string): Promise<{ proposed: ProposedTerms; read: ContractRead }> {

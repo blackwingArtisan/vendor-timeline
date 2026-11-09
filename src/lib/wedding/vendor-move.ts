@@ -48,10 +48,7 @@ export function applyVendorReply(planId: string, contractId: string, kind: ItemK
   if (!ask.verdict?.ok || ask.verdict.date !== due) throw new HttpError(409, "That date isn't the one the vendor's reply allows. Nothing moved.", "conflict");
   const moved = moveDueDate(planId, contractId, kind, due, today);
   const email = ask.reply!.paypalEmail;
-  // The account the vendor gave pays this payment and any of theirs not started yet. A payment already
-  // waiting for approval, in checkout or paid keeps the payee the couple saw.
-  const notStarted = (k: ItemKind) => k === kind || !moved.payments[k] || moved.payments[k]!.state === "failed";
-  const kinds = (["deposit", "balance"] as const).filter(notStarted);
-  const vendorPayees = email && !payeeProblem(email) ? { ...moved.vendorPayees, ...Object.fromEntries(kinds.map((k) => [k, email])) } : moved.vendorPayees;
+  // Only this payment goes to the account the vendor gave: one already waiting for approval keeps its payee.
+  const vendorPayees = email && !payeeProblem(email) ? { ...moved.vendorPayees, [kind]: email } : moved.vendorPayees;
   return saveContract({ ...moved, ...(vendorPayees ? { vendorPayees } : {}), asks: { ...moved.asks, [kind]: { ...ask, movedTo: due } } });
 }

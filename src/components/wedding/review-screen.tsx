@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, ButtonLink, Card, CardBody, CardFooter, CardHeader, EmptyState, Input, MoneyInput, Select } from "@/components/ui";
 import { PageLoading } from "./page-loading";
-import { amountText, balanceCents, formatCents, percentOfCents } from "@/lib/wedding/cents";
+import { amountText, balanceCents, formatCents } from "@/lib/wedding/cents";
 import { formatDay, localToday } from "@/lib/wedding/dates";
 import { contractDayRange, dayProblem, readAmount } from "@/lib/wedding/limits";
 import { readLabel } from "@/lib/wedding/plan-mix";
@@ -65,17 +65,6 @@ function ReviewForm({ contract }: { contract: Contract }) {
   const [depositDue, setDepositDue] = useState(p.depositDue.value ?? "");
   const [balanceDue, setBalanceDue] = useState(p.balanceDue.value ?? "");
   const [busy, setBusy] = useState(false);
-  // A deposit the contract states as a percentage follows the total until the couple types their own.
-  const depositPercent = p.depositCents.percent;
-  const [depositTyped, setDepositTyped] = useState(false);
-  const follows = depositPercent !== undefined && !depositTyped;
-
-  function changeTotal(text: string) {
-    setTotal(text);
-    if (!follows) return;
-    const cents = readAmount(text, "Total").cents;
-    setDeposit(cents !== undefined && cents !== null ? amountText(percentOfCents(cents, depositPercent)) : "");
-  }
 
   // Each box is checked as it's typed, in the same words the server would use to refuse it.
   const totalRead = readAmount(total, "Total");
@@ -141,11 +130,11 @@ function ReviewForm({ contract }: { contract: Contract }) {
         <Input aria-label="PayPal email to pay" type="email" value={payeeEmail} onChange={(e) => setPayeeEmail(e.target.value)} placeholder="Ask the vendor" />
       </Term>
       <Term byHand={byHand} name="total" label="Total" term={p.totalCents}>
-        <MoneyInput aria-label="Total" value={total} onChange={(e) => changeTotal(e.target.value)} aria-invalid={!!problems.total} />
+        <MoneyInput aria-label="Total" value={total} onChange={(e) => setTotal(e.target.value)} aria-invalid={!!problems.total} />
         <Problem name="total">{problems.total}</Problem>
       </Term>
-      <Term byHand={byHand} name="deposit" label="Deposit" term={follows ? { ...p.depositCents, basis: totalCents !== null ? `${depositPercent}% of ${formatCents(totalCents)}, worked out by the app` : undefined } : p.depositCents}>
-        <MoneyInput aria-label="Deposit" value={deposit} onChange={(e) => { setDeposit(e.target.value); setDepositTyped(true); }} aria-invalid={!!problems.deposit} />
+      <Term byHand={byHand} name="deposit" label="Deposit" term={p.depositCents}>
+        <MoneyInput aria-label="Deposit" value={deposit} onChange={(e) => setDeposit(e.target.value)} aria-invalid={!!problems.deposit} />
         <Problem name="deposit">{problems.deposit}</Problem>
       </Term>
       <Term byHand={byHand} name="deposit-due" label="Deposit due" term={p.depositDue}>

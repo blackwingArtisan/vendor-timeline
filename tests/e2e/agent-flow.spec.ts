@@ -8,7 +8,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openCashCheck } from "./open-cash";
 import { approveAndPay } from "./pay-in-checkout";
-import { readCapture, readCaptureEvent, readOrder, sandboxPayeeFor, sandboxSellerEmail } from "./paypal-reread";
+import { readCapture, readCaptureEvent, readOrder, sandboxSellerEmail, sandboxVendorEmail } from "./paypal-reread";
 import { formatCents, sumCents } from "../../src/lib/wedding/cents";
 import { formatDay } from "../../src/lib/wedding/dates";
 import { CATERER, FLORIST, PHOTOGRAPHER, SAMPLES } from "../../src/lib/wedding/samples";
@@ -87,7 +87,7 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   // In sandbox the florist is paid to a separate vendor test account, not the app's own, named here.
   if (sandbox) {
     await expect(prompt.getByTestId("stand-in")).toHaveAttribute("data-account", "vendor");
-    await expect(prompt.getByTestId("stand-in")).toContainText(`(${sandboxPayeeFor("florist")}), not this app's`);
+    await expect(prompt.getByTestId("stand-in")).toContainText(`separate vendor test business account (${sandboxVendorEmail()}), standing in for ${FLORIST.vendorName}`);
   } else await expect(prompt.getByTestId("stand-in")).toHaveCount(0);
   // Code, not the model, says what comes first, and its sentence leads the panel.
   const first = panel.getByTestId("agent-message").first();
@@ -181,8 +181,8 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
     expect(order.status).toBe("COMPLETED");
     expect(order.purchase_units[0].amount).toMatchObject(term);
     // Paid to the vendor's stand-in account, a different business account from the app's own.
-    expect(order.purchase_units[0].payee.email_address?.toLowerCase()).toBe(sandboxPayeeFor("florist").toLowerCase());
-    expect(sandboxPayeeFor("florist").toLowerCase()).not.toBe(sandboxSellerEmail().toLowerCase());
+    expect(order.purchase_units[0].payee.email_address?.toLowerCase()).toBe(sandboxVendorEmail().toLowerCase());
+    expect(sandboxVendorEmail().toLowerCase()).not.toBe(sandboxSellerEmail().toLowerCase());
     expect(capture.status).toBe("COMPLETED");
     expect(capture.amount).toEqual(term);
     expect(capture.supplementary_data?.related_ids?.order_id).toBe(orderId);

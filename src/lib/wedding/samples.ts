@@ -94,40 +94,13 @@ export const BAND_ANSWERS = { payeeEmail: "bookings@velvet-almanacs.example.com"
 
 export const SAMPLES = [PHOTOGRAPHER, CATERER, VENUE, FLORIST, BAND];
 
-/**
- * A messy sixth contract, kept out of SAMPLES so the sample plan and landing page don't use it.
- * It states the site fee two ways ($2,400 and $2,800), asks for a 30% deposit of that fee,
- * gives the balance a moment ("before load-in") instead of a day and gives no email to pay.
- * The money figures here are what the couple confirms after asking the venue (MESSY_VENUE_ANSWERS).
- */
-export const MESSY_VENUE: SampleFacts = {
-  file: "messy-venue.txt",
-  label: "Messy venue",
-  vendorName: "Larkspur Point Pavilion",
-  vendorRole: "venue",
-  payeeEmail: null,
-  totalCents: 280_000,
-  depositCents: 84_000,
-  balanceCents: 196_000,
-  depositDue: "2026-11-16",
-  balanceDue: null,
-};
-
-/** The two site fees the messy contract states. */
-export const MESSY_VENUE_FEES_CENTS = [240_000, 280_000] as const;
-
-/** What the sample couple type in after asking the venue about the terms its contract leaves unclear. */
-export const MESSY_VENUE_ANSWERS = { totalCents: 280_000, payeeEmail: "events@larkspur-point.example.com", balanceDue: "2027-06-05" };
-
 export const sampleUrl = (sample: SampleFacts) => `/sample-contracts/${sample.file}`;
 
 /** The photographer's contract as a PDF, made by scripts/make-sample-pdf.mjs. */
 export const SAMPLE_PDF = "photographer.pdf";
 
 /**
- * Which sample vendor a contract's payee email belongs to. In sandbox each sample vendor is paid to
- * its own test business account (KitEnv.sandboxVendorEmails), never the app's own.
+ * In sandbox these two vendors are paid to a separate test business account, not the app's own,
+ * so a payment visibly reaches a vendor's account (KitEnv.sandboxVendorEmail).
  */
-export const SAMPLE_ROLE_BY_PAYEE: ReadonlyMap<string, VendorRole> = new Map(
-  [...SAMPLES.filter((s) => s.payeeEmail).map((s) => [s.payeeEmail!, s.vendorRole] as const), [BAND_ANSWERS.payeeEmail, BAND.vendorRole] as const].map(([email, role]) => [email.toLowerCase(), role]),
-);
+export const PAID_TO_VENDOR_ACCOUNT: ReadonlySet<string> = new Set([FLORIST.payeeEmail!, CATERER.payeeEmail!].map((e) => e.toLowerCase()));

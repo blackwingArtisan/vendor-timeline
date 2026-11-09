@@ -13,7 +13,7 @@ import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, Textarea } from "@/components/ui";
 import { formatCents } from "@/lib/wedding/cents";
 import { MAX_CONTRACT_CHARS } from "@/lib/wedding/limits";
-import { MESSY_VENUE, SAMPLE_PDF, SAMPLES, sampleUrl, type SampleFacts } from "@/lib/wedding/samples";
+import { SAMPLE_PDF, SAMPLES, sampleUrl, type SampleFacts } from "@/lib/wedding/samples";
 import type { Contract, PlanMix } from "@/lib/wedding/types";
 
 export function ContractsScreen() {
@@ -157,9 +157,6 @@ export function ContractsScreen() {
                 ))}
                 <Button size="sm" variant="secondary" icon={<FileText className="size-3.5" />} onClick={() => void loadSamplePdf()} data-testid="sample-pdf">
                   Sample PDF
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => loadSample(MESSY_VENUE)} data-testid="sample-messy" title="A second venue contract with unclear terms">
-                  {MESSY_VENUE.label}
                 </Button>
               </div>
             </div>

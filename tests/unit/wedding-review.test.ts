@@ -3,8 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { dollarFigures, formatCents } from "@/lib/wedding/cents";
 import { mockExtraction } from "@/lib/wedding/mock-extractions";
-import { feeFigures, toProposedTerms } from "@/lib/wedding/review";
-import { BAND, CATERER, CATERER_STATED_BALANCE_CENTS, FLORIST, MESSY_VENUE, MESSY_VENUE_FEES_CENTS, PHOTOGRAPHER, SAMPLES, VENUE, WEDDING_DAY, type SampleFacts } from "@/lib/wedding/samples";
+import { toProposedTerms } from "@/lib/wedding/review";
+import { BAND, CATERER, CATERER_STATED_BALANCE_CENTS, FLORIST, PHOTOGRAPHER, SAMPLES, VENUE, WEDDING_DAY, type SampleFacts } from "@/lib/wedding/samples";
 import type { Extraction } from "@/lib/wedding/extraction-schema";
 
 const contractText = (sample: SampleFacts) => fs.readFileSync(path.join("public/sample-contracts", sample.file), "utf8");
@@ -63,64 +63,6 @@ describe("the sample contracts", () => {
     expect(terms.payeeEmail.flags.length).toBeGreaterThan(0);
     expect(terms.balanceDue.value).toBeNull();
     expect(terms.balanceDue.flags.join(" ")).toContain("doesn't give a day");
-  });
-});
-
-describe("the messy venue contract", () => {
-  const text = contractText(MESSY_VENUE);
-  const terms = read(MESSY_VENUE);
-
-  it("really is messy: two fees, a percentage deposit, a moment for a due date and no email", () => {
-    expect(new Set(dollarFigures(text))).toEqual(new Set(MESSY_VENUE_FEES_CENTS));
-    expect(text).toContain("30% of");
-    expect(text).toContain("before load-in");
-    expect(text).not.toMatch(/@/);
-    expect(SAMPLES).not.toContain(MESSY_VENUE);
-  });
-
-  it("takes neither fee when the contract states two, and names both", () => {
-    expect(terms.totalCents.value).toBeNull();
-    const flags = terms.totalCents.flags.join(" ");
-    for (const fee of MESSY_VENUE_FEES_CENTS) expect(flags).toContain(formatCents(fee).replace(".00", ""));
-  });
-
-  it("keeps the 30% so the deposit can follow the total the couple confirms", () => {
-    expect(terms.depositCents.value).toBeNull();
-    expect(terms.depositCents.percent).toBe(30);
-    expect(terms.depositCents.flags.join(" ")).toContain("30% of a total that isn't clear");
-    expect(terms.balanceCents.value).toBeNull();
-  });
-
-  it("leaves the balance date and the email blank and flagged", () => {
-    expect(terms.balanceDue.value).toBeNull();
-    expect(terms.balanceDue.flags.join(" ")).toContain("no clear date for the balance");
-    expect(terms.payeeEmail.value).toBeNull();
-    expect(terms.payeeEmail.flags.join(" ")).toContain("no email to pay");
-  });
-
-  it("still reads what the contract does say clearly, with every sentence found in it", () => {
-    expect(terms.vendorName.value).toBe(MESSY_VENUE.vendorName);
-    expect(terms.eventDate.value).toBe(WEDDING_DAY);
-    expect(terms.depositDue.value).toBe(MESSY_VENUE.depositDue);
-    expect(terms.depositDue.basis).toBe("14 days after Mon, Nov 2, 2026, worked out by the app");
-    const all = [terms.vendorName, terms.payeeEmail, terms.eventDate, terms.totalCents, terms.depositCents, terms.depositDue, terms.balanceCents, terms.balanceDue];
-    expect(all.flatMap((t) => t.flags).filter((f) => f.includes("word for word") || f.includes("isn't in the sentence"))).toEqual([]);
-  });
-
-  it.each(["$2,800", "$2,400"])("catches a read that quietly picks %s, in code", (written) => {
-    const picked: Extraction = { ...mockExtraction(text), total: { written, sentence: "2. Fee. The site fee for the ceremony is $2,800, which includes chair setup.", problem: null } };
-    const total = toProposedTerms(picked, text).totalCents;
-    expect(total.value).toBeNull();
-    expect(total.flags.join(" ")).toContain("The contract gives its price two ways: $2,400.00 and $2,800.00.");
-  });
-
-  it("says it once when the model already named both fees", () => {
-    expect(terms.totalCents.flags).toEqual(["The contract gives the site fee two ways: $2,400 at the top and $2,800 in clause 2.", "Ask the vendor which is right, then enter it."]);
-  });
-
-  it.each(SAMPLES.map((s) => [s.label, s] as const))("%s: one price, so nothing to catch", (_, sample) => {
-    expect(new Set(feeFigures(contractText(sample))).size).toBeLessThanOrEqual(1);
-    expect(read(sample).totalCents.flags).toEqual([]);
   });
 });
 

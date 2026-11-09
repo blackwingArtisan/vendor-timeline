@@ -37,12 +37,10 @@ fi
 
 # H.264 + yuv420p + AAC + faststart is what YouTube recommends. Constant 30 fps because the
 # recorder's frame timing varies. -map_metadata -1 drops local file details from the output.
-# The page is recorded at 1067x600, a 1280x720 window at 120% browser zoom; it's scaled to 1280x720
-# here, so text reads at 720p.
 ffmpeg -y -hide_banner -loglevel error \
   -i "$IN" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 \
   -map 0:v:0 -map 1:a:0 -shortest -map_metadata -1 \
-  -vf "fps=30,${KEEP}scale=1280:-2:flags=lanczos" \
+  -vf "fps=30,${KEEP}scale=trunc(iw/2)*2:trunc(ih/2)*2" \
   -c:v libx264 -preset slow -crf 18 -profile:v high -pix_fmt yuv420p \
   -c:a aac -b:a 128k \
   -movflags +faststart \

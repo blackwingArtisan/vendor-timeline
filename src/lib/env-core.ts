@@ -94,12 +94,6 @@ export interface KitEnv {
    * vendors, so a payment visibly reaches a vendor's account. Empty means the app's own only.
    */
   sandboxVendorEmail: string;
-  /**
-   * One sandbox business account per sample vendor role, from PAYPAL_SANDBOX_VENDOR_EMAILS
-   * ("photographer=sb-…@business.example.com,caterer=…"). A role not listed is paid to
-   * sandboxVendorEmail. The app's own account is never a vendor's payee.
-   */
-  sandboxVendorEmails: Partial<Record<string, string>>;
   anthropicApiKey?: string;
   aiMode: AiMode;
   aiDailyCapUsd: number;
@@ -109,16 +103,6 @@ export interface KitEnv {
   /** DEMO_TEST_CARD=1: sandbox recordings pay with the test card instead of a buyer login. */
   demoTestCard: boolean;
   isProduction: boolean;
-}
-
-/** "photographer=a@business.example.com, caterer=b@business.example.com" -> { photographer: "a@…", … }. */
-export function parseVendorEmails(raw: string | undefined): Partial<Record<string, string>> {
-  const out: Partial<Record<string, string>> = {};
-  for (const part of (raw ?? "").split(/[,;\s]+/)) {
-    const [role, email] = part.split("=").map((s) => s?.trim());
-    if (role && email && /^[^@\s]+@[^@\s]+$/.test(email)) out[role.toLowerCase()] = email;
-  }
-  return out;
 }
 
 function parseLatency(raw: string | undefined, fallback: [number, number]): [number, number] {
@@ -165,7 +149,6 @@ export function readKitEnv(env: NodeJS.ProcessEnv = process.env): KitEnv {
     sandboxBuyerEmail: env.PAYPAL_SANDBOX_BUYER_EMAIL?.trim() || "buyer@personal.example.com",
     sandboxSellerEmail: env.PAYPAL_SANDBOX_SELLER_EMAIL?.trim() || "seller@business.example.com",
     sandboxVendorEmail: env.PAYPAL_SANDBOX_VENDOR_EMAIL?.trim() ?? DEFAULT_SANDBOX_VENDOR_EMAIL,
-    sandboxVendorEmails: parseVendorEmails(env.PAYPAL_SANDBOX_VENDOR_EMAILS),
     anthropicApiKey: apiKey,
     aiMode,
     aiDailyCapUsd: cap,
