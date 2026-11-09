@@ -45,4 +45,11 @@ test("the landing page fits a phone", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("landing-cash")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  // A clipped section can hide overflow from scrollWidth, so also check no visible element runs off the screen.
+  const offScreen = await page.evaluate(() =>
+    [...document.querySelectorAll("main *, section *")]
+      .filter((e) => !e.closest("[aria-hidden]") && e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
+      .map((e) => `${e.tagName} ${(e.textContent ?? "").trim().slice(0, 40)}`),
+  );
+  expect(offScreen).toEqual([]);
 });
