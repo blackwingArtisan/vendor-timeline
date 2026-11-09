@@ -81,9 +81,9 @@ export function CashCard({ cash, onChanged }: { cash: CashPlan; onChanged: () =>
     <Card data-testid="cash-card">
       <CardHeader className="py-3!" title="Cash check" description="Each month against your budget, worked out by code." />
       <CardBody className="py-3!">
-        <CashChart cash={cash} className="mb-3" />
+        <CashChart cash={cash} className="mb-2" />
         <form
-          className="mb-3 flex items-center gap-2"
+          className="mb-2 flex items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             void save();
@@ -107,15 +107,20 @@ export function CashCard({ cash, onChanged }: { cash: CashPlan; onChanged: () =>
           </p>
         ) : null}
         {cash.warnings.length ? (
-          <ul className="space-y-1.5">
+          <ul className="space-y-1">
             {cash.warnings.map((w) => (
               <li key={`${w.kind}-${w.from}`} className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-900" data-testid="cash-warning" data-kind={w.kind}>
-                <p className="flex items-start gap-2">
-                  <AlertTriangle className="mt-px size-3.5 shrink-0" /> <span className="min-w-0">{w.message}</span>
-                </p>
-                <details className="pl-5" data-testid="cash-sums">
-                  <summary className="cursor-pointer font-medium underline underline-offset-2">Show the sums</summary>
-                  <Sums payments={w.payments} lines={warningLines(w, cash.monthlyBudgetCents)} />
+                {/* The link to the sums ends the warning's own line, so three warnings don't take six. */}
+                <details data-testid="cash-sums">
+                  <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
+                    <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                    <span className="min-w-0">
+                      {w.message} <span className="whitespace-nowrap font-medium underline underline-offset-2">Show the sums</span>
+                    </span>
+                  </summary>
+                  <div className="pl-5">
+                    <Sums payments={w.payments} lines={warningLines(w, cash.monthlyBudgetCents)} />
+                  </div>
                 </details>
               </li>
             ))}
@@ -126,7 +131,7 @@ export function CashCard({ cash, onChanged }: { cash: CashPlan; onChanged: () =>
           </p>
         )}
         {cash.months.length ? (
-          <details className="mt-3 text-sm text-zinc-700" data-testid="cash-months">
+          <details className="mt-2 text-sm text-zinc-700" data-testid="cash-months">
             <summary className="cursor-pointer text-xs font-medium underline underline-offset-2">Month by month</summary>
             <ul className="mt-2 space-y-3">
               {cash.months.map((m) => (

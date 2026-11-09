@@ -80,9 +80,21 @@ test("demo", async ({ page, context }) => {
   await caption(page, `With the other three, one timeline for all five. The florist's ${formatCents(FLORIST.depositCents)} deposit is already overdue.`, { ms: 3000 });
   clock.check("contracts");
 
-  // Scene 4: the agent, urgent first, with code's cash plan.
+  // Scene 4: the agent is asked for more than the contract says, and the Guard refuses it in code.
   const panel = page.getByTestId("agent-panel");
   await scrollTo(page, panel);
+  const goal = page.getByTestId("agent-goal");
+  const realAsk = await goal.inputValue();
+  await goal.fill("Pay the caterer $5,000.");
+  await page.getByTestId("ask-agent").click();
+  const refusal = panel.getByTestId("guard-refusal");
+  await clock.cut("agent", () => expect(refusal).toBeVisible({ timeout: 90_000 }), 1000);
+  await highlight(page, refusal, 2400);
+  await caption(page, "Asked to pay the caterer $5,000, the Guard checks the signed contract in code and refuses. Nothing is sent.", { ms: 4200 });
+  clock.check("guard");
+
+  // Scene 5: the real ask. Urgent first, with code's cash plan.
+  await goal.fill(realAsk);
   await page.getByTestId("ask-agent").click();
   const prompt = panel.getByTestId("approval-prompt").first();
   await clock.cut("agent", () => expect(prompt).toBeVisible({ timeout: 90_000 }), 1500);
@@ -91,7 +103,7 @@ test("demo", async ({ page, context }) => {
   await caption(page, "The agent puts the overdue deposit first, explains the cash clash and proposes a plan the contracts allow.", { ms: 3600 });
   clock.check("agent");
 
-  // Scene 5: the cash plan resolves a clash on screen. A vendor agrees to a later date.
+  // Scene 6: the cash plan resolves a clash on screen. A vendor agrees to a later date.
   const ask = page.locator('[data-testid="cash-move"][data-kind="ask_vendor"]').first();
   await scrollTo(page, ask);
   await highlight(page, ask.getByTestId("move-message"), 1600);
@@ -107,7 +119,7 @@ test("demo", async ({ page, context }) => {
   await caption(page, "The vendor agreed, so the date moves and that crowded week clears from the cash check.", { ms: 3000 });
   clock.check("cash plan");
 
-  // Scene 6: one approval, then PayPal's checkout, at most 8 s of it on camera.
+  // Scene 7: one approval, then PayPal's checkout, at most 8 s of it on camera.
   await scrollTo(page, prompt);
   await highlight(page, prompt.getByTestId("approve-button"), 1200);
   await caption(page, "Nothing moves without you. One approval, then pay it yourself in PayPal.", { ms: 2400 });
@@ -126,13 +138,19 @@ test("demo", async ({ page, context }) => {
   }
   clock.check("checkout");
 
-  // Scene 7: paid, from PayPal's own record and its webhook.
+  // Scene 8: paid, from PayPal's own record and its webhook.
   const deposit = page.locator(`[data-testid="timeline-item"][data-role="florist"][data-kind="deposit"]`);
   await clock.cut("PayPal webhook on its way", () => expect(deposit.getByTestId("item-status")).toHaveText("Paid", { timeout: 200_000 }), 1500);
   await deposit.scrollIntoViewIfNeeded();
   await highlight(page, deposit.getByTestId("paypal-proof"), 2200);
   const confirmedBy = await deposit.getByTestId("paid-by").innerText();
   await caption(page, `Paid. PayPal's capture reads COMPLETED${confirmedBy.startsWith("Confirmed by PayPal webhook") ? ", and PayPal's webhook for it arrived" : ", read back from PayPal"}.`, { ms: 3000 });
+  await deposit.getByTestId("receipt-open").click();
+  const receipt = deposit.getByTestId("receipt");
+  await expect(receipt.getByTestId("receipt-capture-id")).toHaveText(/\S/, { timeout: 30_000 });
+  await receipt.scrollIntoViewIfNeeded();
+  await highlight(page, receipt, 2000);
+  await caption(page, "Its receipt, read back from PayPal: order, capture, webhook event and PayPal's debug_id.", { ms: 3000 });
   clock.check("paid");
 
   await titleCard(page, "Wedding Vendor Timeline", "Claude reads the contracts. Code does the sums. You approve. PayPal pays.", 2600);

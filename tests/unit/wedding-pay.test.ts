@@ -13,6 +13,7 @@ import { timeline } from "@/lib/events/bus";
 import { resetEnvCache } from "@/lib/env";
 import { DEFAULT_SANDBOX_VENDOR_EMAIL } from "@/lib/env-core";
 import { captureCheckout, captureWebhook, checkoutAfterApproval, orderPayee, sandboxPayee, planChannel, planPayPalIds, webhookPlanChannel, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
+import { readReceipt } from "@/lib/wedding/receipt";
 import { BAND, CATERER, FLORIST, PHOTOGRAPHER, VENUE } from "@/lib/wedding/samples";
 import type { Contract } from "@/lib/wedding/types";
 
@@ -353,6 +354,21 @@ describe("capture webhooks", () => {
     expect(paymentOf(contract.id)).toMatchObject({ state: "paid", paidBy: "webhook" });
   });
 
+  it("a receipt is read back from PayPal: its order, its capture, the webhook event and a debug_id per call", async () => {
+    const contract = await confirmedContract();
+    await expect(readReceipt(contract.planId, contract.id, "deposit")).rejects.toThrow("no receipt");
+    const paid = await capturedNoWebhook(contract);
+    await expect(readReceipt(contract.planId, contract.id, "deposit")).rejects.toThrow("no receipt");
+    const event = captureEvent(paid);
+    await captureWebhook(event);
+    const receipt = await readReceipt(contract.planId, contract.id, "deposit");
+    expect(receipt).toMatchObject({ orderId: paid.orderId, orderStatus: "COMPLETED", captureId: paid.captureId, captureStatus: "COMPLETED", captureAmount: "1200.00 USD", paidBy: "webhook", webhook: { eventId: event.id } });
+    expect(receipt.calls.map((c) => c.operation)).toEqual(["orders.get", "payments.getCapture"]);
+    for (const call of receipt.calls) expect(call.debugId).toMatch(/^[0-9a-f]{8,}$/);
+    // Another couple can't read it.
+    await expect(readReceipt("plan_someoneelse", contract.id, "deposit")).rejects.toThrow("not found");
+  });
+
   it("if no webhook ever comes, the capture read from PayPal stands and says so", async () => {
     const contract = await confirmedContract();
     await capturedNoWebhook(contract);
@@ -381,6 +397,14 @@ describe("moving a payment date", () => {
     expect(view.items[0]).toMatchObject({ due: "2026-12-28", movedFrom: PHOTOGRAPHER.depositDue, cents: PHOTOGRAPHER.depositCents });
     expect(moveDueDate(contract.planId, contract.id, "deposit", "2027-01-02", "2026-11-20").movedFrom?.deposit).toBe(PHOTOGRAPHER.depositDue);
     expect(moveDueDate(contract.planId, contract.id, "deposit", PHOTOGRAPHER.depositDue, "2026-11-20").movedFrom?.deposit).toBeUndefined();
+  });
+
+  it("is the same move when sent twice, so a request the hosting proxy dropped can be sent again", async () => {
+    const contract = await confirmedContract();
+    const once = moveDueDate(contract.planId, contract.id, "deposit", "2026-12-28", "2026-11-20");
+    const twice = moveDueDate(contract.planId, contract.id, "deposit", "2026-12-28", "2026-11-20");
+    expect(twice.confirmed).toEqual(once.confirmed);
+    expect(twice.movedFrom).toEqual({ deposit: PHOTOGRAPHER.depositDue });
   });
 
   it("refuses a date in the past or years away, in plain words", async () => {

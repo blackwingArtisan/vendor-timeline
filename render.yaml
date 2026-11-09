@@ -7,6 +7,8 @@ services:
     plan: free # free instances sleep when idle; the first request after a nap takes ~1 min
     buildCommand: npm ci && npm run build
     startCommand: npm start -- -H 0.0.0.0 # no kit seed: the ledger holds only this app's own PayPal orders
+    # npm start keeps idle connections open 120 s (--keepAliveTimeout). Node's default 5 s let Render's
+    # proxy reuse a connection the app had just closed, and that request came back an empty 502.
     healthCheckPath: /api/kit/status
     autoDeploy: true
     envVars:

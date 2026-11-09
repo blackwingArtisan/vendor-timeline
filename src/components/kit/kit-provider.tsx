@@ -18,7 +18,7 @@ export class ApiError extends Error {
     readonly status: number,
     readonly body: { error?: { type?: string; name?: string; message?: string; issue?: string; debug_id?: string; retryAfterSeconds?: number } },
   ) {
-    super(body.error?.issue ? `${body.error.message}` : (body.error?.message ?? `Request failed (${status})`));
+    super(body.error?.issue ? `${body.error.message}` : body.error?.message || (status >= 502 && status <= 504 ? "The app didn't answer just then, so nothing changed. Try again in a moment." : `Request failed (${status})`));
     this.name = "ApiError";
   }
   get debugId() {
