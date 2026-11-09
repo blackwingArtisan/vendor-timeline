@@ -90,7 +90,7 @@ test("contracts in, one timeline out, and a vendor paid only after a person appr
   await read(page);
   await expectCheckedTerms(page, PHOTOGRAPHER);
   await expectSource(page.getByTestId("source-deposit"), "non-refundable");
-  await expect(page.getByTestId("read-by")).toContainText(live ? "Read by Claude" : "Simulated read");
+  await expect(page.getByTestId("read-by")).toContainText(live ? "Read by Claude" : "Read without AI");
   await page.screenshot({ path: `screenshots/review-${live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
   if (live) {
     const read = await (await api.get(`/api/contracts/${new URL(page.url()).pathname.split("/").pop()}`)).json();

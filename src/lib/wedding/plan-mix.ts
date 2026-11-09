@@ -37,3 +37,14 @@ export function sampleBannerText(mix: PlanMix): { badge: string; text: string } 
   const rest = samples ? ` The other ${count(samples)} ${samples === 1 ? "is a fictional sample" : "are fictional samples"}, read ahead of time.` : "";
   return { badge: samples ? "Part sample" : "Your plan", text: `${own_[0].toUpperCase()}${own_.slice(1)}${rest}` };
 }
+
+/**
+ * How a contract was read, said plainly for its review page. A sample was read ahead of time, not
+ * on this visit, so its page says so and how to see a live read instead.
+ */
+export function readLabel(c: Pick<Contract, "sample" | "read">): { badge: string; live: boolean; note?: string } {
+  if (c.sample) return { badge: "Read ahead of time", live: false, note: "This fictional sample was read ahead of time, not on this visit." };
+  if (c.read.skipped) return { badge: "Not read by AI", live: false };
+  if (c.read.mocked) return { badge: "Read without AI", live: false };
+  return { badge: `Read by ${c.read.model}`, live: true };
+}
