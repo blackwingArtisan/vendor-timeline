@@ -32,6 +32,8 @@ async function askAgent(page: Page, goal?: string) {
 }
 
 test("five contracts, one timeline, and the agent puts the overdue florist first and stops before paying", async ({ page }) => {
+  // On the hosted copy PayPal's webhook can be over a minute late (58 s seen in the sandbox).
+  if (HOSTED) test.setTimeout(480_000);
   await fiveContracts(page);
   const status = await (await page.request.get("/api/kit/status")).json();
   const sandbox = status.paypal.mode === "sandbox";
@@ -140,7 +142,8 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
 
   const captureId = (await deposit.getByTestId("paypal-capture-id").textContent())!;
   const expectWebhook = !sandbox || HOSTED;
-  if (expectWebhook) await expect(deposit.getByTestId("paid-by")).toContainText("Confirmed by PayPal webhook");
+  // A late webhook shows first as the re-read, then as the webhook once PayPal sends it.
+  if (expectWebhook) await expect(deposit.getByTestId("paid-by")).toContainText("Confirmed by PayPal webhook", { timeout: HOSTED ? 150_000 : 15_000 });
   else await expect(deposit.getByTestId("paid-by")).toContainText("Confirmed by re-reading the capture");
 
   // Its receipt is read back from PayPal when opened: the same order and capture, the webhook

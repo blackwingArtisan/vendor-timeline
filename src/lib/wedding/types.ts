@@ -64,11 +64,16 @@ export interface Payment {
   /** The verified PAYMENT.CAPTURE.COMPLETED webhook for this payment's capture. */
   webhook?: PaymentWebhook;
   /**
-   * What made this paid. "re-read" means PayPal's status arrived but no webhook could reach this copy.
+   * What made this paid. "re-read" means PayPal's status arrived and no webhook had (see webhookLate).
    * "outside" means the couple paid it outside PayPal (cash or cheque) and recorded it here: no PayPal
    * order or capture exists, and none ever will.
    */
   paidBy?: "webhook" | "re-read" | "outside";
+  /**
+   * Set with paidBy "re-read" on a copy PayPal can call back: the webhook was expected but hadn't come
+   * within WEBHOOK_WAIT_MS. If it comes later, paidBy becomes "webhook".
+   */
+  webhookLate?: boolean;
   /** Set only when paidBy is "outside": how and when the couple say they paid. */
   outside?: PaidOutside;
 }
