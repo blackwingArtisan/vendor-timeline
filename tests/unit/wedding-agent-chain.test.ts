@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentChain, firstSentences } from "@/lib/wedding/agent-chain";
+import { agentChain, firstSentences, replyAuthor } from "@/lib/wedding/agent-chain";
 
 describe("the agent's step chain", () => {
   it("reads like the run: contracts, clashes, plan, the payment, then the couple", () => {
@@ -28,5 +28,14 @@ describe("the model's reply, capped", () => {
 
   it("leaves a short reply whole", () => {
     expect(firstSentences("Pay the florist first.", 2)).toEqual({ lead: "Pay the florist first.", rest: "" });
+  });
+});
+
+describe("who wrote the reply on show", () => {
+  it("names Claude's model only when Claude ran", () => {
+    expect(replyAuthor("Claude Haiku 5.5")).toBe("Claude Haiku 5.5");
+    expect(replyAuthor("checked in code, no model needed")).toBe("Checked by code");
+    expect(replyAuthor("simulated (AI mock mode)")).toBe("Scripted agent, AI off");
+    expect(replyAuthor(undefined)).toBe("Scripted agent, AI off");
   });
 });

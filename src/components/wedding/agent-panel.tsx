@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowRight, Bot, ChevronRight, Send, ShieldX } from "lucide-react";
 import { PacedWait } from "@/components/wedding/paced-wait";
 import { PayApproval } from "@/components/wedding/pay-approval";
@@ -12,7 +12,7 @@ import { Badge, Button, Card, CardBody, CardHeader, Input, type Tone } from "@/c
 import type { TimelineStep } from "@/lib/events/types";
 import { localToday } from "@/lib/wedding/dates";
 import type { CashFix, CashPlan, TimelineItem } from "@/lib/wedding/types";
-import { agentChain, firstSentences } from "@/lib/wedding/agent-chain";
+import { agentChain, firstSentences, replyAuthor } from "@/lib/wedding/agent-chain";
 import { REVIEW_TOOL, VENDOR_ORDER_TOOL } from "@/lib/wedding/tool-names";
 import { reviewCards, type ReviewCard } from "@/lib/wedding/review-cards";
 import { dollarsToCents, formatCents } from "@/lib/wedding/cents";
@@ -30,12 +30,22 @@ const PHASE: Record<Exclude<Phase, "idle">, { label: string; tone: Tone }> = {
   failed: { label: "Stopped", tone: "danger" },
 };
 
-function Message({ m, text, testId = "agent-message", as: Tag = "li" }: { m: TimelineStep; text?: string; testId?: string; as?: "li" | "span" }) {
+function Message({ m, text, testId = "agent-message", as: Tag = "li", before, className = "" }: { m: TimelineStep; text?: string; testId?: string; as?: "li" | "span"; before?: ReactNode; className?: string }) {
   const fromApp = APP_MESSAGE_TITLES.includes(m.title);
   return (
-    <Tag className={`${Tag === "span" ? "block " : ""}${fromApp ? "whitespace-pre-line font-medium text-zinc-900" : "whitespace-pre-line"}`} data-testid={testId} data-from={fromApp ? "app" : "agent"}>
+    <Tag className={`${className} ${Tag === "span" ? "block " : ""}${fromApp ? "whitespace-pre-line font-medium text-zinc-900" : "whitespace-pre-line"}`} data-testid={testId} data-from={fromApp ? "app" : "agent"}>
+      {before}
       {text ?? plainText(m.detail)}
     </Tag>
+  );
+}
+
+/** A small label naming who wrote the line beside it. */
+function By({ who, testId }: { who: string; testId: string }) {
+  return (
+    <span className="mr-1.5 inline-block rounded-full bg-zinc-100 px-1.5 py-px align-[1px] text-[11px] font-medium text-zinc-600" data-testid={testId}>
+      {who}
+    </span>
   );
 }
 
@@ -173,7 +183,7 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
       <CardBody>
         {/* What needs the couple comes first: the approval (or PayPal's checkout), then code's "Pay first". */}
         {pending?.approval ? (
-          <PayApproval key={pending.approval.id} className="mb-3" item={pending} approval={pending.approval} cash={cash} sandbox={sandbox} onDecided={onDecided} />
+          <PayApproval key={pending.approval.id} className="mb-2 sm:mb-3" item={pending} approval={pending.approval} cash={cash} sandbox={sandbox} onDecided={onDecided} />
         ) : null}
         {checkout ? <PayPalCheckout className="mb-3" item={checkout} sandbox={sandbox} onPaid={onDecided} /> : null}
         {refused ? (
@@ -197,8 +207,19 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
             <details data-testid="agent-details" className="group/details">
               <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
                 <ChevronRight className="mt-0.5 size-4 shrink-0 text-zinc-400 transition-transform group-open/details:rotate-90" aria-hidden />
-                <span className="min-w-0 flex-1 space-y-1">
-                  {payFirst.map((m) => <Message key={m.stepId} m={m} as="span" />)}
+                <span className="min-w-0 flex-1 space-y-0.5 sm:space-y-1">
+                  {/* The model's own words lead, under its name. Nothing written, nothing shown. */}
+                  {reply && cut?.lead ? (
+                    // On a phone each keeps to two lines, so the approval and both
+                    // stay above the fold; the whole of each is under Details.
+                    <span className="block whitespace-pre-line text-zinc-800 max-sm:line-clamp-2" data-testid="agent-reply-line">
+                      <By who={replyAuthor(run?.subtitle)} testId="agent-reply-by" />
+                      <span data-testid="agent-reply">{cut.lead}</span>
+                    </span>
+                  ) : null}
+                  {payFirst.map((m) => (
+                    <Message key={m.stepId} m={m} as="span" className="max-sm:line-clamp-2" before={<By who="Checked by code" testId="pay-first-by" />} />
+                  ))}
                   {!payFirst.length && links.length ? <span className="block text-zinc-600">{links.at(-1)}</span> : null}
                   <span className="block text-xs font-medium text-zinc-600 underline underline-offset-2">Details: what the agent did and said, the cash check in numbers</span>
                 </span>
@@ -207,7 +228,12 @@ export function AgentPanel({ steps, items, cash, fix, sandbox, onRun, onPlanned,
                 {links.length ? <Chain links={links} /> : null}
                 {review ? <ReviewCards output={review.tool?.output} /> : null}
                 <ul className="mt-2 space-y-1.5">
-                  {reply && cut ? <Message key={reply.stepId} m={reply} text={cut.lead} testId="agent-reply" /> : null}
+                  {reply && cut?.lead ? <Message key={`${reply.stepId}-lead`} m={reply} text={cut.lead} testId="agent-reply-full" /> : null}
+                  {payFirst.map((m) => (
+                    <li key={`${m.stepId}-full`} className="whitespace-pre-line font-medium text-zinc-900 sm:hidden" data-testid="pay-first-full">
+                      {plainText(m.detail)}
+                    </li>
+                  ))}
                   {details.map((m) => <Message key={m.stepId} m={m} />)}
                   {reply && cut?.rest ? <Message key={`${reply.stepId}-rest`} m={reply} text={cut.rest} /> : null}
                 </ul>
