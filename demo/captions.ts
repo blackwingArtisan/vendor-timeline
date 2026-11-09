@@ -21,12 +21,13 @@ export const coveredCaptions: string[] = [];
  * cover what it describes: `over`, or whatever is highlighted or marked on screen. Either way, a
  * caption that still covers what it describes is recorded in coveredCaptions. Returns where it went.
  */
-export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean; over?: Locator; position?: "top" | "bottom" } = {}): Promise<{ place: "top" | "bottom"; covers: boolean }> {
+export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean; over?: Locator; position?: "top" | "bottom"; side?: "left" } = {}): Promise<{ place: "top" | "bottom"; covers: boolean }> {
   const ms = opts.ms ?? Math.min(6000, 1400 + text.length * 45);
   const over = opts.over ? await opts.over.boundingBox() : null;
   const position = opts.position ?? null;
+  const side = opts.side ?? null;
   const place = await page.evaluate(
-    ({ text, ms, over, position }) => {
+    ({ text, ms, over, position, side }) => {
       let el = document.getElementById("__demo_caption");
       if (!el) {
         el = document.createElement("div");
@@ -34,13 +35,15 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
         Object.assign(el.style, {
           position: "fixed", left: "50%", bottom: "36px", transform: "translateX(-50%) translateY(10px)", zIndex: "2147483647",
           maxWidth: "min(1000px, calc(100vw - 48px))", padding: "16px 26px", borderRadius: "18px",
-          background: "rgba(9,9,11,0.9)", color: "#fff", font: "600 24px/1.35 ui-sans-serif, system-ui, -apple-system, sans-serif",
+          background: "rgba(9,9,11,0.9)", color: "#fff", font: "600 22px/1.35 ui-sans-serif, system-ui, -apple-system, sans-serif",
           textAlign: "center", boxShadow: "0 20px 50px rgba(0,0,0,.35)", opacity: "0", transition: "opacity .3s, transform .3s", pointerEvents: "none",
         });
         document.body.appendChild(el);
       }
       el.textContent = text;
       el.style.display = text ? "block" : "none";
+      // Beside something on the right half: the caption keeps to the left half.
+      Object.assign(el.style, side === "left" ? { left: "24px", maxWidth: "calc(50vw - 36px)", textAlign: "left", transform: "translateY(10px)" } : { left: "50%", maxWidth: "min(1000px, calc(100vw - 48px))", textAlign: "center", transform: "translateX(-50%) translateY(10px)" });
       const targets = [...document.querySelectorAll("[data-demo-highlight], [data-demo-mark]")].map((t) => t.getBoundingClientRect());
       if (over) targets.push(new DOMRect(over.x, over.y, over.width, over.height));
       const hits = (at: DOMRect) => targets.some((r) => r.width && r.height && r.left < at.right && at.left < r.right && r.top < at.bottom + 12 && at.top - 12 < r.bottom);
@@ -54,7 +57,7 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
       const still = !!text && hits(el.getBoundingClientRect());
       requestAnimationFrame(() => {
         el!.style.opacity = "1";
-        el!.style.transform = "translateX(-50%) translateY(0)";
+        el!.style.transform = side === "left" ? "translateY(0)" : "translateX(-50%) translateY(0)";
       });
       clearTimeout((window as unknown as { __demoCaptionTimer?: number }).__demoCaptionTimer);
       (window as unknown as { __demoCaptionTimer?: number }).__demoCaptionTimer = window.setTimeout(() => {
@@ -62,7 +65,7 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
       }, ms);
       return { place: goTop ? ("top" as const) : ("bottom" as const), covers: still };
     },
-    { text, ms, over, position },
+    { text, ms, over, position, side },
   );
   if (place.covers) {
     coveredCaptions.push(text);
@@ -74,17 +77,18 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
 
 /**
  * A phone beside the page: an iframe at a phone's width, framed like a handset, showing another
- * person's screen (the vendor's link) while the couple's page stays as it was underneath. Returns
- * the frame to act in.
+ * person's screen (the vendor's link) while the couple's page stays as it was underneath. It stays
+ * hidden until `ready` (a test id in the phone's page) is on screen, so no blank phone is ever
+ * filmed, and it fits the frame's height. Returns the frame to act in.
  */
-export async function phone(page: Page, url: string, opts: { side?: "left" | "right" } = {}) {
+export async function phone(page: Page, url: string, opts: { side?: "left" | "right"; ready: string }) {
   await page.evaluate(
     ({ url, side }) => {
       document.getElementById("__demo_phone")?.remove();
       const shell = document.createElement("div");
       shell.id = "__demo_phone";
       Object.assign(shell.style, {
-        position: "fixed", top: "50%", [side]: "48px", transform: "translateY(-50%) scale(.96)", width: "402px", height: "812px", zIndex: "2147483646",
+        position: "fixed", top: "50%", [side]: "40px", transform: "translateY(-50%) scale(.96)", width: "372px", height: `${Math.min(812, innerHeight - 24)}px`, zIndex: "2147483646",
         borderRadius: "48px", background: "#111", padding: "14px", boxShadow: "0 30px 80px rgba(0,0,0,.45)", opacity: "0", transition: "opacity .35s, transform .35s",
       });
       const frame = document.createElement("iframe");
@@ -93,11 +97,17 @@ export async function phone(page: Page, url: string, opts: { side?: "left" | "ri
       Object.assign(frame.style, { width: "100%", height: "100%", border: "0", borderRadius: "36px", background: "#fafafa" });
       shell.appendChild(frame);
       document.body.appendChild(shell);
-      requestAnimationFrame(() => Object.assign(shell.style, { opacity: "1", transform: "translateY(-50%) scale(1)" }));
     },
     { url, side: opts.side ?? "right" },
   );
-  return page.frameLocator("#__demo_phone iframe");
+  const frame = page.frameLocator("#__demo_phone iframe");
+  await frame.getByTestId(opts.ready).waitFor({ state: "visible", timeout: 30_000 });
+  await page.evaluate(() => {
+    const shell = document.getElementById("__demo_phone");
+    if (shell) Object.assign(shell.style, { opacity: "1", transform: "translateY(-50%) scale(1)" });
+  });
+  await sleep(400);
+  return frame;
 }
 
 /** Puts the phone away. */
@@ -361,7 +371,7 @@ export class DemoClock {
    * small clock offset aside; `raw` is kept for that). Lines that can't be read at about 2.6 words a
    * second before the next line starts are returned, so the take can say which line to trim.
    */
-  writeVoiceover(file: string, wordsPerSecond = 2.6) {
+  writeVoiceover(file: string, wordsPerSecond = 2.6, minSeconds = 4) {
     const end = this.editedAt(this.raw);
     const lines = this.voice.map((v) => ({ shot: v.shot, at: Math.round(this.editedAt(v.raw) * 10) / 10, text: v.text, raw: Math.round(v.raw * 10) / 10 }));
     const tooLong = lines.flatMap((l, i) => {
@@ -370,9 +380,14 @@ export class DemoClock {
       const needs = l.text.split(" ").reduce((n, w) => n + (/^\$\d/.test(w) ? 3 : 1), 0) / wordsPerSecond;
       return needs > room ? [`shot ${l.shot}: needs ${needs.toFixed(1)}s, has ${room.toFixed(1)}s`] : [];
     });
+    // Each narrated beat stays on screen long enough to be seen, not only heard.
+    const short = lines.flatMap((l, i) => {
+      const room = (lines[i + 1]?.at ?? end) - l.at;
+      return room < minSeconds ? [`shot ${l.shot}: on screen ${room.toFixed(1)}s, under ${minSeconds}s`] : [];
+    });
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify(lines, null, 2));
-    return { lines, tooLong };
+    return { lines, tooLong, short };
   }
 
   /** Seconds into the raw recording. */

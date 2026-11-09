@@ -76,11 +76,11 @@ describe("code decides whether a date read from a reply may be used", () => {
     expect(() => applyVendorReply(plan, florist.id, "balance", "2027-06-09", TODAY)).toThrow(/Nothing moved/);
     const moved = applyVendorReply(plan, florist.id, "balance", "2027-06-08", TODAY);
     expect(moved.confirmed).toMatchObject({ balanceDue: "2027-06-08", payeeEmail: FLORIST.payeeEmail });
-    expect(moved.vendorPayees).toEqual({ balance: "payments@bramble-vetch.example.com" });
+    // Nothing of the florist's had started, so both payments now pay the account the vendor gave.
+    expect(moved.vendorPayees).toEqual({ deposit: "payments@bramble-vetch.example.com", balance: "payments@bramble-vetch.example.com" });
     expect(moved.movedFrom?.balance).toBe("2027-05-29");
-    // Only the balance pays the account the vendor gave; the deposit still pays the contract's payee.
     expect(termPayee(moved, "balance")).toBe("payments@bramble-vetch.example.com");
-    expect(termPayee(moved, "deposit")).toBe(FLORIST.payeeEmail);
+    expect(termPayee(moved, "deposit")).toBe("payments@bramble-vetch.example.com");
     expect(() => saveReply(ask.token, { answer: "agreed" })).toThrow(/already moved/);
   });
 

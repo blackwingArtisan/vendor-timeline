@@ -39,7 +39,9 @@ export function StandInLine({ item, className }: { item: TimelineItem; className
           ? `${item.vendorName} gave this PayPal sandbox account (${email}) on the couple's link, so PayPal pays it directly.`
           : own
           ? `In the sandbox, this app's own test business account${email ? ` (${email})` : ""} stands in for ${item.vendorName}.`
-          : `In the sandbox, PayPal pays a separate vendor test business account${email ? ` (${email})` : ""}, standing in for ${item.vendorName}.`}
+          : item.sandboxPayee?.shared
+          ? `In the sandbox, PayPal pays a vendor test business account${email ? ` (${email})` : ""}, not this app's, standing in for ${item.vendorName}. The same test account stands in for the other sample vendors until each has its own.`
+          : `In the sandbox, PayPal pays ${item.vendorName}'s own vendor test business account${email ? ` (${email})` : ""}, not this app's.`}
       </span>
     </span>
   );

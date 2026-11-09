@@ -14,7 +14,7 @@ import { resetEnvCache } from "@/lib/env";
 import { DEFAULT_SANDBOX_VENDOR_EMAIL } from "@/lib/env-core";
 import { captureCheckout, captureWebhook, checkoutAfterApproval, orderPayee, sandboxPayee, planChannel, planPayPalIds, webhookPlanChannel, ownsApproval, requestPayment, syncPayment, vendorOrder, viewTimeline, WEBHOOK_WAIT_MS } from "@/lib/wedding/pay";
 import { readReceipt } from "@/lib/wedding/receipt";
-import { BAND, CATERER, FLORIST, PHOTOGRAPHER, VENUE } from "@/lib/wedding/samples";
+import { BAND, BAND_ANSWERS, CATERER, FLORIST, PHOTOGRAPHER, VENUE } from "@/lib/wedding/samples";
 import type { Contract } from "@/lib/wedding/types";
 
 const text = fs.readFileSync(path.join("public/sample-contracts", PHOTOGRAPHER.file), "utf8");
@@ -207,16 +207,29 @@ describe("paying", () => {
     expect(sandboxPayee(FLORIST.payeeEmail!)).toBeUndefined();
   });
 
-  it("in sandbox pays the florist and caterer to a separate vendor account, the rest to the app's own", () => {
+  it("in sandbox never pays the app's own account: each sample vendor pays its own test account, or the shared vendor one", () => {
     vi.stubEnv("PAYPAL_MODE", "sandbox");
     vi.stubEnv("PAYPAL_CLIENT_ID", "test-client");
     vi.stubEnv("PAYPAL_CLIENT_SECRET", "test-secret");
     vi.stubEnv("PAYPAL_SANDBOX_SELLER_EMAIL", "own-app@business.example.com");
     resetEnvCache();
     try {
-      for (const vendor of [FLORIST, CATERER]) expect(sandboxPayee(vendor.payeeEmail!)).toEqual({ email: DEFAULT_SANDBOX_VENDOR_EMAIL, own: false });
-      for (const vendor of [PHOTOGRAPHER, VENUE]) expect(sandboxPayee(vendor.payeeEmail!)).toEqual({ email: "own-app@business.example.com", own: true });
-      expect(orderPayee("someone@gmail.com")).toBe("own-app@business.example.com");
+      // With one vendor test account, it stands in for all five, and says so.
+      for (const vendor of [PHOTOGRAPHER, CATERER, VENUE, FLORIST]) expect(sandboxPayee(vendor.payeeEmail!)).toEqual({ email: DEFAULT_SANDBOX_VENDOR_EMAIL, own: false, shared: true });
+      expect(orderPayee(BAND_ANSWERS.payeeEmail)).toBe(DEFAULT_SANDBOX_VENDOR_EMAIL);
+      expect(orderPayee("someone@gmail.com")).toBe(DEFAULT_SANDBOX_VENDOR_EMAIL);
+      // A vendor's own sandbox account, given on the couple's link, is paid as it is.
+      expect(sandboxPayee("sb-florist1@business.example.com", true)).toEqual({ email: "sb-florist1@business.example.com", own: false, given: true });
+
+      // With one account per vendor, each pays its own; a role not listed falls back to the shared one.
+      vi.stubEnv("PAYPAL_SANDBOX_VENDOR_EMAILS", "photographer=sb-photo@business.example.com, caterer=sb-cater@business.example.com;venue=sb-venue@business.example.com band=sb-band@business.example.com");
+      resetEnvCache();
+      expect(orderPayee(PHOTOGRAPHER.payeeEmail!)).toBe("sb-photo@business.example.com");
+      expect(orderPayee(CATERER.payeeEmail!)).toBe("sb-cater@business.example.com");
+      expect(orderPayee(VENUE.payeeEmail!)).toBe("sb-venue@business.example.com");
+      expect(orderPayee(BAND_ANSWERS.payeeEmail)).toBe("sb-band@business.example.com");
+      expect(sandboxPayee(FLORIST.payeeEmail!)).toEqual({ email: DEFAULT_SANDBOX_VENDOR_EMAIL, own: false });
+      expect(sandboxPayee(PHOTOGRAPHER.payeeEmail!)).toEqual({ email: "sb-photo@business.example.com", own: false });
     } finally {
       vi.unstubAllEnvs();
       resetEnvCache();

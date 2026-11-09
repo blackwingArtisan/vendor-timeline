@@ -29,7 +29,7 @@ import { planMix } from "./plan-mix";
 import { centsToDollars, dollarsToCents, formatCents } from "./cents";
 import { contractWithPayPalId, findContract, listContracts, requireContract, requirePlanContract, saveContract, termPayee } from "./contracts";
 import { formatDay, isCalendarDay, utcToday } from "./dates";
-import { PAID_TO_VENDOR_ACCOUNT } from "./samples";
+import { SAMPLE_ROLE_BY_PAYEE } from "./samples";
 import { appOrigin, isPublicOrigin } from "./origin";
 import { buildTimeline, captureState, itemId } from "./timeline";
 import { MOVE_TOOL } from "./tool-names";
@@ -44,28 +44,36 @@ export { VENDOR_ORDER_TOOL };
 /** Payments running in this process. A pending approval dies with the process. */
 const activePayments = () => singleton("wedding:active-payments", () => new Set<string>());
 
+/** A PayPal sandbox business account's address. */
+const SANDBOX_BUSINESS = /^[^@\s]+@business\.example\.com$/i;
+
 /**
  * Who the order pays. The vendors are fictional, so in sandbox a test business account stands in
- * for each one: a separate vendor account for the florist and caterer, the app's own for the rest.
- * The screen says which wherever it shows the payment.
+ * for each one: the account set for that sample vendor (PAYPAL_SANDBOX_VENDOR_EMAILS), else the
+ * shared vendor account. Never the app's own. A sandbox business account the vendor gave on the
+ * couple's link is paid as it is. The screen says which wherever it shows the payment.
  */
 export function orderPayee(vendorEmail: string): string {
   const env = getEnv();
   if (env.paypalMode !== "sandbox") return vendorEmail;
-  // A sandbox business account the vendor gave on the couple's link is paid as it is.
-  if (SANDBOX_BUSINESS.test(vendorEmail.trim())) return vendorEmail.trim();
-  return env.sandboxVendorEmail && PAID_TO_VENDOR_ACCOUNT.has(vendorEmail.trim().toLowerCase()) ? env.sandboxVendorEmail : env.sandboxSellerEmail;
+  const email = vendorEmail.trim();
+  if (SANDBOX_BUSINESS.test(email)) return email;
+  const role = SAMPLE_ROLE_BY_PAYEE.get(email.toLowerCase());
+  return (role && env.sandboxVendorEmails[role]) || env.sandboxVendorEmail || env.sandboxSellerEmail;
 }
 
-/** A PayPal sandbox business account's address. */
-const SANDBOX_BUSINESS = /^[^@\s]+@business\.example\.com$/i;
+/** How many sample vendors one sandbox account stands in for. */
+function standsInFor(email: string): number {
+  return new Set([...SAMPLE_ROLE_BY_PAYEE.keys()].filter((e) => orderPayee(e).toLowerCase() === email.toLowerCase()).map((e) => SAMPLE_ROLE_BY_PAYEE.get(e))).size;
+}
 
-/** In sandbox: which test account an item pays, whether it is the app's own, and whether the vendor gave it. */
+/** In sandbox: which test account an item pays, whether it is the app's own, whether the vendor gave it, and whether it stands in for several vendors. */
 export function sandboxPayee(vendorEmail: string, given = false): SandboxPayee | undefined {
   const env = getEnv();
   if (env.paypalMode !== "sandbox") return undefined;
   const email = orderPayee(vendorEmail);
-  return { email, own: email.toLowerCase() === env.sandboxSellerEmail.toLowerCase(), ...(given ? { given: true } : {}) };
+  const shared = !given && standsInFor(email) > 1;
+  return { email, own: email.toLowerCase() === env.sandboxSellerEmail.toLowerCase(), ...(given ? { given: true } : {}), ...(shared ? { shared: true } : {}) };
 }
 
 const termCents = (contract: Contract, kind: ItemKind) => (kind === "deposit" ? contract.confirmed!.depositCents : contract.confirmed!.balanceCents);
@@ -437,6 +445,13 @@ async function syncOpenPayments(planId: string) {
   }
 }
 
+/** The payment went to the PayPal account the vendor gave on the couple's link. */
+function paidToGiven(contract: Contract | undefined, item: TimelineItem): boolean {
+  const given = contract?.vendorPayees?.[item.kind];
+  const payee = contract?.payments[item.kind]?.payee;
+  return !!given && !!payee && payee.toLowerCase() === orderPayee(given).toLowerCase();
+}
+
 /** The couple's view of a later-date ask: the vendor's reply, code's verdict, and a move waiting for approval. */
 function askState(contract: Contract | undefined, item: TimelineItem): AskState | null {
   const ask = contract?.asks?.[item.kind];
@@ -487,7 +502,7 @@ export async function viewTimeline(planId: string, today = utcToday()): Promise<
   const byId = new Map(listContracts(planId).map((c) => [c.id, c]));
   const items = view.items.map((item) => {
     const contract = byId.get(item.contractId);
-    return { ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(contract?.confirmed ? termPayee(contract, item.kind) : "", !!contract?.vendorPayees?.[item.kind]), ask: askState(contract, item), contributor: contributorOf(contract, item) };
+    return { ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(contract?.confirmed ? termPayee(contract, item.kind) : "", !!contract?.vendorPayees?.[item.kind]), ask: askState(contract, item), contributor: contributorOf(contract, item), payeeGiven: paidToGiven(contract, item) };
   });
   const same = (item: TimelineItem | null) => items.find((i) => i.id === item?.id) ?? null;
   return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId), planMix: planMix(listContracts(planId)) };
