@@ -63,8 +63,24 @@ export interface Payment {
   successSeenAt?: string;
   /** The verified PAYMENT.CAPTURE.COMPLETED webhook for this payment's capture. */
   webhook?: PaymentWebhook;
-  /** What made this paid. "re-read" means PayPal's status arrived but no webhook could reach this copy. */
-  paidBy?: "webhook" | "re-read";
+  /**
+   * What made this paid. "re-read" means PayPal's status arrived but no webhook could reach this copy.
+   * "outside" means the couple paid it outside PayPal (cash or cheque) and recorded it here: no PayPal
+   * order or capture exists, and none ever will.
+   */
+  paidBy?: "webhook" | "re-read" | "outside";
+  /** Set only when paidBy is "outside": how and when the couple say they paid. */
+  outside?: PaidOutside;
+}
+
+export const OUTSIDE_METHODS = ["cash", "cheque"] as const;
+export type OutsideMethod = (typeof OUTSIDE_METHODS)[number];
+
+export interface PaidOutside {
+  method: OutsideMethod;
+  /** The day they paid, as the couple give it. Never after the day they record it. */
+  paidOn: string;
+  recordedAt: string;
 }
 
 export interface PaymentWebhook {

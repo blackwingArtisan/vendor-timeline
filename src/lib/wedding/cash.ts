@@ -19,7 +19,8 @@ const WEEK_DAYS = 7;
  */
 export function payDate(item: TimelineItem, today: string): string {
   if (item.status === "paid") {
-    const paidOn = (item.payment?.successSeenAt ?? item.payment?.checkedAt)?.slice(0, 10);
+    // Paid outside PayPal: the day the couple say they paid.
+    const paidOn = item.payment?.outside?.paidOn ?? (item.payment?.successSeenAt ?? item.payment?.checkedAt)?.slice(0, 10);
     return paidOn && paidOn < today ? paidOn : today;
   }
   if (item.status === "sending" || item.status === "awaiting_checkout" || item.status === "awaiting_approval" || item.due < today) return today;

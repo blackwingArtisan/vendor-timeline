@@ -25,11 +25,11 @@ import { singleton } from "@/lib/singleton";
 import { isSamplePlan, monthlyBudget } from "./budget";
 import { centsToDollars, dollarsToCents, formatCents } from "./cents";
 import { contractWithPayPalId, findContract, listContracts, requireContract, requirePlanContract, saveContract } from "./contracts";
-import { utcToday } from "./dates";
+import { formatDay, isCalendarDay, utcToday } from "./dates";
 import { PAID_TO_VENDOR_ACCOUNT } from "./samples";
 import { appOrigin, isPublicOrigin } from "./origin";
 import { buildTimeline, captureState, itemId } from "./timeline";
-import type { Contract, ItemKind, Payment, PendingApproval, SandboxPayee, TimelineItem, TimelineView } from "./types";
+import type { Contract, ItemKind, OutsideMethod, Payment, PendingApproval, SandboxPayee, TimelineItem, TimelineView } from "./types";
 
 const RECHECK_MS = 2500;
 /** PayPal's webhook took about 15 seconds in the sandbox. A re-read stands on its own after this. */
@@ -72,6 +72,7 @@ function requirePayable(planId: string, contractId: string, kind: ItemKind, runI
   if (!contract.confirmed) throw new HttpError(409, "Confirm this contract before paying it.", "conflict");
   if (termCents(contract, kind) <= 0) throw new HttpError(409, `This contract has no ${kind} to pay.`, "conflict");
   const previous = contract.payments[kind];
+  if (previous?.paidBy === "outside") throw new HttpError(409, `The couple paid this ${kind} outside PayPal, so nothing can be sent for it.`, "conflict");
   if (previous && runId && previous.runId === runId && previous.state === "awaiting_approval") return contract;
   if (activePayments().has(itemId(contractId, kind)) || (previous && previous.state !== "failed")) throw new HttpError(409, `This ${kind} already has a payment.`, "conflict");
   return contract;
@@ -207,6 +208,32 @@ export function requestPayment(planId: string, contractId: string, kind: ItemKin
     settlePayment(contractId, kind, runId, { status: "failed", error: e });
   });
   return { contract: saved, finished };
+}
+
+/**
+ * The couple paid a deposit or balance outside PayPal, in cash or by cheque, and say so here. The
+ * app only records it: no PayPal call, no order, no approval, and the Guard never moves money for it
+ * afterwards, because the payment is no longer open (requirePayable refuses it). The amount must be
+ * the confirmed term, so the timeline and the cash check stay right.
+ */
+export function recordPaidOutside(planId: string, contractId: string, kind: ItemKind, paid: { cents: number; paidOn: string; method: OutsideMethod }, today = utcToday()): Contract {
+  const contract = requirePayable(planId, contractId, kind);
+  const cents = termCents(contract, kind);
+  const name = `${contract.confirmed!.vendorName} ${kind}`;
+  if (paid.cents !== cents) throw new HttpError(422, `The confirmed ${name} is ${formatCents(cents)}, not ${formatCents(paid.cents)}. Record the full amount you paid, or pay it through PayPal.`, "rule");
+  if (!isCalendarDay(paid.paidOn)) throw new HttpError(422, "Enter the day you paid as a real date.", "rule");
+  if (paid.paidOn > today) throw new HttpError(422, `${formatDay(paid.paidOn)} hasn't happened yet. Record a payment once it's made.`, "rule");
+  const previous = contract.payments[kind];
+  const payment: Payment = {
+    runId: `outside_${randomUUID().slice(0, 12)}`,
+    cents,
+    attempt: previous?.attempt ?? 1,
+    state: "paid",
+    payee: "",
+    paidBy: "outside",
+    outside: { method: paid.method, paidOn: paid.paidOn, recordedAt: new Date().toISOString() },
+  };
+  return saveContract({ ...contract, payments: { ...contract.payments, [kind]: payment } });
 }
 
 /** Why PayPal's record of an order or capture isn't this payment, or null if it is. */
