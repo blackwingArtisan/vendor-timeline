@@ -6,12 +6,13 @@
  * and the move waits for the couple's approval. "They agreed" stays for a vendor who answers some
  * other way. Every date, amount and sentence comes from the server.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CalendarClock, CircleCheck, Copy, Link2, MessageSquareText, Sparkles } from "lucide-react";
 import { ApprovalPrompt } from "@/components/agent/approval-prompt";
-import { useKit } from "@/components/kit/kit-provider";
+import { ApiError, useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Input, Textarea } from "@/components/ui";
+import { READ_FAILED, readOutcome, type RunStatus } from "@/lib/agent/read-outcome";
 import { retryIfDropped } from "@/lib/gateway-retry";
 import { formatDay, localToday } from "@/lib/wedding/dates";
 import type { CashMove, TimelineItem } from "@/lib/wedding/types";
@@ -19,20 +20,21 @@ import type { CashMove, TimelineItem } from "@/lib/wedding/types";
 /** How often the card looks for the vendor's answer, or the agent's proposal, while it waits. */
 const POLL_MS = 2000;
 
-type Stage = "draft" | "shared" | "replied" | "reading" | "approve" | "refused" | "moved";
+type Stage = "draft" | "shared" | "replied" | "reading" | "failed" | "approve" | "refused" | "moved";
 
-function stageOf(item: TimelineItem | undefined, reading: boolean): Stage {
+function stageOf(item: TimelineItem | undefined, reading: boolean, failed: boolean): Stage {
   const ask = item?.ask;
   if (ask?.movedTo) return "moved";
   if (!ask) return "draft";
   if (ask.approval) return "approve";
   if (ask.verdict && !ask.verdict.ok) return "refused";
+  if (failed && ask.reply) return "failed";
   if (reading && ask.reply) return "reading";
   if (ask.reply) return "replied";
   return "shared";
 }
 
-const STAGE_LABEL: Record<Stage, string> = { draft: "Not shared yet", shared: "Shared, waiting for a reply", replied: "Replied", reading: "Agent reading", approve: "Your approval", refused: "Reply checked", moved: "Moved" };
+const STAGE_LABEL: Record<Stage, string> = { draft: "Not shared yet", shared: "Shared, waiting for a reply", replied: "Replied", reading: "Agent reading", failed: "Couldn't read", approve: "Your approval", refused: "Reply checked", moved: "Moved" };
 
 export function AskVendor({ move, item, onDone, onRun }: { move: CashMove; item?: TimelineItem; onDone: () => void; onRun?: (runId: string) => void }) {
   const { kitFetch } = useKit();
@@ -40,8 +42,13 @@ export function AskVendor({ move, item, onDone, onRun }: { move: CashMove; item?
   const [copied, setCopied] = useState<"message" | "link" | null>(null);
   const [busy, setBusy] = useState<"share" | "agreed" | "read" | null>(null);
   const [reading, setReading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  /** The agent run reading the reply. */
+  const [readRunId, setReadRunId] = useState<string | null>(null);
+  /** When that run started, and when the page first saw it finished. */
+  const readTimes = useRef<{ startedAt: number; completedSeenAt: number | null }>({ startedAt: 0, completedSeenAt: null });
   const ask = item?.ask ?? null;
-  const stage = stageOf(item, reading);
+  const stage = stageOf(item, reading, failed);
   const link = ask ? `${typeof window === "undefined" ? "" : window.location.origin}/vendor/${ask.token}` : "";
   const legacyMoved = !ask?.movedTo && item?.due === move.to;
 
@@ -52,6 +59,37 @@ export function AskVendor({ move, item, onDone, onRun }: { move: CashMove; item?
     const timer = setInterval(onDone, POLL_MS);
     return () => clearInterval(timer);
   }, [waiting, onDone]);
+
+  // While the agent reads, watch its run too: a run that failed, vanished, finished without an
+  // answer or stalled shows "Couldn't read the reply" with a retry, never an endless "reading".
+  const runId = stage === "reading" ? readRunId : null;
+  useEffect(() => {
+    if (!runId) return;
+    let stopped = false;
+    const look = async () => {
+      let run: { status: RunStatus; error?: string } | null;
+      try {
+        run = (await kitFetch<{ run: { status: RunStatus; error?: string } }>(`/api/agent/runs/${runId}`)).run;
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 404)) return; // a dropped poll: look again next time
+        run = null;
+      }
+      if (stopped) return;
+      const now = Date.now();
+      const times = readTimes.current;
+      if (run?.status === "completed" && times.completedSeenAt === null) times.completedSeenAt = now;
+      if (readOutcome({ run, answered: false, startedAt: times.startedAt, completedSeenAt: times.completedSeenAt, now }) === "failed") {
+        console.warn(`Reply read ${runId}: ${run ? `${run.status}${run.error ? `, ${run.error}` : ""}` : "the server has no such run"}`);
+        setReading(false);
+        setFailed(true);
+      }
+    };
+    const timer = setInterval(() => void look(), POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [runId, kitFetch]);
 
   async function copy(text: string, what: "message" | "link") {
     try {
@@ -90,12 +128,16 @@ export function AskVendor({ move, item, onDone, onRun }: { move: CashMove; item?
 
   async function read() {
     setBusy("read");
+    setFailed(false);
     try {
       const { runId } = await kitFetch<{ runId: string }>(`/api/contracts/${move.contractId}/ask/read`, { json: { kind: move.itemKind, today: localToday() } });
+      readTimes.current = { startedAt: Date.now(), completedSeenAt: null };
+      setReadRunId(runId);
       setReading(true);
       onRun?.(runId);
       onDone();
     } catch (e) {
+      setFailed(true);
       toast({ title: "Could not read the reply", description: (e as Error).message, variant: "error" });
     } finally {
       setBusy(null);
@@ -137,6 +179,7 @@ export function AskVendor({ move, item, onDone, onRun }: { move: CashMove; item?
         <ApprovalPrompt approvalId={ask.approval.id} summary={ask.approval.summary} reason="The vendor's words were read by the agent; code checked the date against the contract. Nothing moves until you approve." approveLabel="Approve the move" onDecided={() => { setReading(false); onDone(); }} />
       ) : null}
       {stage === "refused" ? <p className="text-sm text-amber-800" data-testid="move-refused">{ask!.verdict!.reason}</p> : null}
+      {stage === "failed" ? <p className="text-sm text-amber-800" role="alert" data-testid="move-read-failed">{READ_FAILED}</p> : null}
 
       <div className="flex flex-wrap gap-2">
         {stage === "draft" ? (
@@ -154,12 +197,17 @@ export function AskVendor({ move, item, onDone, onRun }: { move: CashMove; item?
             {copied === "message" ? "Copied" : "Copy message"}
           </Button>
         ) : null}
+        {stage === "failed" ? (
+          <Button size="sm" icon={<Sparkles className="size-3.5" />} loading={busy === "read"} disabled={!!busy} onClick={() => void read()} data-testid="move-read-retry">
+            Try again
+          </Button>
+        ) : null}
         {stage === "replied" ? (
           <Button size="sm" icon={<Sparkles className="size-3.5" />} loading={busy === "read"} disabled={!!busy} onClick={() => void read()} data-testid="move-read">
             Let the agent read it
           </Button>
         ) : null}
-        {stage === "draft" || stage === "shared" || stage === "refused" ? (
+        {stage === "draft" || stage === "shared" || stage === "refused" || stage === "failed" ? (
           <Button size="sm" variant="secondary" icon={<CalendarClock className="size-3.5" />} loading={busy === "agreed"} disabled={!!busy || !item} onClick={() => void agreed()} data-testid="move-approve">
             They agreed: move it to {formatDay(move.to)}
           </Button>
