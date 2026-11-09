@@ -66,7 +66,7 @@ export function ReceiptView({ item, onClose }: { item: TimelineItem; onClose: ()
                 <span data-testid="receipt-webhook-event">{receipt.webhook.eventId}</span> {receipt.webhook.eventType}
               </>
             ) : (
-              <span className="font-sans text-zinc-600">None reached this copy of the app. It was marked paid on PayPal&apos;s re-read of the capture.</span>
+              <span className="font-sans text-zinc-600">{receipt.webhookLate ? "None yet. It was marked paid on PayPal's re-read of the capture after a minute without one." : "None reached this copy of the app. It was marked paid on PayPal's re-read of the capture."}</span>
             )}
           </Line>
           {receipt.calls.map((c) => (
