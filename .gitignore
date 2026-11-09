@@ -57,3 +57,4 @@ playwright-report/
 screenshots/
 .env.shared
 videos/*.cuts.json
+videos/*voiceover.json

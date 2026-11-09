@@ -14,10 +14,19 @@ import { BAND_ANSWERS, SAMPLES, type SampleFacts } from "./samples";
 
 const sampleText = (sample: SampleFacts) => fs.readFileSync(path.join(/*turbopackIgnore: true*/ process.cwd(), "public/sample-contracts", sample.file), "utf8");
 
-/** A second click adds nothing: vendors already on this wedding are skipped. */
+/** "SALTMEADOW TABLE CATERING" and "Saltmeadow Table Catering" are one vendor. */
+const nameKey = (name: string | null | undefined) => (name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+/**
+ * A second click adds nothing: a sample is skipped when the wedding already has its role or its
+ * vendor. Claude can read a name as the contract prints it (all capitals), so names are compared
+ * without case or punctuation.
+ */
 export function loadSampleWedding(planId: string): { added: number } {
-  const present = new Set(listContracts(planId).map((c) => c.confirmed?.vendorName ?? c.proposed.vendorName.value));
-  const missing = SAMPLES.filter((s) => !present.has(s.vendorName));
+  const contracts = listContracts(planId);
+  const roles = new Set(contracts.map((c) => c.confirmed?.vendorRole ?? c.proposed.vendorRole));
+  const names = new Set(contracts.map((c) => nameKey(c.confirmed?.vendorName ?? c.proposed.vendorName.value)));
+  const missing = SAMPLES.filter((s) => !roles.has(s.vendorRole) && !names.has(nameKey(s.vendorName)));
   for (const sample of missing) {
     const text = sampleText(sample);
     const contract = saveContract({ id: `ctr_${randomUUID().slice(0, 8)}`, planId, sample: true, createdAt: new Date().toISOString(), payments: {}, proposed: toProposedTerms(mockExtraction(text), text), read: { mocked: true, costUsd: 0 }, text, fileName: sample.file });
