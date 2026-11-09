@@ -114,16 +114,48 @@ async function stuckReport(page: Page): Promise<string> {
 }
 
 /**
+ * Presses "Pay now". On a phone PayPal can lay a sheet over it ("Continue as Guest"), and then a
+ * plain click waits for the whole test; so each try is bounded, the sheet is answered, and what the
+ * page showed is logged.
+ */
+async function pressPay(page: Page, pay: Locator) {
+  const guest = page.getByRole("button", { name: /^Continue as Guest$/i });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!onPayPal(page)) return;
+    if (await guest.isVisible().catch(() => false)) {
+      await guest.click({ timeout: 10_000 }).catch(() => undefined);
+      return;
+    }
+    if (await pay.click({ timeout: 15_000 }).then(() => true, () => false)) return;
+    console.log(`[checkout] "Pay now" didn't take a click (${await stuckReport(page)}); trying again`);
+  }
+  if (onPayPal(page)) await pay.evaluate((el: HTMLElement) => el.click());
+}
+
+/**
  * PayPal's guest card form, on PayPal's checkout page. Returns once PayPal has sent the browser
  * back to the app. If it hasn't within 45 s, it logs what PayPal's page shows, saves a screenshot
  * and pays once more (the same order, so nothing is paid twice); a second miss fails the run.
  */
 export async function payAsGuest(page: Page, { typingDelay = 15, beforePay }: { typingDelay?: number; beforePay?: () => Promise<void> } = {}) {
-  const back = (timeout: number) => page.waitForURL((u) => !/(^|\.)paypal\.com$/.test(u.host), { timeout, waitUntil: "commit" }).then(() => true, () => false);
+  // Waits for PayPal to send the browser back. On a phone PayPal can first offer an account in a
+  // sheet ("Don't miss out on PayPal benefits"); the couple go on as a guest.
+  const guest = page.getByRole("button", { name: /^Continue as Guest$/i });
+  const back = async (timeout: number) => {
+    const until = Date.now() + timeout;
+    while (Date.now() < until) {
+      if (await page.waitForURL((u) => !/(^|\.)paypal\.com$/.test(u.host), { timeout: 1_500, waitUntil: "commit" }).then(() => true, () => false)) return true;
+      if (await guest.isVisible().catch(() => false)) {
+        console.log("[checkout] PayPal offered an account after Pay now; going on as a guest");
+        await guest.click({ timeout: 10_000 }).catch(() => undefined);
+      }
+    }
+    return false;
+  };
   await fillCardForm(page, typingDelay);
   await beforePay?.();
   const pay = page.getByRole("button", { name: /^Pay now( as guest)?$/i });
-  await pay.click();
+  await pressPay(page, pay);
   if (await back(45_000)) return;
   const first = await stuckReport(page);
   const shot = `test-results/checkout-stuck-${Date.now()}.png`;
@@ -133,7 +165,7 @@ export async function payAsGuest(page: Page, { typingDelay = 15, beforePay }: { 
   // Still on PayPal: fill whatever its form shows now (a reload brings back a lost form) and pay again.
   if (!(await pay.isVisible().catch(() => false))) await page.reload();
   await fillCardForm(page, 60);
-  await pay.click();
+  await pressPay(page, pay);
   if (await back(60_000)) {
     console.log("[checkout] PayPal sent the browser back after the second try.");
     return;
