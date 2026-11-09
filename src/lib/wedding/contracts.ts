@@ -29,9 +29,6 @@ export const listContracts = (planId: string) =>
 
 export const findContract = (id: string) => contracts().get(id);
 
-/** Every couple's contracts. Only for finding a vendor link by its token. */
-export const listContractsAll = () => contracts().list();
-
 export function requireContract(id: string): Contract {
   const contract = findContract(id);
   if (!contract) throw new HttpError(404, `Contract ${id} not found`, "not_found");

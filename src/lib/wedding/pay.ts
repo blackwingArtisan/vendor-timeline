@@ -30,8 +30,7 @@ import { formatDay, isCalendarDay, utcToday } from "./dates";
 import { PAID_TO_VENDOR_ACCOUNT } from "./samples";
 import { appOrigin, isPublicOrigin } from "./origin";
 import { buildTimeline, captureState, itemId } from "./timeline";
-import { MOVE_TOOL } from "./tool-names";
-import type { AskState, Contract, ItemKind, OutsideMethod, Payment, PendingApproval, SandboxPayee, TimelineItem, TimelineView } from "./types";
+import type { Contract, ItemKind, OutsideMethod, Payment, PendingApproval, SandboxPayee, TimelineItem, TimelineView } from "./types";
 
 const RECHECK_MS = 2500;
 /** PayPal's webhook took about 15 seconds in the sandbox. A re-read stands on its own after this. */
@@ -50,20 +49,15 @@ const activePayments = () => singleton("wedding:active-payments", () => new Set<
 export function orderPayee(vendorEmail: string): string {
   const env = getEnv();
   if (env.paypalMode !== "sandbox") return vendorEmail;
-  // A sandbox business account the vendor gave on the couple's link is paid as it is.
-  if (SANDBOX_BUSINESS.test(vendorEmail.trim())) return vendorEmail.trim();
   return env.sandboxVendorEmail && PAID_TO_VENDOR_ACCOUNT.has(vendorEmail.trim().toLowerCase()) ? env.sandboxVendorEmail : env.sandboxSellerEmail;
 }
 
-/** A PayPal sandbox business account's address. */
-const SANDBOX_BUSINESS = /^[^@\s]+@business\.example\.com$/i;
-
-/** In sandbox: which test account an item pays, whether it is the app's own, and whether the vendor gave it. */
-export function sandboxPayee(vendorEmail: string, given = false): SandboxPayee | undefined {
+/** In sandbox: which test account an item pays, and whether it is the app's own. */
+export function sandboxPayee(vendorEmail: string): SandboxPayee | undefined {
   const env = getEnv();
   if (env.paypalMode !== "sandbox") return undefined;
   const email = orderPayee(vendorEmail);
-  return { email, own: email.toLowerCase() === env.sandboxSellerEmail.toLowerCase(), ...(given ? { given: true } : {}) };
+  return { email, own: email.toLowerCase() === env.sandboxSellerEmail.toLowerCase() };
 }
 
 const termCents = (contract: Contract, kind: ItemKind) => (kind === "deposit" ? contract.confirmed!.depositCents : contract.confirmed!.balanceCents);
@@ -421,24 +415,6 @@ async function syncOpenPayments(planId: string) {
   }
 }
 
-/** The couple's view of a later-date ask: the vendor's reply, code's verdict, and a move waiting for approval. */
-function askState(contract: Contract | undefined, item: TimelineItem): AskState | null {
-  const ask = contract?.asks?.[item.kind];
-  if (!ask) return null;
-  const pending = getApprovals()
-    .list({ state: "pending" })
-    .find((a) => a.tool === MOVE_TOOL && (a.input as { contract_id?: string; kind?: string } | null)?.contract_id === item.contractId && (a.input as { kind?: string }).kind === item.kind);
-  return {
-    token: ask.token,
-    askedTo: ask.askedTo,
-    fromDue: ask.fromDue,
-    reply: ask.reply ?? null,
-    verdict: ask.verdict ?? null,
-    movedTo: ask.movedTo ?? null,
-    approval: pending ? { id: pending.id, summary: pending.summary, reason: pending.reason } : null,
-  };
-}
-
 function pendingApproval(item: TimelineItem): PendingApproval | null {
   const runId = item.payment?.runId;
   const pending = runId ? getApprovals().list({ runId, state: "pending" })[0] : undefined;
@@ -463,10 +439,7 @@ export async function viewTimeline(planId: string, today = utcToday()): Promise<
   await syncOpenPayments(planId);
   const view = buildTimeline(listContracts(planId), today, monthlyBudget(planId));
   const byId = new Map(listContracts(planId).map((c) => [c.id, c]));
-  const items = view.items.map((item) => {
-    const contract = byId.get(item.contractId);
-    return { ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(contract?.confirmed?.payeeEmail ?? "", contract?.payeeGivenBy === "vendor"), ask: askState(contract, item) };
-  });
+  const items = view.items.map((item) => ({ ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(byId.get(item.contractId)?.confirmed?.payeeEmail ?? "") }));
   const same = (item: TimelineItem | null) => items.find((i) => i.id === item?.id) ?? null;
   return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId), planMix: planMix(listContracts(planId)) };
 }
