@@ -25,7 +25,7 @@ import { singleton } from "@/lib/singleton";
 import { isSamplePlan, monthlyBudget } from "./budget";
 import { planMix } from "./plan-mix";
 import { centsToDollars, dollarsToCents, formatCents } from "./cents";
-import { contractWithPayPalId, findContract, listContracts, requireContract, requirePlanContract, saveContract } from "./contracts";
+import { contractWithPayPalId, findContract, listContracts, requireContract, requirePlanContract, saveContract, termPayee } from "./contracts";
 import { formatDay, isCalendarDay, utcToday } from "./dates";
 import { PAID_TO_VENDOR_ACCOUNT } from "./samples";
 import { appOrigin, isPublicOrigin } from "./origin";
@@ -102,7 +102,7 @@ export function vendorOrder(contract: Contract, kind: ItemKind, ask: { cents: nu
   const terms = contract.confirmed;
   if (!terms) throw new HttpError(409, "Confirm this contract before paying it.", "conflict");
   requireTermAmount(contract, kind, ask.cents);
-  const payee = orderPayee(terms.payeeEmail);
+  const payee = orderPayee(termPayee(contract, kind));
   if (ask.payee.trim().toLowerCase() !== payee.toLowerCase()) throw new HttpError(422, `${ask.payee} isn't who this contract pays. Nothing was sent.`, "rule");
   const id = itemId(contract.id, kind);
   const payer = contract.payments[kind]?.payer;
@@ -134,7 +134,7 @@ function claimPayment(contract: Contract, kind: ItemKind, runId: string, payer?:
     cents: termCents(contract, kind),
     attempt: previous ? previous.attempt + (previous.orderId ? 1 : 0) : 1,
     state: "awaiting_approval",
-    payee: orderPayee(contract.confirmed!.payeeEmail),
+    payee: orderPayee(termPayee(contract, kind)),
     ...(payer ? { payer } : {}),
   };
   activePayments().add(itemId(contract.id, kind));
@@ -481,7 +481,7 @@ export async function viewTimeline(planId: string, today = utcToday()): Promise<
   const byId = new Map(listContracts(planId).map((c) => [c.id, c]));
   const items = view.items.map((item) => {
     const contract = byId.get(item.contractId);
-    return { ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(contract?.confirmed?.payeeEmail ?? "", contract?.payeeGivenBy === "vendor"), ask: askState(contract, item), contributor: contributorOf(contract, item) };
+    return { ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(contract?.confirmed ? termPayee(contract, item.kind) : "", !!contract?.vendorPayees?.[item.kind]), ask: askState(contract, item), contributor: contributorOf(contract, item) };
   });
   const same = (item: TimelineItem | null) => items.find((i) => i.id === item?.id) ?? null;
   return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId), planMix: planMix(listContracts(planId)) };

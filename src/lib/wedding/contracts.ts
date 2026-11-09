@@ -29,6 +29,9 @@ export const listContracts = (planId: string) =>
 
 export const findContract = (id: string) => contracts().get(id);
 
+/** Who a payment pays: the account the vendor gave for it on their reply, else the contract's payee. */
+export const termPayee = (contract: Contract, kind: ItemKind) => contract.vendorPayees?.[kind] ?? contract.confirmed!.payeeEmail;
+
 /** Every couple's contracts. Only for finding a vendor link by its token. */
 export const listContractsAll = () => contracts().list();
 
