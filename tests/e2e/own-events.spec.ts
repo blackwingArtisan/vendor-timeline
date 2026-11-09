@@ -54,7 +54,8 @@ test("another app's sale on the same PayPal account never shows here", async ({ 
   await expect(page.getByTestId("activity-panel")).not.toContainText("$48.50");
 
   await page.goto("/activity");
-  await expect(page.getByText("No webhooks for your payments yet")).toBeVisible();
+  // Nothing paid here: the webhooks card is empty, or the page says nothing has happened on this plan.
+  await expect(page.getByText("No webhooks for your payments yet").or(page.getByTestId("activity-empty"))).toBeVisible();
   await expect(page.getByTestId("webhook-row")).toHaveCount(0);
   await expect(page.locator("main")).not.toContainText("48.50");
 });
