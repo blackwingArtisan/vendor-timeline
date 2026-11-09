@@ -49,7 +49,8 @@ test("a messy contract's unclear terms stay blank and flagged until the couple f
   await expect(page.getByLabel("Balance due")).toHaveValue("");
   await expect(page.getByTestId("flag-balance-due")).toBeVisible();
   // What the contract does say plainly is still read, and its date is worked out in code.
-  await expect(page.getByLabel("Vendor name")).toHaveValue(MESSY_VENUE.vendorName);
+  // The header names the site and the trust that runs it; real Claude may pick either, and both are right.
+  await expect(page.getByLabel("Vendor name")).toHaveValue(live ? /^(Larkspur Point Pavilion|Alder Falls Parks Trust)$/i : MESSY_VENUE.vendorName);
   await expect(page.getByLabel("Deposit due")).toHaveValue(MESSY_VENUE.depositDue);
   await page.screenshot({ path: `screenshots/messy-review-${live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
 
