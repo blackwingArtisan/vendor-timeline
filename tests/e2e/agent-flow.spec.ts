@@ -96,10 +96,20 @@ test("five contracts, one timeline, and the agent puts the overdue florist first
   await expect(first).toContainText("Overdue comes first.");
   // What the agent did, as a chain code writes from the run, ending where it waits.
   await expect(panel.getByTestId("agent-chain-step")).toHaveText(["Read 5 contracts", "3 cash clashes", "Plan with 2 moves", "Florist deposit ready", "Waiting for you"]);
-  // The model's own reply is cut to two sentences; the numbers sit behind "Details".
-  const reply = (await panel.getByTestId("agent-reply").innerText()).trim();
-  console.log(`Agent reply on show: ${reply}`);
-  expect(reply.split(/(?<=[.!?])\s+(?=["'(A-Z0-9$])/).length).toBeLessThanOrEqual(2);
+  // The model's own reply is cut to two sentences; the numbers sit behind "Details". Claude
+  // sometimes calls the tool without a word first: then the panel shows no reply line (it never
+  // invents one) until the run ends, and the run only ends once the approval is answered or runs
+  // out (5 minutes). So read the line now if it's there, never wait for it.
+  const replyLine = panel.getByTestId("agent-reply");
+  if (await replyLine.count()) {
+    const reply = (await replyLine.innerText()).trim();
+    console.log(`Agent reply on show: ${reply}`);
+    expect(reply.split(/(?<=[.!?])\s+(?=["'(A-Z0-9$])/).length).toBeLessThanOrEqual(2);
+  } else {
+    expect(realAi, "the scripted agent always says something before its tool call").toBe(true);
+    await expect(panel.getByTestId("agent-reply-by")).toHaveCount(0);
+    console.log("Agent reply on show: none (Claude called the tool without a word first)");
+  }
   await expect(panel.getByTestId("agent-details")).not.toHaveAttribute("open");
   // The cash plan is code's too, and comes after the warnings, before anything the model wrote.
   const appSaid = panel.locator('[data-testid="agent-message"][data-from="app"]');
