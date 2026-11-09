@@ -48,6 +48,7 @@ export function applyVendorReply(planId: string, contractId: string, kind: ItemK
   if (!ask.verdict?.ok || ask.verdict.date !== due) throw new HttpError(409, "That date isn't the one the vendor's reply allows. Nothing moved.", "conflict");
   const moved = moveDueDate(planId, contractId, kind, due, today);
   const email = ask.reply!.paypalEmail;
-  const payee = email && !payeeProblem(email) ? { payeeEmail: email } : {};
-  return saveContract({ ...moved, confirmed: { ...moved.confirmed!, ...payee }, ...(payee.payeeEmail ? { payeeGivenBy: "vendor" as const } : {}), asks: { ...moved.asks, [kind]: { ...ask, movedTo: due } } });
+  // Only this payment goes to the account the vendor gave: one already waiting for approval keeps its payee.
+  const vendorPayees = email && !payeeProblem(email) ? { ...moved.vendorPayees, [kind]: email } : moved.vendorPayees;
+  return saveContract({ ...moved, ...(vendorPayees ? { vendorPayees } : {}), asks: { ...moved.asks, [kind]: { ...ask, movedTo: due } } });
 }

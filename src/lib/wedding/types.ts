@@ -115,8 +115,11 @@ export interface Contract {
   movedFrom?: Partial<Record<ItemKind, string>>;
   /** Later-date asks the couple shared with the vendor, one per payment. */
   asks?: Partial<Record<ItemKind, VendorAsk>>;
-  /** Set when the payee email is the one the vendor gave on their reply. */
-  payeeGivenBy?: "vendor";
+  /**
+   * The PayPal email a vendor gave on their reply, for that one payment only. The contract's own
+   * payee still pays every other payment, including one already waiting for approval.
+   */
+  vendorPayees?: Partial<Record<ItemKind, string>>;
 }
 
 /** The vendor's answers on the link the couple shared. */
