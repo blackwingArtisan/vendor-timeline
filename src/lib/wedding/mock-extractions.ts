@@ -1,5 +1,5 @@
 /** What a correct read of each sample looks like. Used when AI is in mock mode. */
-import { BAND, CATERER, FLORIST, PHOTOGRAPHER, VENUE, WEDDING_DAY } from "./samples";
+import { BAND, CATERER, FLORIST, MESSY_VENUE, PHOTOGRAPHER, VENUE, WEDDING_DAY } from "./samples";
 import type { Extraction } from "./extraction-schema";
 
 const nothing = { written: null, sentence: null, problem: null };
@@ -78,6 +78,21 @@ const FIXTURES: { marker: string; extraction: Extraction }[] = [
       deposit_due: { timing: "fixed_date", date: BAND.depositDue, days: null, sentence: "A deposit of $800.00 is due by March 1, 2027, or this date may be released.", problem: null },
       balance: { ...nothing, sentence: "The balance of the guarantee is due before the band loads in." },
       balance_due: { timing: "unclear", date: null, days: null, sentence: "The balance of the guarantee is due before the band loads in.", problem: "\"Before the band loads in\" doesn't give a day." },
+    },
+  },
+  {
+    marker: MESSY_VENUE.vendorName.toUpperCase(),
+    extraction: {
+      vendor_name: { value: MESSY_VENUE.vendorName, sentence: "LARKSPUR POINT PAVILION -- ceremony site rental", problem: null },
+      vendor_role: "venue",
+      payee_email: { value: null, sentence: "5. Payment. Pay the Trust's events office; they will send payment details.", problem: "It says the Trust will send payment details later." },
+      event_date: { value: WEDDING_DAY, sentence: "Ceremony: Sat. June 12 2027, 3:30-5:00 pm", problem: null },
+      signing_date: { value: "2026-11-02", sentence: "Agreement date: November 2, 2026", problem: null },
+      total: { written: null, sentence: "2. Fee. The site fee for the ceremony is $2,800, which includes chair setup.", problem: "The contract gives the site fee two ways: $2,400 at the top and $2,800 in clause 2." },
+      deposit: { written: "30%", sentence: "3. Deposit. To hold the date, a deposit of 30% of the site fee is due within 14 days of this agreement.", problem: null },
+      deposit_due: { timing: "days_after_signing", date: null, days: 14, sentence: "3. Deposit. To hold the date, a deposit of 30% of the site fee is due within 14 days of this agreement.", problem: null },
+      balance: { ...nothing, sentence: "4. Balance. The balance is due before load-in on the day." },
+      balance_due: { timing: "unclear", date: null, days: null, sentence: "4. Balance. The balance is due before load-in on the day.", problem: "\"Before load-in\" is a moment, not a day." },
     },
   },
 ];
