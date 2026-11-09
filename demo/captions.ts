@@ -21,7 +21,7 @@ export const coveredCaptions: string[] = [];
  * cover what it describes: `over`, or whatever is highlighted or marked on screen. Either way, a
  * caption that still covers what it describes is recorded in coveredCaptions. Returns where it went.
  */
-export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean; over?: Locator; position?: "top" | "bottom"; side?: "left" } = {}): Promise<{ place: "top" | "bottom"; covers: boolean }> {
+export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean; over?: Locator; position?: "top" | "bottom"; side?: "left" | "right" } = {}): Promise<{ place: "top" | "bottom"; covers: boolean }> {
   const ms = opts.ms ?? Math.min(6000, 1400 + text.length * 45);
   const over = opts.over ? await opts.over.boundingBox() : null;
   const position = opts.position ?? null;
@@ -33,17 +33,25 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
         el = document.createElement("div");
         el.id = "__demo_caption";
         Object.assign(el.style, {
-          position: "fixed", left: "50%", bottom: "36px", transform: "translateX(-50%) translateY(10px)", zIndex: "2147483647",
-          maxWidth: "min(1000px, calc(100vw - 48px))", padding: "16px 26px", borderRadius: "18px",
+          position: "fixed", left: "50%", bottom: "36px", transform: "translateX(-50%)", zIndex: "2147483647",
+          // Its own width, up to the max: a box at left 50% would otherwise wrap at half the frame.
+          width: "max-content", maxWidth: "min(1000px, calc(100vw - 48px))", padding: "16px 26px", borderRadius: "18px",
           background: "rgba(9,9,11,0.9)", color: "#fff", font: "600 22px/1.35 ui-sans-serif, system-ui, -apple-system, sans-serif",
-          textAlign: "center", boxShadow: "0 20px 50px rgba(0,0,0,.35)", opacity: "0", transition: "opacity .3s, transform .3s", pointerEvents: "none",
+          textAlign: "center", boxShadow: "0 20px 50px rgba(0,0,0,.35)", opacity: "0", transition: "none", pointerEvents: "none",
         });
         document.body.appendChild(el);
       }
       el.textContent = text;
       el.style.display = text ? "block" : "none";
-      // Beside something on the right half: the caption keeps to the left half.
-      Object.assign(el.style, side === "left" ? { left: "24px", maxWidth: "calc(50vw - 36px)", textAlign: "left", transform: "translateY(10px)" } : { left: "50%", maxWidth: "min(1000px, calc(100vw - 48px))", textAlign: "center", transform: "translateX(-50%) translateY(10px)" });
+      // Beside something on one half (a phone, a chart): the caption keeps to the other half.
+      Object.assign(
+        el.style,
+        side === "left"
+          ? { left: "24px", right: "auto", maxWidth: "calc(50vw - 36px)", textAlign: "left", transform: "translateY(0)" }
+          : side === "right"
+            ? { left: "auto", right: "24px", maxWidth: "calc(50vw - 36px)", textAlign: "left", transform: "translateY(0)" }
+            : { left: "50%", right: "auto", maxWidth: "min(1000px, calc(100vw - 48px))", textAlign: "center", transform: "translateX(-50%) translateY(0)" },
+      );
       const targets = [...document.querySelectorAll("[data-demo-highlight], [data-demo-mark]")].map((t) => t.getBoundingClientRect());
       if (over) targets.push(new DOMRect(over.x, over.y, over.width, over.height));
       const hits = (at: DOMRect) => targets.some((r) => r.width && r.height && r.left < at.right && at.left < r.right && r.top < at.bottom + 12 && at.top - 12 < r.bottom);
@@ -55,10 +63,8 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
       el.dataset.place = goTop ? "top" : "bottom";
       // Still on top of the thing it describes where it ended up? The scene should scroll it clear.
       const still = !!text && hits(el.getBoundingClientRect());
-      requestAnimationFrame(() => {
-        el!.style.opacity = "1";
-        el!.style.transform = side === "left" ? "translateY(0)" : "translateX(-50%) translateY(0)";
-      });
+      // In and out in one frame: a caption never fades over the next scene.
+      el.style.opacity = "1";
       clearTimeout((window as unknown as { __demoCaptionTimer?: number }).__demoCaptionTimer);
       (window as unknown as { __demoCaptionTimer?: number }).__demoCaptionTimer = window.setTimeout(() => {
         el!.style.opacity = "0";
@@ -158,13 +164,14 @@ export async function clearOverlays(page: Page) {
     if (el) el.style.opacity = "0";
     for (const h of document.querySelectorAll("[data-demo-highlight]")) h.remove();
   });
-  await sleep(350);
+  await sleep(100);
 }
 
 /** Full-screen title card (intro/outro). */
-export async function titleCard(page: Page, title: string, subtitle = "", ms = 3200, opts: { stay?: boolean } = {}) {
+export async function titleCard(page: Page, title: string, subtitle = "", ms = 3200, opts: { stay?: boolean; fade?: boolean } = {}) {
+  const fade = !!opts.fade;
   await page.evaluate(
-    ({ title, subtitle }) => {
+    ({ title, subtitle, fade }) => {
       // Nothing from the scene before stays on top of the card.
       const caption = document.getElementById("__demo_caption");
       if (caption) caption.style.opacity = "0";
@@ -175,24 +182,19 @@ export async function titleCard(page: Page, title: string, subtitle = "", ms = 3
       Object.assign(el.style, {
         position: "fixed", inset: "0", zIndex: "2147483647", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
         textAlign: "center", padding: "48px", color: "#fff", background: "radial-gradient(ellipse at top, var(--brand, #0070e0), #0b1020 70%)",
-        opacity: "0", transition: "opacity .4s",
+        // Only the opening card fades in (the edit lines its cuts up on it, and it's cut); the rest are instant.
+        opacity: fade ? "0" : "1", transition: fade ? "opacity .4s" : "none",
       });
       document.body.appendChild(el);
-      requestAnimationFrame(() => (el.style.opacity = "1"));
+      if (fade) requestAnimationFrame(() => (el.style.opacity = "1"));
     },
-    { title, subtitle },
+    { title, subtitle, fade },
   );
   await sleep(ms);
   // The closing card stays up; the edit ends the video on it.
   if (opts.stay) return;
-  await page.evaluate(() => {
-    const el = document.getElementById("__demo_title");
-    if (el) {
-      el.style.opacity = "0";
-      setTimeout(() => el.remove(), 400);
-    }
-  });
-  await sleep(450);
+  await page.evaluate(() => document.getElementById("__demo_title")?.remove());
+  await sleep(100);
 }
 
 /** Pulsing outline around an element so viewers know where to look. */
@@ -205,14 +207,11 @@ export async function highlight(page: Page, target: Locator, ms = 1600) {
       Object.assign(el.style, {
         position: "fixed", left: `${box.x - 6}px`, top: `${box.y - 6}px`, width: `${box.width + 12}px`, height: `${box.height + 12}px`,
         border: "3px solid #f59e0b", borderRadius: "14px", zIndex: "2147483646", pointerEvents: "none",
-        boxShadow: "0 0 0 6px rgba(245,158,11,.25)", transition: "opacity .3s",
+        boxShadow: "0 0 0 6px rgba(245,158,11,.25)",
       });
       el.dataset.demoHighlight = "1";
       document.body.appendChild(el);
-      setTimeout(() => {
-        el.style.opacity = "0";
-        setTimeout(() => el.remove(), 300);
-      }, ms);
+      setTimeout(() => el.remove(), ms);
     },
     { box, ms },
   );
@@ -223,7 +222,7 @@ export async function highlight(page: Page, target: Locator, ms = 1600) {
 export async function mark(target: Locator, ms = 6000) {
   await target.evaluate((el: HTMLElement, ms) => {
     const before = { background: el.style.background, boxShadow: el.style.boxShadow, transition: el.style.transition, color: el.style.color };
-    Object.assign(el.style, { transition: "background .3s, box-shadow .3s", background: "#fef08a", boxShadow: "0 0 0 4px #fef08a", color: "#18181b" });
+    Object.assign(el.style, { transition: "none", background: "#fef08a", boxShadow: "0 0 0 4px #fef08a", color: "#18181b" });
     el.dataset.demoMark = "1";
     setTimeout(() => {
       Object.assign(el.style, before);
