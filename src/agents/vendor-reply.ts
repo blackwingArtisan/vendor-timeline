@@ -10,7 +10,7 @@ import { defineAgent, type AgentInput, type ScriptStep } from "@/lib/agent/defin
 import { defineTool } from "@/lib/agent/tool";
 import { timeline } from "@/lib/events/bus";
 import { formatCents } from "@/lib/wedding/cents";
-import { requirePlanContract } from "@/lib/wedding/contracts";
+import { requirePlanContract, termPayee } from "@/lib/wedding/contracts";
 import { formatDay } from "@/lib/wedding/dates";
 import { applyVendorReply, mockVerdict, readAskReply } from "@/lib/wedding/vendor-move";
 import { MOVE_TOOL, READ_REPLY_TOOL } from "@/lib/wedding/tool-names";
@@ -97,7 +97,7 @@ export function vendorReplyAgent(planId: string, today: string) {
     },
     execute: async (i) => {
       const contract = applyVendorReply(planId, i.contract_id, i.kind as ItemKind, i.due, today);
-      return { moved_to: i.due, payee: contract.confirmed!.payeeEmail };
+      return { moved_to: i.due, payee: termPayee(contract, i.kind as ItemKind) };
     },
   });
 
