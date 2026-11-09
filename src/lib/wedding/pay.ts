@@ -107,6 +107,8 @@ export function vendorOrder(contract: Contract, kind: ItemKind, ask: { cents: nu
   const payee = orderPayee(termPayee(contract, kind));
   if (ask.payee.trim().toLowerCase() !== payee.toLowerCase()) throw new HttpError(422, `${ask.payee} isn't who this contract pays. Nothing was sent.`, "rule");
   const id = itemId(contract.id, kind);
+  const payer = contract.payments[kind]?.payer;
+  const back = payer ? `/contribute/${payer.token}` : "/timeline";
   return {
     intent: "CAPTURE",
     purchase_units: [{ reference_id: id, custom_id: id, description: `Wedding ${kind} for ${terms.vendorName}`.slice(0, 127), amount: { currency_code: "USD", value: centsToDollars(ask.cents) }, payee: { email_address: payee } }],
@@ -117,15 +119,16 @@ export function vendorOrder(contract: Contract, kind: ItemKind, ask: { cents: nu
           landing_page: "GUEST_CHECKOUT",
           user_action: "PAY_NOW",
           shipping_preference: "NO_SHIPPING",
-          return_url: `${origin}/timeline?checkout=${encodeURIComponent(id)}`,
-          cancel_url: `${origin}/timeline?cancelled=${encodeURIComponent(id)}`,
+          // A contributor pays from their own link, so PayPal sends them back there.
+          return_url: `${origin}${back}?checkout=${encodeURIComponent(id)}`,
+          cancel_url: `${origin}${back}?cancelled=${encodeURIComponent(id)}`,
         },
       },
     },
   };
 }
 
-function claimPayment(contract: Contract, kind: ItemKind, runId: string): Contract {
+function claimPayment(contract: Contract, kind: ItemKind, runId: string, payer?: Payment["payer"]): Contract {
   const previous = contract.payments[kind];
   if (previous?.runId === runId && previous.state === "awaiting_approval") return contract;
   const payment: Payment = {
@@ -134,6 +137,7 @@ function claimPayment(contract: Contract, kind: ItemKind, runId: string): Contra
     attempt: previous ? previous.attempt + (previous.orderId ? 1 : 0) : 1,
     state: "awaiting_approval",
     payee: orderPayee(termPayee(contract, kind)),
+    ...(payer ? { payer } : {}),
   };
   activePayments().add(itemId(contract.id, kind));
   return saveContract({ ...contract, payments: { ...contract.payments, [kind]: payment } });
@@ -209,10 +213,14 @@ async function send(planId: string, contractId: string, kind: ItemKind, runId: s
   await runTool(vendorOrderTool(planId), { contract_id: contractId, kind, amount: centsToDollars(requireContract(contractId).payments[kind]!.cents) }, ctx);
 }
 
-/** The "Pay" button. Sends one payment to the approval gate. Resolves when the Guard has finished with it. */
-export function requestPayment(planId: string, contractId: string, kind: ItemKind, channel: string): { contract: Contract; finished: Promise<void> } {
+/**
+ * The "Pay" button. Sends one payment to the approval gate. Resolves when the Guard has finished with
+ * it. With a payer, someone the couple assigned it to pays it in their own checkout; the approval, the
+ * amount and the payee are the same.
+ */
+export function requestPayment(planId: string, contractId: string, kind: ItemKind, channel: string, payer?: Payment["payer"]): { contract: Contract; finished: Promise<void> } {
   const runId = `pay_${randomUUID().slice(0, 12)}`;
-  const saved = claimPayment(requirePayable(planId, contractId, kind), kind, runId);
+  const saved = claimPayment(requirePayable(planId, contractId, kind), kind, runId, payer);
   const finished = withContext({ channel, runId, actor: "couple" }, () => send(planId, contractId, kind, runId, channel)).catch((e) => {
     settlePayment(contractId, kind, runId, { status: "failed", error: e });
   });
@@ -395,7 +403,7 @@ export async function captureWebhook(event: WebhookEventEnvelope<string, Capture
  * for the order, and hand back PayPal's checkout address so the browser can go straight there.
  * With mock PayPal there is no real page, so only the order id comes back.
  */
-export async function checkoutAfterApproval(approval: Approval, waitMs = 30_000): Promise<{ orderId?: string; checkoutUrl?: string; error?: string }> {
+export async function checkoutAfterApproval(approval: Approval, waitMs = 30_000): Promise<{ orderId?: string; checkoutUrl?: string; payer?: string; error?: string }> {
   if (approval.tool !== VENDOR_ORDER_TOOL || approval.state !== "approved") return {};
   const { contract_id: contractId, kind } = (approval.input ?? {}) as { contract_id?: string; kind?: ItemKind };
   if (!contractId || (kind !== "deposit" && kind !== "balance")) return {};
@@ -403,6 +411,8 @@ export async function checkoutAfterApproval(approval: Approval, waitMs = 30_000)
     const payment = findContract(contractId)?.payments[kind];
     if (!payment) return {};
     if (payment.state === "failed") return { error: payment.error };
+    // Someone else pays this one, from their own link: the couple's browser stays here.
+    if (payment.orderId && payment.state !== "awaiting_approval" && payment.payer) return { orderId: payment.orderId, payer: payment.payer.name };
     if (payment.orderId && payment.state !== "awaiting_approval") return { orderId: payment.orderId, checkoutUrl: getEnv().paypalMode === "sandbox" && payment.state === "awaiting_checkout" ? payment.checkoutUrl : undefined };
   }
   return {};
@@ -445,11 +455,17 @@ function askState(contract: Contract | undefined, item: TimelineItem): AskState 
   };
 }
 
+function contributorOf(contract: Contract | undefined, item: TimelineItem): TimelineItem["contributor"] {
+  const c = contract?.contributors?.[item.kind];
+  return c ? { name: c.name, token: c.token } : null;
+}
+
 function pendingApproval(item: TimelineItem): PendingApproval | null {
   const runId = item.payment?.runId;
   const pending = runId ? getApprovals().list({ runId, state: "pending" })[0] : undefined;
   if (!pending) return null;
-  return { id: pending.id, summary: `Pay ${item.vendorName} ${formatCents(item.cents)} for the ${item.kind}`, reason: pending.reason, amountValue: pending.amount?.value };
+  const from = item.payment?.payer ? `, from ${item.payment.payer.name}'s PayPal` : "";
+  return { id: pending.id, summary: `Pay ${item.vendorName} ${formatCents(item.cents)} for the ${item.kind}${from}`, reason: pending.reason, amountValue: pending.amount?.value };
 }
 
 /** The server restarted while the couple were deciding: no money moved, so go back a step. */
@@ -471,7 +487,7 @@ export async function viewTimeline(planId: string, today = utcToday()): Promise<
   const byId = new Map(listContracts(planId).map((c) => [c.id, c]));
   const items = view.items.map((item) => {
     const contract = byId.get(item.contractId);
-    return { ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(contract?.confirmed ? termPayee(contract, item.kind) : "", !!contract?.vendorPayees?.[item.kind]), ask: askState(contract, item) };
+    return { ...item, approval: pendingApproval(item), sandboxPayee: sandboxPayee(contract?.confirmed ? termPayee(contract, item.kind) : "", !!contract?.vendorPayees?.[item.kind]), ask: askState(contract, item), contributor: contributorOf(contract, item) };
   });
   const same = (item: TimelineItem | null) => items.find((i) => i.id === item?.id) ?? null;
   return { ...view, items, nextDue: same(view.nextDue), payFirst: same(view.payFirst), overdue: items.filter((i) => view.overdue.some((o) => o.id === i.id)), sandboxStandIn: getEnv().paypalMode === "sandbox", samplePlan: isSamplePlan(planId), planMix: planMix(listContracts(planId)) };

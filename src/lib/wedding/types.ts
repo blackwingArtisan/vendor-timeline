@@ -76,6 +76,15 @@ export interface Payment {
   webhookLate?: boolean;
   /** Set only when paidBy is "outside": how and when the couple say they paid. */
   outside?: PaidOutside;
+  /** Someone the couple assigned this payment to, paying it in their own PayPal checkout. */
+  payer?: { name: string; token: string };
+}
+
+/** Someone the couple asked to pay one payment, such as a parent, found by their link's token. */
+export interface Contributor {
+  token: string;
+  name: string;
+  createdAt: string;
 }
 
 export const OUTSIDE_METHODS = ["cash", "cheque"] as const;
@@ -125,6 +134,8 @@ export interface Contract {
    * payee still pays every other payment, including one already waiting for approval.
    */
   vendorPayees?: Partial<Record<ItemKind, string>>;
+  /** Payments the couple assigned to someone else to pay, one per payment. */
+  contributors?: Partial<Record<ItemKind, Contributor>>;
 }
 
 /** The vendor's answers on the link the couple shared. */
@@ -215,6 +226,8 @@ export interface TimelineItem {
   dueSentence?: string;
   /** The later-date ask shared with the vendor for this payment, if any. */
   ask?: AskState | null;
+  /** Who the couple assigned this payment to, if anyone. */
+  contributor?: { name: string; token: string } | null;
 }
 
 /** One payment as the cash check sees it. */

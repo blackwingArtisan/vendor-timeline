@@ -2,7 +2,7 @@
 
 import { retryIfDropped } from "@/lib/gateway-retry";
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CalendarClock, CalendarDays, CalendarPlus, CircleCheck, FileText, ReceiptText, Send, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarDays, CalendarPlus, CircleCheck, FileText, HandCoins, ReceiptText, Send, UserPlus, Wallet } from "lucide-react";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
@@ -14,6 +14,7 @@ import { dayProblem, moveDayRange } from "@/lib/wedding/limits";
 import { payLabel } from "@/lib/wedding/timeline";
 import type { CashMove, ItemStatus, TimelineItem, TimelineView } from "@/lib/wedding/types";
 import { AgentPanel } from "./agent-panel";
+import { AssignPayer } from "./assign-payer";
 import { CashCard } from "./cash-card";
 import { CashPlanMoves } from "./cash-plan";
 import { PageLoading } from "./page-loading";
@@ -114,6 +115,8 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
   const [moving, setMoving] = useState(false);
   const [receipt, setReceipt] = useState(false);
   const [outside, setOutside] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const payer = item.payment?.payer?.name;
   const status = item.payment?.paidBy === "outside" ? PAID_OUTSIDE : STATUS[item.status];
   const isNext = view.nextDue?.id === item.id;
   // The most urgent payment is tagged, overdue or not. One tag at most, beside its status.
@@ -124,7 +127,7 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
   const ownedByAgent = !!item.payment && panelRuns.includes(item.payment.runId);
   const approval = ownedByAgent ? null : item.approval;
   const when = whenLabel(item);
-  const cols = axis ? "xl:grid-cols-[8.75rem_minmax(0,12rem)_5.75rem_minmax(0,1fr)_9.5rem_11rem]" : "xl:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_9.5rem_11rem]";
+  const cols = axis ? "xl:grid-cols-[8.75rem_minmax(0,12rem)_5.75rem_minmax(0,1fr)_9.5rem_13rem]" : "xl:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_9.5rem_13rem]";
   return (
     <li className={`border-b border-zinc-100 px-4 py-1 last:border-b-0 ${isFirst ? "bg-brand-50/50" : item.status === "overdue" ? "bg-red-50/40" : ""}`} data-testid="timeline-item" data-role={item.vendorRole} data-kind={item.kind} data-status={item.status}>
       <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 md:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_auto] ${cols}`}>
@@ -145,6 +148,11 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
             </span>
           </p>
           {item.movedFrom ? <p className="text-xs text-zinc-500" data-testid="item-moved">Contract says {formatDay(item.movedFrom)}</p> : null}
+          {item.status === "paid" && payer ? (
+            <p className="flex items-center gap-1 text-xs font-medium text-emerald-800" data-testid="item-payer"><HandCoins className="size-3" aria-hidden />Paid by {payer}&apos;s PayPal</p>
+          ) : item.contributor && item.payment?.paidBy !== "outside" && item.status !== "paid" ? (
+            <p className="text-xs text-zinc-500" data-testid="item-assignee">{item.contributor.name} pays this</p>
+          ) : null}
         </div>
         <p className="text-right font-mono text-sm font-semibold tabular-nums text-zinc-900" data-testid="item-amount">{formatCents(item.cents)}</p>
         {axis ? <div className="hidden xl:block"><VendorBar item={item} axis={axis} today={view.today} /></div> : null}
@@ -158,6 +166,9 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
             <>
               <Button size="sm" variant="ghost" className="px-2" icon={paidOutsideIcon} onClick={() => setOutside((o) => !o)} aria-label={`Mark the ${item.vendorName} ${item.kind} paid outside PayPal`} title="Paid outside PayPal (cash or cheque)" aria-expanded={outside} data-testid="paid-outside-open">
                 <span className="sr-only">Paid outside PayPal</span>
+              </Button>
+              <Button size="sm" variant="ghost" className="px-2" icon={<UserPlus className="size-3.5" />} onClick={() => setAssigning((a) => !a)} aria-label={`Assign the ${item.vendorName} ${item.kind} to someone else to pay`} title="Assign to a parent or someone else to pay" aria-expanded={assigning} data-testid="assign-open">
+                <span className="sr-only">Assign to someone else</span>
               </Button>
               <Button size="sm" variant="ghost" className="px-2" icon={<CalendarDays className="size-3.5" />} onClick={() => setMoving((m) => !m)} aria-label={`Change the date of the ${item.vendorName} ${item.kind}`} title="Change date" data-testid="move-date">
                 <span className="sr-only">Change date</span>
@@ -175,13 +186,19 @@ function Row({ item, view, axis, onPay, onMove, busy, onDecided, panelRuns }: { 
         </div>
       </div>
       {canPay && moving ? <MoveDateForm key={item.due} item={item} onMove={onMove} onClose={() => setMoving(false)} /> : null}
+      {(canPay || item.status === "awaiting_approval" || item.status === "awaiting_checkout") && assigning ? <AssignPayer item={item} onSaved={onDecided} onClose={() => setAssigning(false)} /> : null}
       {canPay && outside ? <PaidOutsideForm item={item} onSaved={onDecided} onClose={() => setOutside(false)} /> : null}
       <PaidOutsideNote item={item} />
       {item.status === "awaiting_approval" && approval ? (
         <PayApproval className="mt-2" item={item} approval={approval} cash={view.cash} sandbox={view.sandboxStandIn} onDecided={onDecided} />
       ) : null}
       {item.status === "awaiting_approval" && !approval ? <p className="mt-1 text-xs text-zinc-500">{item.approval ? "Waiting for your approval in the agent panel." : "Working with PayPal."}</p> : null}
-      {item.status === "awaiting_checkout" && !ownedByAgent ? <PayPalCheckout className="mt-2" item={item} sandbox={view.sandboxStandIn} onPaid={onDecided} /> : null}
+      {item.status === "awaiting_checkout" && !ownedByAgent && payer ? (
+        <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50/60 px-3 py-2 text-sm text-zinc-700" data-testid="contributor-checkout">
+          Approved. {payer} pays {formatCents(item.cents)} to {item.vendorName} in their own PayPal checkout, from their link.
+        </p>
+      ) : null}
+      {item.status === "awaiting_checkout" && !ownedByAgent && !payer ? <PayPalCheckout className="mt-2" item={item} sandbox={view.sandboxStandIn} onPaid={onDecided} /> : null}
       {item.status === "awaiting_checkout" && ownedByAgent ? <p className="mt-1 text-xs text-zinc-500">Pay it from the agent panel above.</p> : null}
       {item.payment?.state === "failed" ? (
         <p className="mt-2 flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="item-error">
@@ -262,6 +279,11 @@ export function TimelineScreen() {
 
   const load = useCallback(() => kitFetch<TimelineView>(`/api/timeline?today=${localToday()}`), [kitFetch]);
   const refresh = useCallback(() => load().then(setView), [load]);
+  // Someone the couple assigned a payment to asked to pay it: show the approval at once.
+  const askedToPay = steps.filter((s) => / asked to pay the /.test(s.title ?? "")).length;
+  useEffect(() => {
+    if (askedToPay) void refresh().catch(() => undefined);
+  }, [askedToPay, refresh]);
   // A capture webhook for this couple (a late one included) changes what confirmed a payment.
   const captureWebhooks = steps.filter((s) => s.title === "PAYMENT.CAPTURE.COMPLETED").length;
   useEffect(() => {
@@ -278,7 +300,8 @@ export function TimelineScreen() {
   }, [load]);
 
   // A payment waits on a person, then on PayPal, so follow it until it stops.
-  const moving = agentRunning || capturing || view?.items.some((i) => i.status === "awaiting_approval" || i.status === "sending");
+  // A contributor pays from their own link, so follow their checkout too.
+  const moving = agentRunning || capturing || view?.items.some((i) => i.status === "awaiting_approval" || i.status === "sending" || (i.status === "awaiting_checkout" && !!i.payment?.payer));
   useEffect(() => {
     if (!moving) return;
     const timer = setInterval(() => void refresh().catch(() => undefined), 1200);
@@ -360,7 +383,7 @@ export function TimelineScreen() {
   const axis = SPONSOR_UI || !items.length ? null : axisFor(view);
   // An approval the agent is waiting on leads the page on a phone, above the banner and the stats.
   const approvalUp = !!agentRun && items.some((i) => i.approval && i.payment?.runId === agentRun);
-  const cols = axis ? "xl:grid-cols-[8.75rem_minmax(0,12rem)_5.75rem_minmax(0,1fr)_9.5rem_11rem]" : "xl:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_9.5rem_11rem]";
+  const cols = axis ? "xl:grid-cols-[8.75rem_minmax(0,12rem)_5.75rem_minmax(0,1fr)_9.5rem_13rem]" : "xl:grid-cols-[8.75rem_minmax(0,1fr)_5.75rem_9.5rem_13rem]";
 
   return (
     <>
