@@ -28,12 +28,10 @@ export async function readContract(text: string): Promise<{ proposed: ProposedTe
     feature: "read contract",
     mock: () => mockExtraction(text),
   });
-  const label = model ? modelLabel(model) : undefined;
-  const by = mocked ? "The app's own reader, without AI" : `${label ?? "Claude"}, on this visit`;
-  return { proposed: toProposedTerms(data, text), read: { mocked, model: label, by, readAt: new Date().toISOString(), costUsd } };
+  return { proposed: toProposedTerms(data, text), read: { mocked, model: model ? modelLabel(model) : undefined, costUsd } };
 }
 
 /** Every term blank and flagged, for the couple to fill in from their own copy. */
 export function blankContract(text: string): { proposed: ProposedTerms; read: ContractRead } {
-  return { proposed: toProposedTerms(UNREAD, text), read: { mocked: false, skipped: true, by: "Typed in by the couple, not read by AI", costUsd: 0 } };
+  return { proposed: toProposedTerms(UNREAD, text), read: { mocked: false, skipped: true, costUsd: 0 } };
 }

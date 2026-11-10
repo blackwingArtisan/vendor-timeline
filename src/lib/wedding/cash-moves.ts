@@ -106,8 +106,11 @@ function stillOverSentence(plan: CashPlan): string | null {
   return `Still over: ${list}.${big}`;
 }
 
-/** The best moves at this budget, and what is left over with them made. Null when nothing clashes. */
-function bestMoves(items: TimelineItem[], today: string, monthlyBudgetCents: number): { best: Choice[]; after: CashPlan } | null {
+/**
+ * The cash plan for this timeline: the fewest, smallest moves the contracts allow that leave the
+ * least over budget. Null when nothing clashes.
+ */
+export function cashFix(items: TimelineItem[], today: string, monthlyBudgetCents: number): CashFix | null {
   const now = cashPlan(items, today, monthlyBudgetCents);
   if (!now.warnings.length) return null;
   const clashing = new Set(now.warnings.flatMap((w) => w.payments.map((p) => p.id)));
@@ -136,60 +139,17 @@ function bestMoves(items: TimelineItem[], today: string, monthlyBudgetCents: num
     for (const option of weighed[index].options) walk(index + 1, [...chosen, { item: weighed[index].item, option }]);
   };
   walk(0, []);
-  return { best, after: cashPlan(applied(items, best), today, monthlyBudgetCents) };
-}
 
-/** Budgets are weighed in whole $100 steps. */
-const BUDGET_STEP_CENTS = 10_000;
-const stepUp = (cents: number) => Math.ceil(cents / BUDGET_STEP_CENTS) * BUDGET_STEP_CENTS;
-
-/**
- * The smallest monthly budget at which code's own plan fits every month. More budget never makes a
- * plan fit less, so this halves the range between the current budget (doesn't fit) and the largest
- * month or week as it stands (fits with no moves at all).
- */
-function smallestBudgetThatFits(items: TimelineItem[], today: string, monthlyBudgetCents: number): number {
-  const asIs = cashPlan(items, today, monthlyBudgetCents);
-  let hi = stepUp(Math.max(...asIs.months.map((m) => m.totalCents), ...asIs.warnings.map((w) => w.totalCents), monthlyBudgetCents + BUDGET_STEP_CENTS));
-  let lo = monthlyBudgetCents;
-  while (hi - lo > BUDGET_STEP_CENTS) {
-    const mid = stepUp((lo + hi) / 2);
-    if (mid >= hi) break;
-    const fix = bestMoves(items, today, mid);
-    if (!fix || !fix.after.warnings.length) hi = mid;
-    else lo = mid;
-  }
-  return hi;
-}
-
-/**
- * The cash plan for this timeline: the fewest, smallest moves the contracts allow that leave the
- * least over budget. Null when nothing clashes. When no plan fits, it also names the smallest
- * monthly budget that would, with the moves that would go with it.
- */
-export function cashFix(items: TimelineItem[], today: string, monthlyBudgetCents: number): CashFix | null {
-  const found = bestMoves(items, today, monthlyBudgetCents);
-  if (!found) return null;
-  const { best, after } = found;
   const moves = best.map(describe).sort((a, b) => a.due.localeCompare(b.due) || a.vendorName.localeCompare(b.vendorName));
+  const after = cashPlan(applied(items, best), today, monthlyBudgetCents);
   const budget = formatCents(monthlyBudgetCents);
   const fits = after.warnings.length === 0;
   let summary: string;
   if (!moves.length) summary = `No move your contracts allow brings this within your ${budget} monthly budget.`;
   else if (fits) summary = `${count(moves.length)} would fit every month in your ${budget} monthly budget: ${joined(moves.map(phrase))}. Approve each one in the cash plan.`;
   else summary = `No plan fits every month in your ${budget} monthly budget, but ${count(moves.length).toLowerCase()} your contracts allow bring it closer: ${joined(moves.map(phrase))}. Approve each one in the cash plan.`;
-  return { moves, fits, summary, stillOver: stillOverSentence(after), budgetToFit: fits ? null : budgetToFit(items, today, monthlyBudgetCents) };
-}
-
-/** "A $10,500 monthly budget is the smallest that fits every month, with ...": code's plan at that budget. */
-function budgetToFit(items: TimelineItem[], today: string, monthlyBudgetCents: number): CashFix["budgetToFit"] {
-  const cents = smallestBudgetThatFits(items, today, monthlyBudgetCents);
-  if (cents <= monthlyBudgetCents) return null;
-  const at = bestMoves(items, today, cents);
-  const moves = (at?.best ?? []).map(describe).sort((a, b) => a.due.localeCompare(b.due) || a.vendorName.localeCompare(b.vendorName));
-  const with_ = moves.length ? `, once you ${joined(moves.map(phrase))}` : "";
-  return { cents, why: `${formatCents(cents)} a month is the smallest budget that fits every month${with_}. Code works this out from the same rules as the plan.` };
+  return { moves, fits, summary, stillOver: stillOverSentence(after) };
 }
 
 /** The agent panel's "Cash plan" sentence: the plan, then what is left over. */
-export const cashPlanSentence = (fix: CashFix) => [fix.summary, fix.stillOver, fix.budgetToFit ? `Or raise the monthly budget: ${fix.budgetToFit.why}` : null].filter(Boolean).join(" ");
+export const cashPlanSentence = (fix: CashFix) => [fix.summary, fix.stillOver].filter(Boolean).join(" ");

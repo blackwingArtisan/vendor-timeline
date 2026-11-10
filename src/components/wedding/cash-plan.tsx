@@ -8,7 +8,7 @@
  * move, amount, date and sentence comes from code (cash-moves.ts).
  */
 import { useState } from "react";
-import { CalendarClock, CircleCheck, PiggyBank, Send, Wallet } from "lucide-react";
+import { CalendarClock, CircleCheck, Send, Wallet } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button } from "@/components/ui";
@@ -56,38 +56,6 @@ function PayEarly({ move, item, cash, sandbox, onStarted, onDone }: { move: Cash
 }
 
 /**
- * When no move the contracts allow is enough (a single payment bigger than the monthly budget),
- * code names the smallest monthly budget its plan fits, and the couple can set it in one tap.
- */
-function BudgetToFit({ budgetToFit, onDone }: { budgetToFit: NonNullable<CashFix["budgetToFit"]>; onDone: () => void }) {
-  const { kitFetch } = useKit();
-  const { toast } = useToast();
-  const [saving, setSaving] = useState(false);
-  async function save() {
-    setSaving(true);
-    try {
-      await kitFetch("/api/timeline/budget", { json: { monthlyBudgetCents: budgetToFit.cents } });
-      onDone();
-    } catch (e) {
-      toast({ title: "Could not change the budget", description: (e as Error).message, variant: "error" });
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="budget-to-fit" data-cents={budgetToFit.cents}>
-      <Button size="sm" variant="secondary" icon={<PiggyBank className="size-3.5" />} loading={saving} disabled={saving} onClick={() => void save()} data-testid="budget-to-fit-set">
-        Set the budget to {formatCents(budgetToFit.cents).replace(/\.00$/, "")} a month
-      </Button>
-      <details className="min-w-0 basis-full">
-        <summary className="cursor-pointer text-sm text-zinc-600 underline underline-offset-2" data-label>Why this amount</summary>
-        <p className="mt-1 text-sm text-zinc-600" data-testid="budget-to-fit-why">{budgetToFit.why}</p>
-      </details>
-    </div>
-  );
-}
-
-/**
  * The plan as it stands, plus any move the couple already started here, so a card stays while its
  * payment goes through approval and checkout even after the plan moves on.
  */
@@ -111,7 +79,6 @@ export function CashPlanMoves({ fix, started, items, cash, sandbox, onStarted, o
           <CircleCheck className="size-4 shrink-0" /> Every month now fits your {formatCents(cash.monthlyBudgetCents)} monthly budget.
         </p>
       )}
-      {fix?.budgetToFit ? <BudgetToFit budgetToFit={fix.budgetToFit} onDone={onDone} /> : null}
       </div>
       {moves.length ? (
         <ul className="mt-3 space-y-3">
