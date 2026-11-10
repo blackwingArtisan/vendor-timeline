@@ -8,7 +8,6 @@ import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, ButtonLink, Card, CardBody, CardFooter, CardHeader, EmptyState, Input, MoneyInput, Select } from "@/components/ui";
-import { AskContract } from "./ask-contract";
 import { PageLoading } from "./page-loading";
 import { amountText, balanceCents, formatCents, percentOfCents } from "@/lib/wedding/cents";
 import { formatDay, localToday } from "@/lib/wedding/dates";
@@ -234,7 +233,6 @@ export function ReviewScreen() {
         </p>
       ) : null}
       {contract.confirmed ? <ConfirmedSummary contract={contract} /> : <ReviewForm contract={contract} />}
-      <AskContract contractId={contract.id} />
       <details className="mt-6 rounded-2xl border border-zinc-200/80 bg-white px-5 py-4">
         <summary className="cursor-pointer text-sm font-medium text-zinc-700">The whole contract</summary>
         <pre className="mt-3 whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-zinc-700">{contract.text}</pre>
