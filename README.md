@@ -133,7 +133,7 @@ Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter th
 - The vendors are fictional, so in sandbox a test business account is the payee in each vendor's place. A real vendor would be paid at the PayPal email on its contract, or the one it gives on the reply link.
 - The optional PayPal remote MCP connector is read-only and untested.
 - A payment date can move, but the budget is one number per couple, and a payment can't yet be split in two. Cash warnings go by the day each payment leaves, not by the couple's paydays.
-- The Bryntum Gantt runs on Bryntum's trial package, which stops drawing in a browser 45 days after that browser first opens it.
+- The Bryntum Gantt isn't public yet, so the hosted copy shows the free bars.
 
 ## License
 
@@ -141,8 +141,8 @@ MIT, see [LICENSE](LICENSE). Third-party notice: [NOTICE](NOTICE).
 
 ## Sponsor Gantt
 
-The timeline can show a [Bryntum Gantt](https://bryntum.com/products/gantt/) instead of the free bars: drag a deposit or balance and the new date saves through the same route as "Change date". It's behind a build-time switch, `NEXT_PUBLIC_SPONSOR_UI=1`, which is on for the hosted copy.
+The timeline can show a [Bryntum Gantt](https://bryntum.com/products/gantt/) instead of the free bars: drag a deposit or balance and the new date saves through the same route as "Change date". It's behind a build-time switch, `NEXT_PUBLIC_SPONSOR_UI=1`, and it's off on the hosted copy until the sponsor allows a public demo.
 
-With the switch off, `next.config.ts` points the import at a stub, and `npm run check` greps the browser bundle to prove no sponsor code is in it. Bryntum is an npm dependency only, on its trial package, so it carries the trial's limits. No sponsor code is in this repo.
+With the switch off, `next.config.ts` points the import at a stub, and `npm run check` greps the browser bundle to prove no sponsor code is in it. Bryntum is an npm dependency only, on its trial package, so the faint trial watermark is expected. No sponsor code is in this repo.
 
 Portions of this software are copyright 2015-2026 by Bryntum AB.

@@ -36,5 +36,3 @@ services:
         value: "6"
       - key: AI_RATE_LIMIT_PER_DAY
         value: "60"
-      - key: NEXT_PUBLIC_SPONSOR_UI
-        value: "1" # build-time: shows the Bryntum Gantt (trial package) on the timeline
