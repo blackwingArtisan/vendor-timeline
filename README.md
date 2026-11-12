@@ -143,6 +143,6 @@ MIT, see [LICENSE](LICENSE). Third-party notice: [NOTICE](NOTICE).
 
 The timeline can show a [Bryntum Gantt](https://bryntum.com/products/gantt/) instead of the free bars: drag a deposit or balance and the new date saves through the same route as "Change date". It's behind a build-time switch, `NEXT_PUBLIC_SPONSOR_UI=1`, and it's off on the hosted copy until the sponsor allows a public demo.
 
-With the switch off, `next.config.ts` points the import at a stub, and `npm run check` greps the browser bundle to prove no sponsor code is in it. Bryntum is an npm dependency only, on its trial package, so the faint trial watermark is expected. No sponsor code is in this repo.
+With the switch off, `next.config.ts` points the import at a stub, and `npm run check` greps the browser bundle to prove no sponsor code is in it. With it on, Bryntum isn't bundled (bundling its 6 MB module needed about 14 GB of RAM to build): `scripts/sponsor-files.ts` copies the installed `gantt.umd.js` to `public/sponsor/` and the page loads it as its own script, which keeps the build near 3 GB. Bryntum is an npm dependency only, on its trial package, so the faint trial watermark is expected. No sponsor code is in this repo.
 
 Portions of this software are copyright 2015-2026 by Bryntum AB.

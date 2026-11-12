@@ -18,7 +18,7 @@ export const SPONSOR_UI = process.env.NEXT_PUBLIC_SPONSOR_UI === "1";
  */
 const SponsorGantt = SPONSOR_UI
   ? // ssr: false is only allowed in a Client Component, and the library touches browser globals.
-    dynamic(() => import("sponsor-chart"), {
+    dynamic(() => import("sponsor-chart").then((m) => m.default()), {
       ssr: false,
       loading: () => <p className="mb-6 rounded-2xl border border-zinc-200/80 bg-white px-5 py-4 text-sm text-zinc-500">Drawing the payment Gantt…</p>,
     })

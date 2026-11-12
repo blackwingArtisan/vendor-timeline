@@ -58,3 +58,6 @@ screenshots/
 .env.shared
 videos/*.cuts.json
 videos/*voiceover.json
+# sponsor Gantt files, rebuilt from node_modules by scripts/sponsor-files.ts
+/.sponsor/
+/public/sponsor/

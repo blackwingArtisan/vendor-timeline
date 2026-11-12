@@ -27,7 +27,7 @@
         "./src/*"
       ],
       "sponsor-chart": [
-        "./src/components/wedding/sponsor-gantt.tsx"
+        "./src/components/wedding/sponsor-load.ts"
       ]
     }
   },
