@@ -10,7 +10,7 @@
 2. **Capture:** the couple pay in PayPal's own checkout, and the server captures that order and reads the capture back from PayPal.
 3. **Webhook:** PayPal's `PAYMENT.CAPTURE.COMPLETED` webhook for that capture marks the item Paid, once PayPal's own status agrees (if PayPal's webhook can't arrive, the capture re-read is used, and the item says so). Each paid item's Receipt re-reads the order and capture, with PayPal's `debug_id`s.
 
-**Live demo:** https://vendor-timeline.onrender.com · **Video:** link added at submission · **License:** MIT
+**Live demo:** https://vendor-timeline.onrender.com · **Video:** https://youtu.be/tR-ymoU2zgg · **License:** MIT
 
 > For couples juggling wedding vendors: Claude reads each vendor contract, you confirm every deposit and balance on one timeline, and you pay each vendor from your own PayPal, most urgent first.
 
