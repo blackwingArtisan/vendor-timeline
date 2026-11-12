@@ -139,7 +139,7 @@ Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter th
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). Third-party notice: [NOTICE](NOTICE).
 
 ## Sponsor Gantt
 
