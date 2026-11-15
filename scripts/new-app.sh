@@ -128,5 +128,5 @@ Next:
   PAYPAL_MODE=mock npm run dev   # or omit PAYPAL_MODE to use ../../.env.shared
   open http://localhost:3000
 
-Then read KIT-GUIDE.md (quality checklist at the end) and CLAUDE.md.
+Then read CLAUDE.md.
 EOF

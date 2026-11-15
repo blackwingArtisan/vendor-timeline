@@ -1,3 +1,12 @@
+## Standard
+
+This repository is public and is read as a portfolio. Every change ships polished:
+- Clean, readable code; `npm run check` passes before every commit.
+- Professional wording everywhere a reader looks: code, comments, docs, commit messages, branch names.
+- Sample data uses invented people, businesses and addresses (`@example.com` emails, made-up streets).
+- Internal notes, ticket keys, local paths and personal details stay out of the repo.
+- Work lands on `main` through short-lived branches that are deleted after merging.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
@@ -10,10 +19,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## This repo: a PayPal AI Hackathon app built on PayPal Agent Kit
 
-Before changing anything, read `KIT-GUIDE.md` (modules, conventions, how to extend, quality checklist).
-
 - PayPal is sandbox or mock only (`PAYPAL_MODE`); never add a live endpoint.
 - Agent tools that move money must be `defineTool({ risk: "money", impact })` or kit tools, so they go through the Guard.
 - Every AI call needs a `mock` fixture; every agent needs a `mockScript`.
 - Never print, log or commit secrets from `../../.env.shared`.
-- Done means `npm run check` passes and the quality checklist in KIT-GUIDE.md is ticked.
+- Done means `npm run check` passes.
